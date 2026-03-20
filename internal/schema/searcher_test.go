@@ -18,17 +18,37 @@ func TestNewSearchScope(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
+		want    SearchScope
 		wantErr bool
 	}{
 		{
 			name:    "valid single domain",
 			input:   "domain-a",
+			want:    "domain-a",
 			wantErr: false,
 		},
 		{
 			name:    "valid multi-level path",
 			input:   "domain-a/subdomain-b/family-c/1/0/0",
+			want:    "domain-a/subdomain-b/family-c/1/0/0",
 			wantErr: false,
+		},
+		{
+			name:    "trailing slash is stripped",
+			input:   "domain-a/subdomain-b/",
+			want:    "domain-a/subdomain-b",
+			wantErr: false,
+		},
+		{
+			name:    "multiple trailing slashes are stripped",
+			input:   "domain-a/subdomain-b//",
+			want:    "domain-a/subdomain-b",
+			wantErr: false,
+		},
+		{
+			name:    "only slashes is invalid",
+			input:   "//",
+			wantErr: true,
 		},
 		{
 			name:    "root scope is invalid via NewSearchScope",
@@ -55,7 +75,7 @@ func TestNewSearchScope(t *testing.T) {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				assert.Equal(t, SearchScope(tt.input), s)
+				assert.Equal(t, tt.want, s)
 			}
 		})
 	}
