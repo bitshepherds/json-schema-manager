@@ -11,7 +11,10 @@ import (
 	"runtime"
 )
 
-var workflowFlag = flag.String("workflow", "local", "Workflow: local, ci, or coverage")
+var (
+	workflowFlag = flag.String("workflow", "local", "Workflow: local, ci, or coverage")
+	forceFlag    = flag.Bool("force", false, "Force reinstall all tools even if already present")
+)
 
 func main() {
 	flag.Parse()
@@ -20,7 +23,7 @@ func main() {
 	tools := getToolsForWorkflow(workflow)
 
 	for tool, path := range tools {
-		if !isToolInstalled(tool) {
+		if *forceFlag || !isToolInstalled(tool) {
 			_, _ = fmt.Printf("📦 Installing %s...\n", tool)
 			if err := installTool(path); err != nil {
 				_, _ = fmt.Printf("❌ Failed to install %s: %v\n", tool, err)

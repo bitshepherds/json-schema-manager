@@ -241,6 +241,7 @@ func distDirectory(
 	pathResolver fsh.PathResolver,
 	registryRoot, distDirName string,
 ) (string, error) {
+	//nolint:gosec // CMD arguments are internal and path is from the registry
 	cmd := exec.CommandContext(ctx, "git", "-C", registryRoot, "rev-parse", "--show-toplevel")
 	out, err := cmd.Output()
 	if err != nil {

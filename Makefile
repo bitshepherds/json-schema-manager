@@ -1,4 +1,4 @@
-.PHONY: all build run clean test test-race test-cover test-race-coverage cover-html lint fmt snapshot release-check setup setup-ci setup-coverage
+.PHONY: all build run clean test test-race test-cover test-race-coverage cover-html lint fmt snapshot release-check setup setup-ci setup-coverage setup-refresh
 
 all: build
 
@@ -67,3 +67,7 @@ setup-ci:
 # Setup for coverage workflow - minimal tools
 setup-coverage:
 	@go run scripts/setup/main.go --workflow coverage
+
+# Refresh development environment - force reinstall all tools to latest versions
+setup-refresh:
+	@go run scripts/setup/main.go --force
