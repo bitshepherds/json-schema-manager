@@ -1,11 +1,11 @@
 {
-    "propA": 42,
-    "propB": {
-        "propBA": [
-            1,
-            2,
-            3
-        ],
-        "probBB": "Hello World"
-    }
+  "propA": 42,
+  "propB": {
+    "propBA": [
+      1,
+      2,
+      3
+    ],
+    "probBB": "Hello World"
+  }
 }

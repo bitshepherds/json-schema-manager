@@ -72,18 +72,28 @@ func NewWatcher(r *Registry, logger *slog.Logger) *Watcher {
 
 // Watch starts monitoring the registry for changes. It calls the provided callback
 // whenever a relevant change is detected. It blocks until the context is cancelled.
-func (w *Watcher) Watch(ctx context.Context, callback func(WatchEvent)) error {
+func (w *Watcher) Watch(ctx context.Context, target ResolvedTarget, callback func(WatchEvent)) error {
 	watcher, err := w.newWatcher()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = watcher.Close() }()
 
-	if err := w.addRecursive(watcher, w.registry.RootDirectory()); err != nil {
+	targetPath := w.registry.RootDirectory()
+	if target.Scope != nil && *target.Scope != "" {
+		targetPath = filepath.Join(targetPath, filepath.FromSlash(string(*target.Scope)))
+	} else if target.Key != nil {
+		s, err := w.registry.GetSchemaByKey(*target.Key)
+		if err == nil {
+			targetPath = filepath.Dir(s.Path(FilePath))
+		}
+	}
+
+	if err := w.addRecursive(watcher, targetPath); err != nil {
 		return err
 	}
 
-	w.logger.Info("Watching for changes", "root", w.registry.RootDirectory())
+	w.logger.Info("Watching for changes", "target", targetPath)
 	if w.Ready != nil {
 		close(w.Ready)
 	}

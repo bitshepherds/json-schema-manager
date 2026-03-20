@@ -231,7 +231,7 @@ func (m *CLIManager) WatchValidation(ctx context.Context, target schema.Resolved
 		}()
 	}
 
-	return watcher.Watch(ctx, callback)
+	return watcher.Watch(ctx, target, callback)
 }
 
 func (m *CLIManager) handleWatchEvent(ctx context.Context, event schema.WatchEvent, target schema.ResolvedTarget,

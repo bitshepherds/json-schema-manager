@@ -58,7 +58,7 @@ func TestWatcher(t *testing.T) {
 
 		events := make(chan WatchEvent, 10)
 		go func() {
-			_ = watcher.Watch(ctx, func(e WatchEvent) {
+			_ = watcher.Watch(ctx, ResolvedTarget{}, func(e WatchEvent) {
 				events <- e
 			})
 		}()
@@ -94,7 +94,7 @@ func TestWatcher(t *testing.T) {
 
 		events := make(chan WatchEvent, 10)
 		go func() {
-			_ = watcher.Watch(ctx, func(e WatchEvent) {
+			_ = watcher.Watch(ctx, ResolvedTarget{}, func(e WatchEvent) {
 				events <- e
 			})
 		}()
@@ -132,7 +132,7 @@ func TestWatcher(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			err := watcher.Watch(innerCtx, func(_ WatchEvent) {})
+			err := watcher.Watch(innerCtx, ResolvedTarget{}, func(_ WatchEvent) {})
 			assert.ErrorIs(t, err, context.Canceled)
 			close(done)
 		}()
@@ -269,7 +269,7 @@ func TestWatcher(t *testing.T) {
 		w.newWatcher = func() (eventWatcher, error) {
 			return nil, errors.New("factory error")
 		}
-		err := w.Watch(context.Background(), func(_ WatchEvent) {})
+		err := w.Watch(context.Background(), ResolvedTarget{}, func(_ WatchEvent) {})
 		assert.ErrorContains(t, err, "factory error")
 	})
 
@@ -284,7 +284,7 @@ func TestWatcher(t *testing.T) {
 
 		events := make(chan WatchEvent, 10)
 		go func() {
-			_ = w.Watch(ctx, func(e WatchEvent) {
+			_ = w.Watch(ctx, ResolvedTarget{}, func(e WatchEvent) {
 				events <- e
 			})
 		}()
@@ -326,7 +326,7 @@ func TestWatcher(t *testing.T) {
 
 		done := make(chan error, 1)
 		go func() {
-			done <- w.Watch(ctx, func(_ WatchEvent) {})
+			done <- w.Watch(ctx, ResolvedTarget{}, func(_ WatchEvent) {})
 		}()
 
 		<-w.Ready
@@ -398,7 +398,7 @@ func TestWatcher(t *testing.T) {
 		w.newWatcher = func() (eventWatcher, error) {
 			return nil, fmt.Errorf("newWatcher fail")
 		}
-		err := w.Watch(context.Background(), nil)
+		err := w.Watch(context.Background(), ResolvedTarget{}, nil)
 		require.Error(t, err)
 
 		// 2. addRecursive error (line 52)
@@ -411,7 +411,7 @@ func TestWatcher(t *testing.T) {
 		reg, _ := NewRegistry(tmp, &mockCompiler{}, fsh.NewPathResolver(), fsh.NewEnvProvider())
 		w = NewWatcher(reg, logger)
 		require.NoError(t, os.RemoveAll(tmp)) // Make root non-existent
-		err = w.Watch(context.Background(), nil)
+		err = w.Watch(context.Background(), ResolvedTarget{}, nil)
 		assert.Error(t, err)
 	})
 
@@ -431,7 +431,7 @@ func TestWatcher(t *testing.T) {
 
 		done := make(chan error, 1)
 		go func() {
-			done <- w.Watch(context.Background(), func(_ WatchEvent) {})
+			done <- w.Watch(context.Background(), ResolvedTarget{}, func(_ WatchEvent) {})
 		}()
 
 		<-w.Ready
