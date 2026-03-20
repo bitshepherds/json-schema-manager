@@ -3,6 +3,7 @@ package fsh
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -92,9 +93,8 @@ func TestStandardPathResolver(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	//nolint:paralleltest // os.Chdir mutates global state
 	t.Run("CanonicalPath fails with deleted CWD", func(t *testing.T) {
-		t.Parallel()
-		// This test might not fail on all Darwin systems due to Getwd caching
 		tmp, err := os.MkdirTemp("", "vanishing-dir")
 		require.NoError(t, err)
 
@@ -109,10 +109,12 @@ func TestStandardPathResolver(t *testing.T) {
 
 		resolver := NewPathResolver()
 		_, err = resolver.CanonicalPath(".")
-		// We don't assert error here because it's flaky on Darwin,
-		// but it's the suggested method.
-		if err != nil {
-			t.Logf("Successfully triggered error: %v", err)
+		if runtime.GOOS == "darwin" {
+			// Darwin caches the working directory path, so Getwd may
+			// succeed even after the directory is removed.
+			t.Logf("darwin: CanonicalPath error (may be nil): %v", err)
+		} else {
+			require.Error(t, err)
 		}
 	})
 
