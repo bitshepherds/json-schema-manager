@@ -152,6 +152,9 @@ func (b *FSDistBuilder) BuildChanged(ctx context.Context, env config.Env, anchor
 
 	var count int
 	for _, change := range changes {
+		if change.IsDeleted {
+			continue
+		}
 		if ctx.Err() != nil {
 			return count, ctx.Err()
 		}
@@ -238,6 +241,7 @@ func distDirectory(
 	pathResolver fsh.PathResolver,
 	registryRoot, distDirName string,
 ) (string, error) {
+	//nolint:gosec // CMD arguments are internal and path is from the registry
 	cmd := exec.CommandContext(ctx, "git", "-C", registryRoot, "rev-parse", "--show-toplevel")
 	out, err := cmd.Output()
 	if err != nil {

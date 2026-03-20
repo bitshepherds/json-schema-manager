@@ -177,6 +177,38 @@ func TestCLIGitter_GetSchemaChanges(t *testing.T) {
 		assert.True(t, changes[0].IsNew)
 	})
 
+	t.Run("deleted file", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := setupTestRepo(t)
+		g := NewCLIGitter(cfg, pathResolver, tmpDir)
+
+		srcDir := filepath.Join(tmpDir, "src", "schemas")
+		require.NoError(t, os.MkdirAll(srcDir, 0o755))
+		f1 := filepath.Join(srcDir, "user.schema.json")
+		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
+
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", tmpDir, "add", ".").Run())
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", tmpDir, "commit", "-m", "1").Run())
+		require.NoError(
+			t,
+			exec.CommandContext(context.Background(), "git", "-C", tmpDir, "tag", "jsm-deploy/prod/v1").Run(),
+		)
+
+		// Delete the schema file via git rm
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", tmpDir, "rm", f1).Run())
+		require.NoError(
+			t,
+			exec.CommandContext(context.Background(), "git", "-C", tmpDir, "commit", "-m", "delete").Run(),
+		)
+
+		changes, err := g.GetSchemaChanges(context.Background(), "jsm-deploy/prod/v1", srcDir, ".schema.json")
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+
+		assert.True(t, changes[0].IsDeleted)
+		assert.False(t, changes[0].IsNew)
+	})
+
 	t.Run("ignore non-schema files", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := setupTestRepo(t)

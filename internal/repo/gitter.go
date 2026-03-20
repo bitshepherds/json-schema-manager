@@ -16,8 +16,9 @@ func (r Revision) String() string { return string(r) }
 
 // Change represents a file status detected in the repository.
 type Change struct {
-	Path  string
-	IsNew bool // True if status is 'A' (Added), False if 'M' (Modified)
+	Path      string
+	IsNew     bool // True if status is 'A' (Added)
+	IsDeleted bool // True if status is 'D' (Deleted)
 }
 
 // Gitter defines the interface for git repository operations.

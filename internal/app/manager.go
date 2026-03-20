@@ -354,7 +354,7 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 	if !envCfg.AllowSchemaMutation {
 		var modifiedPaths []string
 		for _, change := range changes {
-			if !change.IsNew {
+			if !change.IsNew && !change.IsDeleted {
 				modifiedPaths = append(modifiedPaths, change.Path)
 			}
 		}
