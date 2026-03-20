@@ -31,10 +31,11 @@ type SearchScope string
 
 // NewSearchScope creates a new SearchScope from a string specification.
 func NewSearchScope(s string) (SearchScope, error) {
-	if !validSearchScopeRegex.MatchString(s) {
+	cleanS := strings.TrimRight(s, SearchSeparatorString)
+	if !validSearchScopeRegex.MatchString(cleanS) {
 		return "", &InvalidSearchScopeError{spec: s}
 	}
-	return SearchScope(s), nil
+	return SearchScope(cleanS), nil
 }
 
 // Searcher is used to define the scope of a search for schemas in a registry, and then
