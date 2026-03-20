@@ -41,7 +41,7 @@ The Registry Root is the root directory of the JSON Schema registry. It is the d
 
 You can specify the Registry Root in the following ways:
 
-- with the `jsm` CLI flag: `--registry-root` 
+- with the `jsm` CLI flag: `--registry` 
 - with the environment variable: `JSM_REGISTRY_ROOT`.
 
 The flag overrides the environment variable.
@@ -62,7 +62,7 @@ It should be the root of a git repository.
 
 The first time you use JSON Schema Manager, you will need to initialise a new JSM Registry.
 
-`jsm init` - creates or initialises a new JSM Registry at the path described by the `--registry-root` flag or the `JSM_REGISTRY_ROOT` environment variable. (See [Registry root](#registry-root))
+`jsm init` - creates or initialises a new JSM Registry at the path described by the `--registry` flag or the `JSM_REGISTRY_ROOT` environment variable. (See [Registry root](#registry-root))
 
 E.g. 
 
@@ -73,7 +73,7 @@ jsm init
 
 To create a new registry at `/path/to/registry`:
 ```bash
-jsm init --registry-root="/path/to/registry"
+jsm init --registry="/path/to/registry"
 ```
 
 The command will fail if the registry was already initialised or the path cannot be created.

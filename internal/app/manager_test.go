@@ -406,7 +406,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 	t.Run("WatchValidation - filtered events", func(t *testing.T) {
 		t.Parallel()
-		registry, key, _ := setupWatchTest(t)
+		registry, key, s := setupWatchTest(t)
 
 		// Create a DIFFERENT schema BEFORE starting the watcher (so it's watched)
 		k2 := schema.Key("other_domain_otherfamily_1_0_0")
@@ -428,8 +428,12 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 		<-readyChan
 
-		// Modify the OTHER schema file to trigger an event (should be filtered by Key)
-		require.NoError(t, os.WriteFile(s2.Path(schema.FilePath), []byte(`{"type":"object"}`), 0o600))
+		// Modify the schema inside the exact watched directory but with a mismatched key (should be filtered by Key)
+		require.NoError(t, os.WriteFile(
+			filepath.Join(s.Path(schema.HomeDir), "other_key_1_0_0.schema.json"),
+			[]byte(`{"type":"object"}`),
+			0o600,
+		))
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
@@ -461,8 +465,12 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 		<-readyChan
 
-		// Modify the OTHER scope schema file to trigger an event (should be filtered by Scope)
-		require.NoError(t, os.WriteFile(s3.Path(schema.FilePath), []byte(`{"type":"object"}`), 0o600))
+		// Modify a schema physically inside the scope path but with a key that implies a different scope
+		require.NoError(t, os.WriteFile(
+			filepath.Join(registry.RootDirectory(), "domain", "family", "other_schema_1_0_0.schema.json"),
+			[]byte(`{"type":"object"}`),
+			0o600,
+		))
 
 		time.Sleep(200 * time.Millisecond)
 		cancel()
