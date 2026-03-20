@@ -168,8 +168,9 @@ func (g *CLIGitter) GetSchemaChanges(ctx context.Context, anchor Revision, sourc
 		absPath := filepath.Join(root, path)
 
 		changes = append(changes, Change{
-			Path:  absPath,
-			IsNew: fields[0] == "A",
+			Path:      absPath,
+			IsNew:     fields[0] == "A",
+			IsDeleted: fields[0] == "D",
 		})
 	}
 	return changes, nil

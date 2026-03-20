@@ -406,6 +406,30 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		assert.Equal(t, 0, count)
 	})
 
+	t.Run("skips deleted schemas", func(t *testing.T) {
+		t.Parallel()
+
+		reg := newTestRegistryWithSchema(t)
+		cfg, err := reg.Config()
+		require.NoError(t, err)
+
+		schemaPath := filepath.Join("domain", "test", "1", "0", "0", "domain_test_1_0_0.schema.json")
+		gitter := &mockGitter{
+			getSchemaChangesFunc: func(_ context.Context, _ repo.Revision, _, _ string) ([]repo.Change, error) {
+				return []repo.Change{
+					{Path: filepath.Join(reg.rootDirectory, schemaPath), IsNew: false},
+					{Path: filepath.Join(reg.rootDirectory, "deleted.schema.json"), IsDeleted: true},
+				}, nil
+			},
+		}
+		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
+		require.NoError(t, err)
+
+		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "deleted schemas should be skipped")
+	})
+
 	t.Run("GetSchemaChanges error", func(t *testing.T) {
 		t.Parallel()
 

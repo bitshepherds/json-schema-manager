@@ -152,6 +152,9 @@ func (b *FSDistBuilder) BuildChanged(ctx context.Context, env config.Env, anchor
 
 	var count int
 	for _, change := range changes {
+		if change.IsDeleted {
+			continue
+		}
 		if ctx.Err() != nil {
 			return count, ctx.Err()
 		}

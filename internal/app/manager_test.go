@@ -1008,6 +1008,46 @@ environments:
 		require.NoError(t, err)
 	})
 
+	t.Run("deletion not treated as mutation", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "init", dir).Run())
+		require.NoError(
+			t,
+			exec.CommandContext(context.Background(), "git", "-C", dir, "config", "user.email", "t@t.com").Run(),
+		)
+		require.NoError(
+			t,
+			exec.CommandContext(context.Background(), "git", "-C", dir, "config", "user.name", "t").Run(),
+		)
+
+		schemaDir := filepath.Join(dir, "domain", "family", "1", "0", "0")
+		require.NoError(t, os.MkdirAll(schemaDir, 0o755))
+		f1 := filepath.Join(schemaDir, "f1.schema.json")
+		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "in").Run())
+		require.NoError(
+			t,
+			exec.CommandContext(context.Background(), "git", "-C", dir, "tag", "jsm-deploy/prod/v1").Run(),
+		)
+
+		// Delete the schema (should NOT be treated as a mutation)
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "rm", f1).Run())
+		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "del").Run())
+
+		require.NoError(
+			t,
+			os.WriteFile(filepath.Join(dir, "json-schema-manager-config.yml"), []byte(testConfigData), 0o600),
+		)
+		r, _ := schema.NewRegistry(dir, &mockCompiler{}, fsh.NewPathResolver(), fsh.NewEnvProvider())
+		rcfg, _ := r.Config()
+		m := NewCLIManager(logger, r, nil, repo.NewCLIGitter(rcfg, fsh.NewPathResolver(), dir), nil, io.Discard)
+
+		err := m.CheckChanges(context.Background(), "prod")
+		require.NoError(t, err, "deleting a schema should not be treated as a mutation")
+	})
+
 	t.Run("GetSchemaChanges error", func(t *testing.T) {
 		t.Parallel()
 		r := setupTestRegistry(t)
