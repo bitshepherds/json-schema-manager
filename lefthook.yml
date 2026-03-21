@@ -8,13 +8,13 @@ commit-msg:
       # type(scope): description or
       # type(scope)!: description (for breaking changes)
       run: |
-        REGEXP="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|deps)(\(.*\))?!?: .+"
+        REGEXP="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|deps)\(.*\)!?: .+"
         if ! grep -qE "$REGEXP" "{1}"; then
           echo "❌ Error: Invalid commit message format."
           echo "Expected format: '<type>(<scope>): <description>' or"
           echo "                 '<type>(<scope>)!: <description>' (for breaking changes)"
           echo "Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert, deps"
-          echo "Example: feat(cli): add validation command"
+          echo "Example: feat(jsm): add validation command"
           exit 1
         fi
 

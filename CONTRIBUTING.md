@@ -163,13 +163,21 @@ make test-race
 
 ## Commit Messages
 
-JSM uses [Conventional Commits](https://www.conventionalcommits.org/) to automatically generate helpful changelogs for each release. Please follow this format for your commit messages:
+JSM uses [Conventional Commits](https://www.conventionalcommits.org/) to automatically generate helpful changelogs for each release. 
 
-`<type>[optional scope]: <description>`
+### Commit Format
 
-Use `jsm` as the scope for all JSM related feature and fix commits. Use a different scope for other feature and fix commits. For example, use 'cicd' for CI/CD related commits.
+All commit messages **must** identify the domain being changed using a mandatory scope:
 
-This ensures that when we make a release, the changelog only includes JSM related changes.
+`<type>(<scope>): <description>`
+
+### Release Note Policy
+
+To keep our user-facing release notes clean and relevant:
+-   **Core Changes**: Use the **`(jsm)`** scope for all features and fixes to the JSON Schema Manager itself (e.g., `feat(jsm): add validate command`). **Only `(jsm)` scoped commits will appear in the official release notes.**
+-   **Other Changes**: Use descriptive scopes like **`(cicd)`**, **`(docs)`**, or **`(refactor)`** for improvements that should not appear in the user-facing changelog (e.g., `fix(cicd): update github token`).
+
+This ensures that our users only see product-relevant changes in the changelog.
 
 Common types:
 - **feat**: A new JSM feature (e.g., `feat(jsm): add validate command`)
