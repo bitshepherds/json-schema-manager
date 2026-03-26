@@ -36,7 +36,7 @@ func TestNewRenderSchemaCmd(t *testing.T) {
 			setupMock: func(m *MockManager) {
 				m.On("RenderSchema", mock.Anything, mock.MatchedBy(func(rt schema.ResolvedTarget) bool {
 					return *rt.Key == baseKey
-				}), config.Env("")).Return(renderedBytes, nil)
+				}), config.Env(""), false).Return(renderedBytes, nil)
 			},
 			wantOutput: string(renderedBytes),
 		},
@@ -46,7 +46,7 @@ func TestNewRenderSchemaCmd(t *testing.T) {
 			setupMock: func(m *MockManager) {
 				m.On("RenderSchema", mock.Anything, mock.MatchedBy(func(rt schema.ResolvedTarget) bool {
 					return *rt.Key == baseKey
-				}), config.Env("prod")).Return(renderedBytes, nil)
+				}), config.Env("prod"), false).Return(renderedBytes, nil)
 			},
 			wantOutput: string(renderedBytes),
 		},
@@ -56,9 +56,19 @@ func TestNewRenderSchemaCmd(t *testing.T) {
 			setupMock: func(m *MockManager) {
 				m.On("RenderSchema", mock.Anything, mock.MatchedBy(func(rt schema.ResolvedTarget) bool {
 					return *rt.Key == baseKey
-				}), config.Env("")).Return(renderedBytes, nil)
+				}), config.Env(""), false).Return(renderedBytes, nil)
 			},
 			wantOutput: string(renderedBytes),
+		},
+		{
+			name: "Render with --collapse",
+			args: []string{"-k", "domain_family_1_0_0", "--collapse"},
+			setupMock: func(m *MockManager) {
+				m.On("RenderSchema", mock.Anything, mock.MatchedBy(func(rt schema.ResolvedTarget) bool {
+					return *rt.Key == baseKey
+				}), config.Env(""), true).Return([]byte(`{"collapsed":true}`), nil)
+			},
+			wantOutput: `{"collapsed":true}`,
 		},
 		{
 			name:        "Invalid target",
@@ -84,7 +94,7 @@ func TestNewRenderSchemaCmd(t *testing.T) {
 			setupMock: func(m *MockManager) {
 				m.On("RenderSchema", mock.Anything, mock.MatchedBy(func(rt schema.ResolvedTarget) bool {
 					return rt.Key != nil && *rt.Key == baseKey
-				}), config.Env("")).Return(renderedBytes, nil)
+				}), config.Env(""), false).Return(renderedBytes, nil)
 			},
 			wantOutput: string(renderedBytes),
 		},
@@ -98,7 +108,7 @@ func TestNewRenderSchemaCmd(t *testing.T) {
 			name: "Manager error",
 			args: []string{"domain_family_1_0_0"},
 			setupMock: func(m *MockManager) {
-				m.On("RenderSchema", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("boom"))
+				m.On("RenderSchema", mock.Anything, mock.Anything, mock.Anything, false).Return(nil, fmt.Errorf("boom"))
 			},
 			wantErr: true,
 		},

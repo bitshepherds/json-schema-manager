@@ -16,6 +16,7 @@ func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
 	var keyStr string
 	var idStr string
 	var envStr string
+	var collapse bool
 
 	cmd := &cobra.Command{
 		Use:   "render-schema [target]",
@@ -25,6 +26,7 @@ func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
   jsm render-schema "domain_family_1_0_0"
   jsm render-schema -k "domain_family_1_0_0" --env dev
   jsm render-schema "https://js.myorg.com/domain_family_1_0_0.schema.json"
+  jsm render-schema "domain_family_1_0_0" --collapse
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var targetArg string
@@ -56,7 +58,7 @@ func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
 				target.Key = &resolvedKey
 			}
 
-			rendered, err := mgr.RenderSchema(cmd.Context(), target, config.Env(envStr))
+			rendered, err := mgr.RenderSchema(cmd.Context(), target, config.Env(envStr), collapse)
 			if err != nil {
 				return err
 			}
@@ -69,6 +71,8 @@ func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
 	cmd.Flags().StringVarP(&keyStr, "key", "k", "", "Identify a target schema by its key")
 	cmd.Flags().StringVarP(&idStr, "id", "i", "", "Identify a target schema by its canonical ID")
 	cmd.Flags().StringVarP(&envStr, "env", "e", "", "The environment to use for rendering (defaults to production)")
+	cmd.Flags().BoolVarP(&collapse, "collapse", "C", false,
+		"Inline external $ref dependencies into the schema's $defs block")
 
 	return cmd
 }

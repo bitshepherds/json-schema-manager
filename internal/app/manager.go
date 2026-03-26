@@ -25,10 +25,10 @@ type Manager interface {
 	Registry() *schema.Registry
 	CreateSchema(domainAndFamilyName string) (schema.Key, error)
 	CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (schema.Key, error)
-	RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env) ([]byte, error)
+	RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env, collapse bool) ([]byte, error)
 	CheckChanges(ctx context.Context, envName config.Env) error
 	TagDeployment(ctx context.Context, envName config.Env) error
-	BuildDist(ctx context.Context, envName config.Env, all bool) error
+	BuildDist(ctx context.Context, envName config.Env, all, collapse bool) error
 }
 
 // Ensure the interface is satisfied.
@@ -90,8 +90,13 @@ func (l *LazyManager) CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (
 }
 
 // RenderSchema implements the Manager interface.
-func (l *LazyManager) RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env) ([]byte, error) {
-	return l.check().RenderSchema(ctx, target, env)
+func (l *LazyManager) RenderSchema(
+	ctx context.Context,
+	target schema.ResolvedTarget,
+	env config.Env,
+	collapse bool,
+) ([]byte, error) {
+	return l.check().RenderSchema(ctx, target, env, collapse)
 }
 
 // CheckChanges implements the Manager interface.
@@ -105,8 +110,8 @@ func (l *LazyManager) TagDeployment(ctx context.Context, envName config.Env) err
 }
 
 // BuildDist implements the Manager interface.
-func (l *LazyManager) BuildDist(ctx context.Context, envName config.Env, all bool) error {
-	return l.check().BuildDist(ctx, envName, all)
+func (l *LazyManager) BuildDist(ctx context.Context, envName config.Env, all, collapse bool) error {
+	return l.check().BuildDist(ctx, envName, all, collapse)
 }
 
 // Ensure the interface is satisfied.
@@ -283,8 +288,13 @@ func (m *CLIManager) handleWatchEvent(ctx context.Context, event schema.WatchEve
 }
 
 // RenderSchema renders a schema for a specific environment.
-func (m *CLIManager) RenderSchema(_ context.Context, target schema.ResolvedTarget, env config.Env) ([]byte, error) {
-	m.logger.Debug("rendering schema", "target", target, "env", env)
+func (m *CLIManager) RenderSchema(
+	_ context.Context,
+	target schema.ResolvedTarget,
+	env config.Env,
+	collapse bool,
+) ([]byte, error) {
+	m.logger.Debug("rendering schema", "target", target, "env", env, "collapse", collapse)
 
 	if target.Key == nil {
 		return nil, &schema.NoSchemaTargetsError{}
@@ -321,6 +331,11 @@ func (m *CLIManager) RenderSchema(_ context.Context, target schema.ResolvedTarge
 	ri, err := m.registry.CoordinateRender(s, envCfg)
 	if err != nil {
 		return nil, err
+	}
+
+	if collapse {
+		inliner := schema.NewInliner(m.registry, envCfg)
+		return inliner.Collapse(ri.Rendered)
 	}
 
 	return ri.Rendered, nil
@@ -396,13 +411,13 @@ func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env) erro
 }
 
 // BuildDist builds a distribution directory for the given environment.
-func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all bool) error {
-	m.logger.Debug("building distribution", "env", envName, "all", all)
+func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, collapse bool) error {
+	m.logger.Debug("building distribution", "env", envName, "all", all, "collapse", collapse)
 
 	var count int
 	var err error
 	if all {
-		count, err = m.distBuilder.BuildAll(ctx, envName)
+		count, err = m.distBuilder.BuildAll(ctx, envName, collapse)
 	} else {
 		// Check for mutations first
 		if ccErr := m.CheckChanges(ctx, envName); ccErr != nil {
@@ -414,7 +429,7 @@ func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all bool
 			return anchorErr
 		}
 
-		count, err = m.distBuilder.BuildChanged(ctx, envName, anchor)
+		count, err = m.distBuilder.BuildChanged(ctx, envName, anchor, collapse)
 	}
 
 	if err != nil {

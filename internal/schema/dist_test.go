@@ -64,7 +64,7 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
 		require.NoError(t, err)
 
-		count, err := builder.BuildAll(context.Background(), "production")
+		count, err := builder.BuildAll(context.Background(), "production", false)
 		require.NoError(t, err)
 		assert.Equal(t, 1, count)
 
@@ -82,6 +82,119 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		assert.Len(t, files, 1)
 	})
 
+	t.Run("collapse success", func(t *testing.T) {
+		t.Parallel()
+
+		regDir := t.TempDir()
+		distDir := filepath.Join(filepath.Dir(regDir), "dist")
+		envDir := filepath.Join(distDir, "production")
+
+		configContent := `
+schemaStoreBaseURI: https://example.com
+environments:
+  production:
+    isProduction: true
+    allowSchemaMutation: false
+    publicUrlRoot: https://example.com/public
+    privateUrlRoot: https://example.com/private
+`
+		require.NoError(t, os.WriteFile(
+			filepath.Join(regDir, "json-schema-manager-config.yml"),
+			[]byte(configContent),
+			0o600,
+		))
+
+		// Create two schemas: A references B
+		dirA := filepath.Join(regDir, "domain", "a", "1", "0", "0")
+		require.NoError(t, os.MkdirAll(dirA, 0o755))
+		schemaA := filepath.Join(dirA, "domain_a_1_0_0.schema.json")
+		contentA := []byte(`{
+			"$id": "https://example.com/private/domain_a_1_0_0.schema.json",
+			"type": "object",
+			"properties": {
+				"b": { "$ref": "https://example.com/private/domain_b_1_0_0.schema.json" }
+			}
+		}`)
+		require.NoError(t, os.WriteFile(schemaA, contentA, 0o600))
+
+		dirB := filepath.Join(regDir, "domain", "b", "1", "0", "0")
+		require.NoError(t, os.MkdirAll(dirB, 0o755))
+		schemaB := filepath.Join(dirB, "domain_b_1_0_0.schema.json")
+		contentB := []byte(`{
+			"$id": "https://example.com/private/domain_b_1_0_0.schema.json",
+			"type": "string"
+		}`)
+		require.NoError(t, os.WriteFile(schemaB, contentB, 0o600))
+
+		reg, err := NewRegistry(regDir, &mockCompiler{}, fsh.NewPathResolver(), fsh.NewEnvProvider())
+		require.NoError(t, err)
+
+		cfg, err := reg.Config()
+		require.NoError(t, err)
+
+		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
+		require.NoError(t, err)
+
+		count, err := builder.BuildAll(context.Background(), "production", true)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+
+		// Verify schema A has schema B in inlined $defs
+		aBuiltPath := filepath.Join(envDir, "private", "domain_a_1_0_0.schema.json")
+		bBuiltPath := filepath.Join(envDir, "private", "domain_b_1_0_0.schema.json")
+
+		aBuilt, err := os.ReadFile(aBuiltPath)
+		require.NoError(t, err)
+		bBuilt, err := os.ReadFile(bBuiltPath)
+		require.NoError(t, err)
+
+		assert.Contains(t, string(aBuilt), `"$defs":`)
+		assert.Contains(t, string(aBuilt), `"domain_b_1_0_0": {`)
+		assert.Contains(t, string(aBuilt), `"#/$defs/domain_b_1_0_0"`)
+
+		assert.NotContains(t, string(bBuilt), `"$defs":`)
+	})
+
+	t.Run("collapse fails", func(t *testing.T) {
+		t.Parallel()
+		regDir := t.TempDir()
+
+		require.NoError(t, os.MkdirAll(filepath.Join(regDir, "domain", "a", "1", "0", "0"), 0o755))
+
+		// Schema A references B, but B doesn't exist. This will cause Collapse to fail.
+		schemaA := filepath.Join(regDir, "domain", "a", "1", "0", "0", "domain_a_1_0_0.schema.json")
+		contentA := []byte(`{
+			"$id": "https://example.com/private/domain_a_1_0_0.schema.json",
+			"type": "object",
+			"properties": {
+				"b": { "$ref": "https://example.com/private/domain_b_1_0_0.schema.json" }
+			}
+		}`)
+		require.NoError(t, os.WriteFile(schemaA, contentA, 0o600))
+
+		// Create a config file to bypass simpleTestConfig if needed, but we can reuse the default Mock setup
+		cfgData := `environments: {production: {publicUrlRoot: 'https://p', ` +
+			`privateUrlRoot: 'https://example.com/private', isProduction: true}}`
+		require.NoError(t, os.WriteFile(
+			filepath.Join(regDir, "json-schema-manager-config.yml"),
+			[]byte(cfgData),
+			0o600,
+		))
+		reg, err := NewRegistry(regDir, &mockCompiler{}, fsh.NewPathResolver(), fsh.NewEnvProvider())
+		require.NoError(t, err)
+
+		cfg, err := reg.Config()
+		require.NoError(t, err)
+
+		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
+		require.NoError(t, err)
+
+		// Collapse should fail because B does not exist
+		_, err = builder.BuildAll(context.Background(), "production", true)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to collapse schema")
+	})
+
 	t.Run("context cancellation", func(t *testing.T) {
 		t.Parallel()
 
@@ -95,7 +208,7 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
-		_, err = builder.BuildAll(ctx, "production")
+		_, err = builder.BuildAll(ctx, "production", false)
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
@@ -134,7 +247,7 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
 		require.NoError(t, err)
 
-		_, err = builder.BuildAll(context.Background(), "production")
+		_, err = builder.BuildAll(context.Background(), "production", false)
 		require.Error(t, err)
 	})
 
@@ -151,7 +264,7 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		// Delete the registry root to make NewSearcher fail
 		require.NoError(t, os.RemoveAll(reg.rootDirectory))
 
-		_, err = builder.BuildAll(context.Background(), "production")
+		_, err = builder.BuildAll(context.Background(), "production", false)
 		require.Error(t, err)
 	})
 
@@ -191,7 +304,7 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		// Run BuildAll in a goroutine
 		errC := make(chan error, 1)
 		go func() {
-			_, bErr := builder.BuildAll(ctx, "production")
+			_, bErr := builder.BuildAll(ctx, "production", false)
 			errC <- bErr
 		}()
 
@@ -223,7 +336,7 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
 		require.NoError(t, err)
 
-		_, err = builder.BuildAll(context.Background(), "production")
+		_, err = builder.BuildAll(context.Background(), "production", false)
 		require.Error(t, err)
 	})
 }
@@ -256,7 +369,7 @@ func TestDistBuilder_renderAndWrite(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		err = builder.renderAndWrite(ctx, "production", Key("domain_test_1_0_0"))
+		err = builder.renderAndWrite(ctx, "production", Key("domain_test_1_0_0"), false)
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
@@ -274,7 +387,7 @@ func TestDistBuilder_renderAndWrite(t *testing.T) {
 			distDir:  distDir,
 		}
 
-		err = builder.renderAndWrite(context.Background(), "invalid", Key("domain_test_1_0_0"))
+		err = builder.renderAndWrite(context.Background(), "invalid", Key("domain_test_1_0_0"), false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get environment config")
 	})
@@ -293,7 +406,7 @@ func TestDistBuilder_renderAndWrite(t *testing.T) {
 			distDir:  distDir,
 		}
 
-		err = builder.renderAndWrite(context.Background(), "production", Key("nonexistent_1_0_0"))
+		err = builder.renderAndWrite(context.Background(), "production", Key("nonexistent_1_0_0"), false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get schema")
 	})
@@ -321,7 +434,7 @@ func TestDistBuilder_renderAndWrite(t *testing.T) {
 		require.NoError(t, os.Chmod(envDir, 0o000))
 		defer func() { _ = os.Chmod(envDir, 0o755) }()
 
-		err = builder.renderAndWrite(context.Background(), "production", Key("domain_test_1_0_0"))
+		err = builder.renderAndWrite(context.Background(), "production", Key("domain_test_1_0_0"), false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to write schema")
 	})
@@ -347,7 +460,7 @@ func TestDistBuilder_renderAndWrite(t *testing.T) {
 			distDir:  distDir,
 		}
 
-		err = builder.renderAndWrite(context.Background(), "production", Key("domain_test_1_0_0"))
+		err = builder.renderAndWrite(context.Background(), "production", Key("domain_test_1_0_0"), false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to render schema")
 	})
@@ -375,7 +488,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
 		require.NoError(t, err)
 
-		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
 		assert.Equal(t, 1, count)
 
@@ -401,7 +514,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
 		require.NoError(t, err)
 
-		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
 		assert.Equal(t, 0, count)
 	})
@@ -425,7 +538,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
 		require.NoError(t, err)
 
-		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
 		assert.Equal(t, 1, count, "deleted schemas should be skipped")
 	})
@@ -445,7 +558,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
 		require.NoError(t, err)
 
-		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "git failed")
 	})
@@ -469,7 +582,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
 		require.NoError(t, err)
 
-		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
 		assert.Equal(t, 1, count, "should skip invalid paths and process valid ones")
 	})
@@ -507,7 +620,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 			cancel()
 		}()
 
-		_, err = builder.BuildChanged(ctx, "production", repo.Revision("HEAD"))
+		_, err = builder.BuildChanged(ctx, "production", repo.Revision("HEAD"), false)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, context.Canceled)
 	})
@@ -537,7 +650,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 			return nil, errors.New("worker failed")
 		}
 
-		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "worker failed")
 	})
@@ -557,7 +670,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
 		require.NoError(t, err)
 
-		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"))
+		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.Error(t, err)
 	})
 }
@@ -610,7 +723,7 @@ environments:
 		require.NoError(t, os.MkdirAll(filepath.Join(envDir, "private"), 0o755))
 		defer func() { _ = os.Chmod(filepath.Join(envDir, "private"), 0o755) }()
 
-		_, err = builder.BuildAll(context.Background(), "production")
+		_, err = builder.BuildAll(context.Background(), "production", false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to write schema")
 	})
@@ -640,7 +753,7 @@ environments:
 			cancel()
 		}()
 
-		_, err = builder.BuildAll(ctx, "production")
+		_, err = builder.BuildAll(ctx, "production", false)
 		_ = err
 	})
 }
@@ -903,7 +1016,7 @@ environments:
 	builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
 	require.NoError(t, err)
 
-	count, err := builder.BuildAll(context.Background(), "production")
+	count, err := builder.BuildAll(context.Background(), "production", false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, count)
 

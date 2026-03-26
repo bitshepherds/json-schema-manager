@@ -97,14 +97,14 @@ type MockDistBuilder struct {
 	SetNumWorkersFunc func(n int)
 }
 
-func (m *MockDistBuilder) BuildAll(ctx context.Context, env config.Env) (int, error) {
+func (m *MockDistBuilder) BuildAll(ctx context.Context, env config.Env, _ bool) (int, error) {
 	if m.BuildAllFunc != nil {
 		return m.BuildAllFunc(ctx, env)
 	}
 	return 0, nil
 }
 
-func (m *MockDistBuilder) BuildChanged(ctx context.Context, env config.Env, anchor repo.Revision) (int, error) {
+func (m *MockDistBuilder) BuildChanged(ctx context.Context, env config.Env, anchor repo.Revision, _ bool) (int, error) {
 	if m.BuildChangedFunc != nil {
 		return m.BuildChangedFunc(ctx, env, anchor)
 	}
@@ -632,7 +632,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		rendered, err := mgr.RenderSchema(context.Background(), target, config.Env("prod"))
+		rendered, err := mgr.RenderSchema(context.Background(), target, config.Env("prod"), false)
 		require.NoError(t, err)
 		assert.NotEmpty(t, rendered)
 	})
@@ -649,7 +649,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		rendered, err := mgr.RenderSchema(context.Background(), target, "")
+		rendered, err := mgr.RenderSchema(context.Background(), target, "", false)
 		require.NoError(t, err)
 		assert.NotEmpty(t, rendered)
 	})
@@ -662,7 +662,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 
 		baseKey := schema.Key("d1_f1_1_0_0")
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "invalid")
+		_, err := mgr.RenderSchema(context.Background(), target, "invalid", false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid environment: 'invalid'. Valid environments are: 'prod'")
 	})
@@ -674,7 +674,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 
 		target := schema.ResolvedTarget{}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 		assert.ErrorAs(t, err, new(*schema.NoSchemaTargetsError))
 	})
@@ -687,7 +687,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 
 		baseKey := schema.Key("d1_f1_1_0_0")
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, vErr := mgr.RenderSchema(context.Background(), target, "prod")
+		_, vErr := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, vErr)
 	})
 
@@ -699,7 +699,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 
 		baseKey := schema.Key("missing_1_0_0")
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 	})
 
@@ -716,7 +716,44 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{ invalid"), 0o600))
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
+		require.Error(t, err)
+	})
+
+	t.Run("collapse success", func(t *testing.T) {
+		t.Parallel()
+		registry := setupTestRegistry(t)
+		tester := schema.NewTester(registry)
+		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
+
+		baseKey := schema.Key("d1_f1_1_0_0")
+		s := schema.New(baseKey, registry)
+		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
+		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+
+		target := schema.ResolvedTarget{Key: &baseKey}
+		rendered, err := mgr.RenderSchema(context.Background(), target, "prod", true)
+		require.NoError(t, err)
+		assert.NotEmpty(t, rendered)
+	})
+
+	t.Run("collapse error", func(t *testing.T) {
+		t.Parallel()
+		registry := setupTestRegistry(t)
+		tester := schema.NewTester(registry)
+		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
+
+		baseKey := schema.Key("d1_f1_1_0_0")
+		s := schema.New(baseKey, registry)
+		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
+
+		// Unresolvable reference to an missing JSM schema will trigger an error in Collapse
+		badJSON := `{"properties": {"a": {` +
+			`"$ref": "https://json-schemas.internal.myorg.io/domain_missing_1_0_0.schema.json"}}}`
+		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(badJSON), 0o600))
+
+		target := schema.ResolvedTarget{Key: &baseKey}
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", true)
 		require.Error(t, err)
 	})
 
@@ -745,11 +782,11 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		target := schema.ResolvedTarget{Key: &baseKey}
 
 		// Test prod
-		_, err = mgr.RenderSchema(context.Background(), target, "prod")
+		_, err = mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.NoError(t, err)
 
 		// Test dev
-		_, err = mgr.RenderSchema(context.Background(), target, "dev")
+		_, err = mgr.RenderSchema(context.Background(), target, "dev", false)
 		require.NoError(t, err)
 	})
 
@@ -769,7 +806,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod(homedir, 0o755) })
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 	})
 
@@ -784,7 +821,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{{ bad }"), 0o600))
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 	})
 
@@ -800,7 +837,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{{ JSM \"!!\" }}"), 0o600))
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 	})
 
@@ -816,7 +853,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{{ JSM \"missing_dep_1_0_0\" }}"), 0o600))
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 	})
 
@@ -834,7 +871,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
 
 		target := schema.ResolvedTarget{Key: &baseKey}
-		_, err := mgr.RenderSchema(context.Background(), target, "prod")
+		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 	})
 }
@@ -1234,7 +1271,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true)
+		err := mgr.BuildDist(context.Background(), "prod", true, false)
 		require.NoError(t, err)
 	})
 
@@ -1249,7 +1286,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false)
 		require.NoError(t, err)
 	})
 
@@ -1263,7 +1300,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true)
+		err := mgr.BuildDist(context.Background(), "prod", true, false)
 		require.NoError(t, err)
 	})
 
@@ -1277,7 +1314,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true)
+		err := mgr.BuildDist(context.Background(), "prod", true, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build failed")
 	})
@@ -1293,7 +1330,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, mockGitter, nil, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot modify deployed schemas")
 	})
@@ -1313,7 +1350,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, mockGitter, nil, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "git anchor failed")
 	})
@@ -1328,7 +1365,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build changed failed")
 	})
@@ -1340,7 +1377,7 @@ func TestNewBuildDistCmd(t *testing.T) {
 		t.Parallel()
 		mockMgr := &MockManager{}
 		cmd := NewBuildDistCmd(mockMgr)
-		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false).Return(nil)
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false).Return(nil)
 		cmd.SetArgs([]string{"prod"})
 		err := cmd.Execute()
 		require.NoError(t, err)
@@ -1351,7 +1388,7 @@ func TestNewBuildDistCmd(t *testing.T) {
 		t.Parallel()
 		mockMgr := &MockManager{}
 		cmd := NewBuildDistCmd(mockMgr)
-		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false).Return(errors.New("build failed"))
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false).Return(errors.New("build failed"))
 		cmd.SetArgs([]string{"prod"})
 		err := cmd.Execute()
 		require.Error(t, err)
@@ -1415,10 +1452,15 @@ func TestLazyManager_Delegation(t *testing.T) {
 	assert.Equal(t, schema.Key("domain_family_1_1_0"), key3)
 
 	// Test RenderSchema delegation
-	mockMgr.On("RenderSchema", ctx, target, config.Env("prod")).Return([]byte("{}"), nil)
-	rendered, err := lazy.RenderSchema(ctx, target, config.Env("prod"))
+	mockMgr.On("RenderSchema", ctx, target, config.Env("prod"), false).Return([]byte("{}"), nil)
+	rendered, err := lazy.RenderSchema(ctx, target, config.Env("prod"), false)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("{}"), rendered)
+
+	mockMgr.On("RenderSchema", ctx, target, config.Env("prod"), true).Return([]byte(`{"collapsed": true}`), nil)
+	rendered, err = lazy.RenderSchema(ctx, target, config.Env("prod"), true)
+	require.NoError(t, err)
+	assert.Equal(t, []byte(`{"collapsed": true}`), rendered)
 
 	// Test CheckChanges delegation
 	mockMgr.On("CheckChanges", ctx, config.Env("prod")).Return(nil)
@@ -1431,8 +1473,8 @@ func TestLazyManager_Delegation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test BuildDist delegation
-	mockMgr.On("BuildDist", ctx, config.Env("prod"), false).Return(nil)
-	err = lazy.BuildDist(ctx, config.Env("prod"), false)
+	mockMgr.On("BuildDist", ctx, config.Env("prod"), false, false).Return(nil)
+	err = lazy.BuildDist(ctx, config.Env("prod"), false, false)
 	require.NoError(t, err)
 
 	// Test WatchValidation delegation
