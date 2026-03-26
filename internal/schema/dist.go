@@ -26,8 +26,8 @@ func (e *RegistryRootAtGitRootError) Error() string {
 
 // DistBuilder is an interface for building schema distributions.
 type DistBuilder interface {
-	BuildAll(ctx context.Context, env config.Env) (int, error)
-	BuildChanged(ctx context.Context, env config.Env, anchor repo.Revision) (int, error)
+	BuildAll(ctx context.Context, env config.Env, collapse bool) (int, error)
+	BuildChanged(ctx context.Context, env config.Env, anchor repo.Revision, collapse bool) (int, error)
 	SetNumWorkers(n int)
 }
 
@@ -68,7 +68,7 @@ func (b *FSDistBuilder) SetNumWorkers(n int) {
 }
 
 // BuildAll renders all schemas in the registry in parallel for the given environment.
-func (b *FSDistBuilder) BuildAll(ctx context.Context, env config.Env) (int, error) {
+func (b *FSDistBuilder) BuildAll(ctx context.Context, env config.Env, collapse bool) (int, error) {
 	if err := b.ensureDistDir(env); err != nil {
 		return 0, err
 	}
@@ -112,7 +112,7 @@ Loop:
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			if rErr := b.renderAndWrite(runCtx, env, k); rErr != nil {
+			if rErr := b.renderAndWrite(runCtx, env, k, collapse); rErr != nil {
 				errOnce.Do(func() {
 					finalErr = rErr
 					cancelRun()
@@ -140,7 +140,12 @@ Loop:
 }
 
 // BuildChanged renders schemas that have changed since the given anchor for the given environment.
-func (b *FSDistBuilder) BuildChanged(ctx context.Context, env config.Env, anchor repo.Revision) (int, error) {
+func (b *FSDistBuilder) BuildChanged(
+	ctx context.Context,
+	env config.Env,
+	anchor repo.Revision,
+	collapse bool,
+) (int, error) {
 	if err := b.ensureDistDir(env); err != nil {
 		return 0, err
 	}
@@ -165,7 +170,7 @@ func (b *FSDistBuilder) BuildChanged(ctx context.Context, env config.Env, anchor
 			continue
 		}
 
-		if rwErr := b.renderAndWrite(ctx, env, k); rwErr != nil {
+		if rwErr := b.renderAndWrite(ctx, env, k, collapse); rwErr != nil {
 			return count, rwErr
 		}
 		count++
@@ -175,7 +180,7 @@ func (b *FSDistBuilder) BuildChanged(ctx context.Context, env config.Env, anchor
 }
 
 // renderAndWrite renders a single schema and writes it to the dist directory for the given environment.
-func (b *FSDistBuilder) renderAndWrite(ctx context.Context, env config.Env, k Key) error {
+func (b *FSDistBuilder) renderAndWrite(ctx context.Context, env config.Env, k Key, collapse bool) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -195,6 +200,16 @@ func (b *FSDistBuilder) renderAndWrite(ctx context.Context, env config.Env, k Ke
 		return fmt.Errorf("failed to render schema %s: %w", k, err)
 	}
 
+	output := ri.Rendered
+	if collapse {
+		inliner := NewInliner(b.registry, ec)
+		collapsed, cErr := inliner.Collapse(ri.Rendered)
+		if cErr != nil {
+			return fmt.Errorf("failed to collapse schema %s: %w", k, cErr)
+		}
+		output = collapsed
+	}
+
 	envDir := filepath.Join(b.distDir, string(env))
 	subDir := "private"
 	if s.IsPublic() {
@@ -202,7 +217,7 @@ func (b *FSDistBuilder) renderAndWrite(ctx context.Context, env config.Env, k Ke
 	}
 
 	outputPath := filepath.Join(envDir, subDir, s.Filename())
-	if wErr := os.WriteFile(outputPath, ri.Rendered, 0o600); wErr != nil {
+	if wErr := os.WriteFile(outputPath, output, 0o600); wErr != nil {
 		return fmt.Errorf("failed to write schema %s: %w", k, wErr)
 	}
 

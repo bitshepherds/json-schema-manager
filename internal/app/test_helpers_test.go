@@ -57,8 +57,13 @@ func (m *MockManager) CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (
 	return kNew, args.Error(1)
 }
 
-func (m *MockManager) RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env) ([]byte, error) {
-	args := m.Called(ctx, target, env)
+func (m *MockManager) RenderSchema(
+	ctx context.Context,
+	target schema.ResolvedTarget,
+	env config.Env,
+	collapse bool,
+) ([]byte, error) {
+	args := m.Called(ctx, target, env, collapse)
 	res, _ := args.Get(0).([]byte)
 	return res, args.Error(1)
 }
@@ -73,8 +78,8 @@ func (m *MockManager) TagDeployment(ctx context.Context, envName config.Env) err
 	return args.Error(0)
 }
 
-func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all bool) error {
-	args := m.Called(ctx, envName, all)
+func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all bool, collapse bool) error {
+	args := m.Called(ctx, envName, all, collapse)
 	return args.Error(0)
 }
 
