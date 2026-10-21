@@ -373,6 +373,10 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 	if err != nil {
 		return err
 	}
+	if anchor.IsEmptyTree() {
+		_, _ = fmt.Fprintf(m.reporterWriter, "No deployment to %s found: treating every schema as new. "+
+			"If %s has been deployed, fetch the %s/%s/* tags.\n", envName, envName, repo.JSMDeployTagPrefix, envName)
+	}
 
 	changes, err := m.gitter.GetSchemaChanges(ctx, anchor, m.registry.RootDirectory(), schema.SchemaSuffix)
 	if err != nil {

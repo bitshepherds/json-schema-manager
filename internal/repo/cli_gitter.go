@@ -48,7 +48,8 @@ func (g *CLIGitter) tagPrefix(env config.Env) string {
 }
 
 // GetLatestAnchor finds the latest deployment tag for an environment.
-// If no tag is found, it returns the repository's initial commit.
+// If no tag is found, it returns git's empty tree, so every schema counts as new,
+// or a ShallowCloneError if the history is too shallow to tell.
 func (g *CLIGitter) GetLatestAnchor(ctx context.Context, env config.Env) (Revision, error) {
 	if _, err := g.getEnvConfig(env); err != nil {
 		return "", err
@@ -64,18 +65,37 @@ func (g *CLIGitter) GetLatestAnchor(ctx context.Context, env config.Env) (Revisi
 	cmd.Stdout = &out
 
 	if err := cmd.Run(); err != nil {
-		// Fallback: Get the root commit (Day Zero)
-		//nolint:gosec // CMD arguments are internal
-		revCmd := exec.CommandContext(ctx, g.gitBinary, "rev-list", "--max-parents=0", "HEAD")
-		revCmd.Dir = g.repoRoot
-		revOut, rErr := revCmd.Output()
-		if rErr != nil {
-			return "", fmt.Errorf("could not find git history: %w", rErr)
-		}
-		return Revision(strings.TrimSpace(string(revOut))), nil
+		return g.noDeploymentAnchor(ctx, env)
 	}
 
 	return Revision(strings.TrimSpace(out.String())), nil
+}
+
+// noDeploymentAnchor is the anchor when no deployment tag is reachable. In a shallow clone the tag
+// may just be missing from the history, so that is an error. Otherwise nothing has been deployed,
+// and git's empty tree makes every schema new.
+func (g *CLIGitter) noDeploymentAnchor(ctx context.Context, env config.Env) (Revision, error) {
+	//nolint:gosec // CMD arguments are internal
+	shallowCmd := exec.CommandContext(ctx, g.gitBinary, "rev-parse", "--is-shallow-repository")
+	shallowCmd.Dir = g.repoRoot
+	shallowOut, err := shallowCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("could not find git history: %w", err)
+	}
+	if strings.TrimSpace(string(shallowOut)) == "true" {
+		return "", &ShallowCloneError{Env: env}
+	}
+
+	// The empty tree's hash depends on the repository's object format, so ask git for it
+	//nolint:gosec // CMD arguments are internal
+	treeCmd := exec.CommandContext(ctx, g.gitBinary, "hash-object", "-t", "tree", "--stdin")
+	treeCmd.Dir = g.repoRoot
+	treeCmd.Stdin = strings.NewReader("")
+	treeOut, err := treeCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("could not find git's empty tree: %w", err)
+	}
+	return Revision(strings.TrimSpace(string(treeOut))), nil
 }
 
 // getGitRoot finds the top-level directory of the git repository.

@@ -944,6 +944,21 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 		assert.Contains(t, err.Error(), "could not find git history")
 	})
 
+	t.Run("no deployment yet", func(t *testing.T) {
+		t.Parallel()
+		var out bytes.Buffer
+		gitter := &MockGitter{
+			GetLatestAnchorFunc: func(_ context.Context, _ config.Env) (repo.Revision, error) {
+				return "4b825dc642cb6eb9a060e54bf8d69288fbee4904", nil
+			},
+		}
+		m := NewCLIManager(logger, registry, nil, gitter, nil, &out)
+		require.NoError(t, m.CheckChanges(context.Background(), "prod"))
+		assert.Contains(t, out.String(), "No deployment to prod found: treating every schema as new")
+		assert.Contains(t, out.String(), "fetch the jsm-deploy/prod/* tags")
+		assert.Contains(t, out.String(), "All changes are valid")
+	})
+
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()

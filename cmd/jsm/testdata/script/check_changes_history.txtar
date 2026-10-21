@@ -1,0 +1,69 @@
+# check-changes gives the same answer in any checkout, or fails saying it cannot (#41)
+
+# A repo where 1.0.0 was deployed, then modified
+mkdir src
+cd src
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+mkdir registry/domain/family/1/0/0
+cp $WORK/config.yml registry/json-schema-manager-config.yml
+cp $WORK/schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+exec git add .
+exec git commit -q -m deployed
+exec git tag jsm-deploy/production/v1
+cp $WORK/modified.schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+exec git commit -q -am mutation
+
+# Full history: the mutation is caught
+env JSM_REGISTRY_ROOT_DIR=registry
+! exec jsm check-changes production
+stderr 'cannot modify deployed schemas'
+
+# Shallow clone without the deployment tag: fail and say why, never pass
+cd $WORK
+exec git clone -q --depth 1 file://$WORK/src shallow
+cd shallow
+! exec jsm check-changes production
+stderr 'shallow clone'
+stderr 'fetch-depth: 0'
+! stdout 'All changes are valid'
+
+# Shallow clone whose history includes the deployment tag: the tag is used
+cd $WORK/src
+exec git tag jsm-deploy/production/v2
+cd $WORK
+exec git clone -q --depth 1 file://$WORK/src shallow-tagged
+cd shallow-tagged
+exec jsm check-changes production
+stdout 'All changes are valid'
+
+# No deployment tag at all, in a full repo: every schema is new, even one edited since the first commit
+cd $WORK
+mkdir fresh
+cd fresh
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+mkdir registry/domain/family/1/0/0
+cp $WORK/config.yml registry/json-schema-manager-config.yml
+cp $WORK/schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+exec git add .
+exec git commit -q -m first
+cp $WORK/modified.schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+exec git commit -q -am edit
+exec jsm check-changes production
+stdout 'No deployment to production found'
+stdout 'All changes are valid'
+
+-- config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+    allowSchemaMutation: false
+-- schema.json --
+{}
+-- modified.schema.json --
+{"type": "object"}

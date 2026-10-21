@@ -32,7 +32,8 @@ dependencies. The collapse is recursive: transitive dependencies are also inline
 
 WARNING: Using the --all (-a) flag is NOT recommended in a deployment pipeline, as it 
 bypasses safety checks and may deploy unintended changes. It is primarily intended 
-for local troubleshooting or manual overrides.`,
+for local troubleshooting or manual overrides.
+` + deploymentHistoryHelp,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := args[0]

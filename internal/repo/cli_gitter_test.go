@@ -37,6 +37,15 @@ func setupTestRepo(t *testing.T) string {
 	return dir
 }
 
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(context.Background(), "git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+}
+
 func newTestConfig(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
@@ -57,22 +66,86 @@ func TestCLIGitter_GetLatestAnchor(t *testing.T) {
 	cfg := newTestConfig(t)
 	pathResolver := fsh.NewPathResolver()
 
-	t.Run("no tags found - returns root commit", func(t *testing.T) {
+	t.Run("no tags found - returns the empty tree", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := setupTestRepo(t)
 		g := NewCLIGitter(cfg, pathResolver, tmpDir)
 
 		anchor, err := g.GetLatestAnchor(context.Background(), "prod")
 		require.NoError(t, err)
+		assert.True(t, anchor.IsEmptyTree(), "anchor %q", anchor)
+	})
 
-		// Get root commit hash to compare
-		revCmd := exec.CommandContext(context.Background(), "git", "rev-list", "--max-parents=0", "HEAD")
-		revCmd.Dir = tmpDir
-		revOut, err := revCmd.Output()
+	t.Run("no tags found - committed schemas are new against the anchor", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := setupTestRepo(t)
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.schema.json"), []byte(`{}`), 0o600))
+		runGit(t, tmpDir, "add", ".")
+		runGit(t, tmpDir, "commit", "-m", "add schema")
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.schema.json"), []byte(`{"type":"object"}`), 0o600))
+		runGit(t, tmpDir, "commit", "-am", "edit schema")
+
+		g := NewCLIGitter(cfg, pathResolver, tmpDir)
+		anchor, err := g.GetLatestAnchor(context.Background(), "prod")
 		require.NoError(t, err)
-		expected := Revision(strings.TrimSpace(string(revOut)))
 
-		assert.Equal(t, expected, anchor)
+		changes, err := g.GetSchemaChanges(context.Background(), anchor, tmpDir, ".schema.json")
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		assert.True(t, changes[0].IsNew)
+	})
+
+	t.Run("shallow clone without tag - error", func(t *testing.T) {
+		t.Parallel()
+		srcDir := setupTestRepo(t)
+		runGit(t, srcDir, "tag", "jsm-deploy/prod/v1")
+		runGit(t, srcDir, "commit", "--allow-empty", "-m", "after deployment")
+		cloneDir := filepath.Join(t.TempDir(), "clone")
+		runGit(t, "", "clone", "-q", "--depth", "1", "file://"+srcDir, cloneDir)
+
+		g := NewCLIGitter(cfg, pathResolver, cloneDir)
+		_, err := g.GetLatestAnchor(context.Background(), "prod")
+		var shallowErr *ShallowCloneError
+		require.ErrorAs(t, err, &shallowErr)
+		assert.Equal(t, config.Env("prod"), shallowErr.Env)
+		assert.Contains(t, err.Error(), "fetch-depth: 0")
+		assert.Contains(t, err.Error(), "jsm-deploy/prod/*")
+	})
+
+	t.Run("shallow clone with tag in its history - returns the tag", func(t *testing.T) {
+		t.Parallel()
+		srcDir := setupTestRepo(t)
+		runGit(t, srcDir, "commit", "--allow-empty", "-m", "second")
+		runGit(t, srcDir, "tag", "jsm-deploy/prod/v1")
+		cloneDir := filepath.Join(t.TempDir(), "clone")
+		runGit(t, "", "clone", "-q", "--depth", "1", "file://"+srcDir, cloneDir)
+
+		g := NewCLIGitter(cfg, pathResolver, cloneDir)
+		anchor, err := g.GetLatestAnchor(context.Background(), "prod")
+		require.NoError(t, err)
+		assert.Equal(t, Revision("jsm-deploy/prod/v1"), anchor)
+	})
+
+	t.Run("error - empty tree lookup fails", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := setupTestRepo(t)
+		binDir := filepath.Join(t.TempDir(), "bin")
+		require.NoError(t, os.MkdirAll(binDir, 0o755))
+
+		realGit, _ := exec.LookPath("git")
+		gitScript := fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "hash-object" ]; then exit 1; fi
+exec %s "$@"
+`, realGit)
+		gitPath := filepath.Join(binDir, "git")
+		require.NoError(t, os.WriteFile(gitPath, []byte(gitScript), 0o755))
+
+		g := NewCLIGitter(cfg, pathResolver, tmpDir)
+		g.SetGitBinary(gitPath)
+
+		_, err := g.GetLatestAnchor(context.Background(), "prod")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "could not find git's empty tree")
 	})
 
 	t.Run("tag found", func(t *testing.T) {
@@ -445,4 +518,12 @@ func (m *mockPathResolver) GetUintSubdirectories(dirPath string) ([]uint64, erro
 		return m.getUintSubdirectories(dirPath)
 	}
 	return fsh.GetUintSubdirectories(dirPath)
+}
+
+func TestRevision_IsEmptyTree(t *testing.T) {
+	t.Parallel()
+	assert.True(t, emptyTreeSHA1.IsEmptyTree())
+	assert.True(t, emptyTreeSHA256.IsEmptyTree())
+	assert.False(t, Revision("jsm-deploy/prod/v1").IsEmptyTree())
+	assert.False(t, Revision("").IsEmptyTree())
 }
