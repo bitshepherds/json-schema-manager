@@ -1,0 +1,105 @@
+# Every validate target runs the compatibility check by default (#42)
+# 1.1.0 adds an enum value, and a pass/ document that uses it, which 1.0.0 rejects
+
+env JSM_REGISTRY_ROOT_DIR=reg
+
+# A single key catches the breaking change
+! exec jsm validate shop_order_1_1_0 -c
+stdout 'refunded.json \(failed - future version 1.1.0 introduced a breaking change!\)'
+stdout 'Test summary: 2 passed, 1 failed'
+
+# So does every multi-schema target, including the bare command CI runs
+! exec jsm validate all
+stdout 'future version 1.1.0 introduced a breaking change'
+
+! exec jsm validate all -c -C
+stdout 'refunded.json \(failed - future version 1.1.0 introduced a breaking change!\)'
+stdout 'Test summary: 4 passed, 1 failed'
+
+! exec jsm validate shop/order -c -C
+stdout 'future version 1.1.0 introduced a breaking change'
+stdout 'Test summary: 4 passed, 1 failed'
+
+! exec jsm validate reg/shop/order -c -C
+stdout 'future version 1.1.0 introduced a breaking change'
+
+# --skip-compatible applies to multi-schema targets too
+exec jsm validate all -c -C --skip-compatible
+stdout 'Test summary: 4 passed, 0 failed'
+! stdout 'breaking change'
+
+# -t local runs only local tests, as documented
+exec jsm validate all -c -C -t local --skip-compatible
+stdout 'Test summary: 4 passed, 0 failed'
+
+# -t all and -t consumer-breaking still report the failure once, not twice
+! exec jsm validate all -c -C -t all
+stdout 'Test summary: 4 passed, 1 failed'
+! exec jsm validate all -c -C -t consumer-breaking
+stdout 'Test summary: 0 passed, 1 failed'
+
+# A registry with no breaking change passes
+env JSM_REGISTRY_ROOT_DIR=ok
+exec jsm validate all -c -C
+stdout 'Test summary: 5 passed, 0 failed'
+
+-- reg/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- reg/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- reg/shop/order/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- reg/shop/order/1/0/0/fail/lost.json --
+{"status": "lost"}
+-- reg/shop/order/1/1/0/shop_order_1_1_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid", "refunded"] } },
+  "required": ["status"]
+}
+-- reg/shop/order/1/1/0/pass/refunded.json --
+{"status": "refunded"}
+-- reg/shop/order/1/1/0/fail/lost.json --
+{"status": "lost"}
+-- ok/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- ok/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- ok/shop/order/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- ok/shop/order/1/0/0/fail/lost.json --
+{"status": "lost"}
+-- ok/shop/order/1/1/0/shop_order_1_1_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid", "refunded"] } },
+  "required": ["status"]
+}
+-- ok/shop/order/1/1/0/pass/placed.json --
+{"status": "placed"}
+-- ok/shop/order/1/1/0/fail/lost.json --
+{"status": "lost"}
