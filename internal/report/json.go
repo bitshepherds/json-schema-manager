@@ -13,9 +13,26 @@ import (
 type JSONReporter struct{}
 
 type jsonSpec struct {
-	Path        string `json:"path"`
-	TestDocType string `json:"type"`
-	Error       string `json:"error,omitempty"`
+	Path           string     `json:"path"`
+	TestDocType    string     `json:"type"`
+	ValidatedBy    schema.Key `json:"validatedBy,omitempty"`    // the schema the document was tested against
+	ForwardVersion string     `json:"forwardVersion,omitempty"` // set if the document came from a later version
+	Error          string     `json:"error,omitempty"`
+}
+
+// newJSONSpec returns the JSON form of s, without its error.
+func newJSONSpec(s *schema.Spec) jsonSpec {
+	js := jsonSpec{
+		Path:        s.TestInfo.Path,
+		TestDocType: string(s.TestDocType),
+	}
+	if s.Schema != nil {
+		js.ValidatedBy = s.Schema.Key()
+	}
+	if s.ForwardVersion != nil {
+		js.ForwardVersion = s.ForwardVersion.String('.')
+	}
+	return js
 }
 
 type jsonSchemaResults struct {
@@ -44,11 +61,8 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 	for k, specs := range r.PassedTests {
 		res := out.Results[k]
-		for _, s := range specs {
-			res.Passed = append(res.Passed, jsonSpec{
-				Path:        s.TestInfo.Path,
-				TestDocType: string(s.TestDocType),
-			})
+		for i := range specs {
+			res.Passed = append(res.Passed, newJSONSpec(&specs[i]))
 		}
 		out.Results[k] = res
 		out.Stats.TotalPassed += len(specs)
@@ -56,19 +70,26 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 	for k, specs := range r.FailedTests {
 		res := out.Results[k]
-		for _, s := range specs {
-			errMsg := ""
-			if s.Err != nil {
-				errMsg = s.Err.Error()
+		for i := range specs {
+			js := newJSONSpec(&specs[i])
+			if specs[i].Err != nil {
+				js.Error = specs[i].Err.Error()
 			}
-			res.Failed = append(res.Failed, jsonSpec{
-				Path:        s.TestInfo.Path,
-				TestDocType: string(s.TestDocType),
-				Error:       errMsg,
-			})
+			res.Failed = append(res.Failed, js)
 		}
 		out.Results[k] = res
 		out.Stats.TotalFailed += len(specs)
+	}
+
+	// Write empty result lists as [], not null
+	for k, res := range out.Results {
+		if res.Passed == nil {
+			res.Passed = []jsonSpec{}
+		}
+		if res.Failed == nil {
+			res.Failed = []jsonSpec{}
+		}
+		out.Results[k] = res
 	}
 
 	enc := json.NewEncoder(w)

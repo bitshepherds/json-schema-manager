@@ -151,7 +151,7 @@ func TestErrors(t *testing.T) {
 				TestDocPath: "/test.json",
 			},
 			contains: []string{
-				"Fail Test document /test.json did not fail validation as expected for schema /schema.json",
+				"Fail Test document /test.json was accepted by schema /schema.json, but was expected to fail validation",
 			},
 		},
 		{
