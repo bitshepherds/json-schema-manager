@@ -207,6 +207,9 @@ func (b *FSDistBuilder) renderAndWrite(ctx context.Context, env config.Env, k Ke
 		if cErr != nil {
 			return fmt.Errorf("failed to collapse schema %s: %w", k, cErr)
 		}
+		if vErr := inliner.Verify(s, ri.Validator, collapsed); vErr != nil {
+			return vErr
+		}
 		output = collapsed
 	}
 

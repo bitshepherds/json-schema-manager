@@ -1,0 +1,96 @@
+# --collapse rebases the internal $refs of each inlined schema, and fails if the result
+# does not compile or treats a test document differently from the original (#44)
+
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+
+# shop/order refers to shared/money, which refers to its own #/definitions/currencyCode
+env JSM_REGISTRY_ROOT_DIR=ok
+exec jsm validate all -c -C
+stdout 'Test summary: 3 passed, 0 failed'
+
+exec jsm render-schema shop_order_1_0_0 --collapse
+stdout '"\$ref": "#/\$defs/shared_money_1_0_0/definitions/currencyCode"'
+stdout '"\$ref": "#/\$defs/shared_money_1_0_0"'
+
+exec jsm build-dist production --all --collapse
+stdout 'Successfully built 2 schemas to'
+exists dist/production/private/shop_order_1_0_0.schema.json
+
+# A 2020-12 schema inlining a draft-07 one which relies on draft-07 ignoring keywords beside
+# $ref: collapsed, the body is read as 2020-12, and rejects the pass/ document
+env JSM_REGISTRY_ROOT_DIR=mixed
+exec jsm validate all -c -C
+stdout 'Test summary: 1 passed, 0 failed'
+
+! exec jsm render-schema shop_entry_1_0_0 --collapse
+stderr 'the collapsed form of shop_entry_1_0_0 is not equivalent to the original'
+stderr 'long.json is accepted by the original but rejected by the collapsed form'
+
+! exec jsm build-dist production --all --collapse
+stderr 'the collapsed form of shop_entry_1_0_0 is not equivalent to the original'
+! stdout 'Successfully built'
+
+# Without --collapse, the same registry builds
+exec jsm build-dist production --all
+stdout 'Successfully built 2 schemas to'
+
+-- ok/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- ok/shared/money/1/0/0/shared_money_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "definitions": { "currencyCode": { "type": "string", "pattern": "^[A-Z]{3}$" } },
+  "type": "object",
+  "properties": {
+    "value": { "type": "number" },
+    "currency": { "$ref": "#/definitions/currencyCode" }
+  },
+  "required": ["value", "currency"]
+}
+-- ok/shared/money/1/0/0/pass/eur.json --
+{"value": 1, "currency": "EUR"}
+-- ok/shared/money/1/0/0/fail/.keep --
+-- ok/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "total": { "$ref": "{{ JSM `shared_money_1_0_0` }}" } },
+  "required": ["total"]
+}
+-- ok/shop/order/1/0/0/pass/eur.json --
+{"total": {"value": 1, "currency": "EUR"}}
+-- ok/shop/order/1/0/0/fail/lowercase.json --
+{"total": {"value": 1, "currency": "eur"}}
+-- mixed/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- mixed/shared/name/1/0/0/shared_name_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "definitions": { "text": { "type": "string" } },
+  "$ref": "#/definitions/text",
+  "maxLength": 3
+}
+-- mixed/shared/name/1/0/0/pass/.keep --
+-- mixed/shared/name/1/0/0/fail/.keep --
+-- mixed/shop/entry/1/0/0/shop_entry_1_0_0.schema.json --
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "{{ ID }}",
+  "properties": { "name": { "$ref": "{{ JSM `shared_name_1_0_0` }}" } }
+}
+-- mixed/shop/entry/1/0/0/pass/long.json --
+{"name": "a long name"}
+-- mixed/shop/entry/1/0/0/fail/.keep --

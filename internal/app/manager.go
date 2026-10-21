@@ -348,7 +348,14 @@ func (m *CLIManager) RenderSchema(
 
 	if collapse {
 		inliner := schema.NewInliner(m.registry, envCfg)
-		return inliner.Collapse(ri.Rendered)
+		collapsed, cErr := inliner.Collapse(ri.Rendered)
+		if cErr != nil {
+			return nil, cErr
+		}
+		if vErr := inliner.Verify(s, ri.Validator, collapsed); vErr != nil {
+			return nil, vErr
+		}
+		return collapsed, nil
 	}
 
 	return ri.Rendered, nil
