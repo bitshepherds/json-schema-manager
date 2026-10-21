@@ -10,7 +10,7 @@ cp config.yml registry/json-schema-manager-config.yml
 env JSM_REGISTRY_ROOT_DIR=registry
 
 # Create a schema
-mkdir registry/domain/person/1/0/0
+mkdir registry/domain/person/1/0/0/pass registry/domain/person/1/0/0/fail
 cp schema.json registry/domain/person/1/0/0/domain_person_1_0_0.schema.json
 
 # Run jsm build-dist --all (should work without tags/history)
@@ -28,7 +28,7 @@ exec jsm build-dist production
 stdout 'No schemas to build'
 
 # Add another schema
-mkdir registry/domain/address/1/0/0
+mkdir registry/domain/address/1/0/0/pass registry/domain/address/1/0/0/fail
 cp schema.json registry/domain/address/1/0/0/domain_address_1_0_0.schema.json
 
 # Run jsm build-dist production (should build the new schema)
@@ -37,6 +37,34 @@ exec jsm build-dist production
 stdout 'Successfully built 1 schemas to'
 exists dist/production/private/domain_address_1_0_0.schema.json
 
+# build-dist runs the registry's tests, with the compatibility check, before building (#48)
+# 1.1.0 adds an enum value, and a pass/ document that uses it, which 1.0.0 rejects
+cd $WORK
+mkdir broken
+cd broken
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+mv $WORK/shop registry
+env JSM_REGISTRY_ROOT_DIR=registry
+! exec jsm build-dist production --all
+stdout 'refunded.json \(failed - future version 1.1.0 introduced a breaking change!\)'
+stdout 'Not building: fix the failing tests, or use --skip-tests'
+! stdout 'Successfully built'
+! exists dist
+
+# Without --all, the tests run after the mutation check
+exec git add .
+exec git commit -q -m schemas
+! exec jsm build-dist production
+stdout 'introduced a breaking change'
+! exists dist
+
+# --skip-tests builds anyway
+exec jsm build-dist production --all --skip-tests
+stdout 'Successfully built 2 schemas to'
+exists dist/production/private/shop_order_1_1_0.schema.json
+
 -- config.yml --
 environments:
   production:
@@ -44,6 +72,36 @@ environments:
     publicUrlRoot: "https://json-schemas.myorg.io/"
     isProduction: true
 
+-- shop/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- shop/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- shop/shop/order/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- shop/shop/order/1/0/0/fail/lost.json --
+{"status": "lost"}
+-- shop/shop/order/1/1/0/shop_order_1_1_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid", "refunded"] } },
+  "required": ["status"]
+}
+-- shop/shop/order/1/1/0/pass/refunded.json --
+{"status": "refunded"}
+-- shop/shop/order/1/1/0/fail/lost.json --
+{"status": "lost"}
 -- schema.json --
 {
   "$id": "https://example.com/schema.json",

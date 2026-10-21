@@ -33,7 +33,7 @@ type Manager interface {
 	RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env, collapse bool) ([]byte, error)
 	CheckChanges(ctx context.Context, envName config.Env) error
 	TagDeployment(ctx context.Context, envName config.Env, push bool) error
-	BuildDist(ctx context.Context, envName config.Env, all, collapse bool) error
+	BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error
 }
 
 // Ensure the interface is satisfied.
@@ -115,8 +115,8 @@ func (l *LazyManager) TagDeployment(ctx context.Context, envName config.Env, pus
 }
 
 // BuildDist implements the Manager interface.
-func (l *LazyManager) BuildDist(ctx context.Context, envName config.Env, all, collapse bool) error {
-	return l.check().BuildDist(ctx, envName, all, collapse)
+func (l *LazyManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
+	return l.check().BuildDist(ctx, envName, all, collapse, skipTests)
 }
 
 // Ensure the interface is satisfied.
@@ -440,17 +440,31 @@ func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env, push
 }
 
 // BuildDist builds a distribution directory for the given environment.
-func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, collapse bool) error {
-	m.logger.Debug("building distribution", "env", envName, "all", all, "collapse", collapse)
+// Unless skipTests is set, it first runs every schema's tests and compatibility check, as
+// validate all does, and builds nothing if any fail.
+func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
+	m.logger.Debug("building distribution", "env", envName, "all", all, "collapse", collapse,
+		"skipTests", skipTests)
 
 	var count int
 	var err error
 	if all {
+		if !skipTests {
+			if tErr := m.testBeforeBuild(ctx); tErr != nil {
+				return tErr
+			}
+		}
 		count, err = m.distBuilder.BuildAll(ctx, envName, collapse)
 	} else {
 		// Check for mutations first
 		if ccErr := m.CheckChanges(ctx, envName); ccErr != nil {
 			return ccErr
+		}
+
+		if !skipTests {
+			if tErr := m.testBeforeBuild(ctx); tErr != nil {
+				return tErr
+			}
 		}
 
 		anchor, anchorErr := m.gitter.GetLatestAnchor(ctx, envName)
@@ -472,4 +486,26 @@ func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, col
 
 	_, _ = fmt.Fprintf(m.reporterWriter, "📂 Successfully built %d schemas to distribution directory\n", count)
 	return nil
+}
+
+// testBeforeBuild runs every schema's tests and compatibility check. If any fail, it writes
+// the test report and returns ErrTestsFailed.
+func (m *CLIManager) testBeforeBuild(ctx context.Context) error {
+	m.tester.SetStopOnFirstError(false)
+	m.tester.SetScope(schema.TestScopeLocal)
+	m.tester.SetSkipCompatible(false)
+
+	tr, err := m.tester.TestFoundSchemas(ctx, "")
+	if err != nil {
+		return err
+	}
+	if len(tr.FailedTests) == 0 {
+		return nil
+	}
+
+	if wErr := (&report.TextReporter{}).Write(m.reporterWriter, tr); wErr != nil {
+		return wErr
+	}
+	_, _ = fmt.Fprintln(m.reporterWriter, "Not building: fix the failing tests, or use --skip-tests")
+	return ErrTestsFailed
 }

@@ -78,8 +78,8 @@ func (m *MockManager) TagDeployment(ctx context.Context, envName config.Env, _ b
 	return args.Error(0)
 }
 
-func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all bool, collapse bool) error {
-	args := m.Called(ctx, envName, all, collapse)
+func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
+	args := m.Called(ctx, envName, all, collapse, skipTests)
 	return args.Error(0)
 }
 
