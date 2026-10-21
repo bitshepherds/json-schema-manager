@@ -61,7 +61,7 @@ ALL SCHEMAS
 			schema.TestScopeAll,
 		))
 	cmd.Flags().BoolVar(&skipCompatible, "skip-compatible", false,
-		"Skip provider compatibility checks against earlier versions")
+		"Skip checking each schema's pass documents against earlier versions in its major family")
 	var watch bool
 	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "Watch for changes and rerun tests")
 

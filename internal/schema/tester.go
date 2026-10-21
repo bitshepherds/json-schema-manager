@@ -84,12 +84,13 @@ func (t *Tester) TestSingleSchema(ctx context.Context, k Key) (*TestReport, erro
 	t.report.StartTime = time.Now()
 	defer func() { t.report.EndTime = time.Now() }()
 
-	if err := t.testSchema(ctx, k); err != nil && !errors.Is(err, ErrStopTesting) {
+	localFailed, err := t.testSchema(ctx, k)
+	if err != nil && !errors.Is(err, ErrStopTesting) {
 		return nil, err
 	}
 
 	// If local tests had failures, don't run compatibility checks
-	if len(t.report.FailedTests) > 0 {
+	if localFailed {
 		return t.report, nil
 	}
 
@@ -178,6 +179,10 @@ func (t *Tester) SetSkipCompatible(b bool) {
 
 // TestFoundSchemas searches for schemas matching the given search scope, and
 // executes tests for each schema found.
+// As with TestSingleSchema, each schema whose local tests pass is then checked for provider
+// compatibility against earlier versions in its major family (unless skipCompatible is set).
+// The consumer-breaking and all scopes already test each schema against its later versions'
+// pass documents, which covers the same pairs, so they skip this check to avoid running them twice.
 // Testing runs in parallel. Use SetNumWorkers to control the number of workers.
 // The context can be used to cancel the test run early (e.g., on Ctrl+C).
 func (t *Tester) TestFoundSchemas(ctx context.Context, ss SearchScope) (*TestReport, error) {
@@ -248,7 +253,7 @@ func (t *Tester) processSearchResult(
 		defer wg.Done()
 		defer func() { <-sem }() // Release slot when finished
 
-		if tErr := t.testSchema(ctx, k); tErr != nil {
+		if tErr := t.testFoundSchema(ctx, k); tErr != nil {
 			errOnce.Do(func() {
 				if !errors.Is(tErr, ErrStopTesting) {
 					*finalErr = tErr
@@ -261,49 +266,65 @@ func (t *Tester) processSearchResult(
 	return false
 }
 
+// testFoundSchema runs a found schema's tests, then its provider compatibility check if that applies.
+func (t *Tester) testFoundSchema(ctx context.Context, k Key) error {
+	localFailed, err := t.testSchema(ctx, k)
+	if err != nil || localFailed {
+		return err
+	}
+
+	if t.skipCompatible || t.scope == TestScopeConsumerBreaking || t.scope == TestScopeAll {
+		return nil
+	}
+
+	return t.testSchemaCompatibleWithEarlierVersions(ctx, k)
+}
+
 // testSchema identifies the specs to run for the given schema, and executes them.
 // It returns when all specs have been run, or when context is cancelled.
 // If a test error is encountered, it is added to the report, but the function
 // continues to run the remaining tests (or return without error if stopOnFirstError is true).
 // An error is only returned if we can't load the schema or identify the specs to run, or if
 // we received a context cancellation error.
-func (t *Tester) testSchema(ctx context.Context, key Key) error {
+// The localFailed result reports whether any of this schema's tests failed.
+func (t *Tester) testSchema(ctx context.Context, key Key) (localFailed bool, err error) {
 	s, err := t.registry.GetSchemaByKey(key)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Ahead of running the tests, ensure the schema is valid by forcing a render.
 	ri, err := s.Render(t.registry.config.ProductionEnvConfig())
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	specs, err := t.getSpecsForSchema(s)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// execute tests
 	for _, spec := range specs {
 		if ce := ctx.Err(); ce != nil {
-			return ce
+			return localFailed, ce
 		}
 
 		err = spec.Run(ri.Validator)
 
 		if err != nil {
+			localFailed = true
 			t.report.AddFailedTest(key, &spec)
 			if t.stopOnFirstError {
 				// Signal to the producer to stop other testing activity
-				return ErrStopTesting
+				return localFailed, ErrStopTesting
 			}
 		} else {
 			t.report.AddPassedTest(key, &spec)
 		}
 	}
 
-	return nil
+	return localFailed, nil
 }
 
 // getSpecsForSchema identifies the tests to run for the given schema.

@@ -281,7 +281,7 @@ func TestTester_testSchema_Errs(t *testing.T) {
 		t.Parallel()
 		r := setupTestRegistry(t)
 		tr := NewTester(r)
-		err := tr.testSchema(context.Background(), Key("missing_family_1_0_0"))
+		_, err := tr.testSchema(context.Background(), Key("missing_family_1_0_0"))
 		require.Error(t, err)
 	})
 
@@ -299,7 +299,7 @@ func TestTester_testSchema_Errs(t *testing.T) {
 		mc.CompileFunc = func(_ string) (validator.Validator, error) {
 			return nil, errors.New("render failure")
 		}
-		err := tr.testSchema(context.Background(), k)
+		_, err := tr.testSchema(context.Background(), k)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "render failure")
 	})
@@ -317,7 +317,7 @@ func TestTester_testSchema_Errs(t *testing.T) {
 		// Restore valid schema but trigger an error in getSpecsForSchema by removing the home directory.
 		require.NoError(t, os.WriteFile(s.Path(FilePath), []byte(`{"type": "object"}`), 0o600))
 		_ = os.RemoveAll(s.Path(HomeDir))
-		err := tr.testSchema(context.Background(), k)
+		_, err := tr.testSchema(context.Background(), k)
 		require.Error(t, err)
 	})
 }
@@ -574,7 +574,7 @@ func TestTester_testSchema_ContextCancelled(t *testing.T) {
 		}, nil
 	}
 
-	err := tr.testSchema(ctx, k)
+	_, err := tr.testSchema(ctx, k)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -1310,4 +1310,88 @@ func TestTester_testSchemaCompatibleWithEarlierVersions_ErrorPaths(t *testing.T)
 		require.Error(t, err)
 		assert.ErrorAs(t, err, new(*InvalidJSONError))
 	})
+}
+
+func TestTester_ProviderCompatibility_FoundSchemas(t *testing.T) {
+	t.Parallel()
+
+	// 1.0.1's pass document breaks 1.0.0, as in TestTester_ProviderCompatibility
+	setup := func(t *testing.T, localFails bool) (*Tester, Key, Key) {
+		t.Helper()
+		r := setupTestRegistry(t)
+		earlierKey := Key("domain_family_1_0_0")
+		targetKey := Key("domain_family_1_0_1")
+		createSchemaFiles(t, r, schemaMap{
+			earlierKey: `{"type": "object", "required": ["name"]}`,
+			targetKey:  `{"type": "object"}`,
+		})
+		for _, k := range []Key{earlierKey, targetKey} {
+			s, _ := r.GetSchemaByKey(k)
+			require.NoError(t, os.MkdirAll(filepath.Join(s.Path(HomeDir), "pass"), 0o755))
+			require.NoError(t, os.MkdirAll(filepath.Join(s.Path(HomeDir), "fail"), 0o755))
+		}
+		targetSchema, _ := r.GetSchemaByKey(targetKey)
+		require.NoError(
+			t,
+			os.WriteFile(filepath.Join(targetSchema.Path(HomeDir), "pass", "valid.json"), []byte(`{}`), 0o600),
+		)
+
+		mc, ok := r.compiler.(*mockCompiler)
+		require.True(t, ok)
+		mc.CompileFunc = func(id string) (validator.Validator, error) {
+			if strings.Contains(id, "1_0_0") || localFails {
+				return &mockValidator{Err: errors.New("required property 'name' missing")}, nil
+			}
+			return &mockValidator{}, nil
+		}
+
+		tr := NewTester(r)
+		tr.SetStopOnFirstError(false)
+		return tr, earlierKey, targetKey
+	}
+
+	t.Run("default scope runs the compatibility check", func(t *testing.T) {
+		t.Parallel()
+		tr, earlierKey, targetKey := setup(t, false)
+
+		report, err := tr.TestFoundSchemas(context.Background(), "domain/family")
+		require.NoError(t, err)
+		require.Len(t, report.FailedTests[earlierKey], 1)
+		spec := report.FailedTests[earlierKey][0]
+		require.NotNil(t, spec.ForwardVersion)
+		ts, _ := tr.registry.GetSchemaByKey(targetKey)
+		assert.Equal(t, filepath.Join(ts.Path(HomeDir), "pass", "valid.json"), spec.TestInfo.Path)
+	})
+
+	t.Run("skip compatibility check", func(t *testing.T) {
+		t.Parallel()
+		tr, _, _ := setup(t, false)
+		tr.SetSkipCompatible(true)
+
+		report, err := tr.TestFoundSchemas(context.Background(), "domain/family")
+		require.NoError(t, err)
+		assert.Empty(t, report.FailedTests)
+	})
+
+	t.Run("local failures skip the compatibility check", func(t *testing.T) {
+		t.Parallel()
+		tr, earlierKey, targetKey := setup(t, true)
+
+		report, err := tr.TestFoundSchemas(context.Background(), "domain/family")
+		require.NoError(t, err)
+		assert.NotEmpty(t, report.FailedTests[targetKey])
+		assert.Empty(t, report.FailedTests[earlierKey])
+	})
+
+	for _, scope := range []TestScope{TestScopeConsumerBreaking, TestScopeAll} {
+		t.Run(string(scope)+" reports the breaking change once", func(t *testing.T) {
+			t.Parallel()
+			tr, earlierKey, _ := setup(t, false)
+			tr.SetScope(scope)
+
+			report, err := tr.TestFoundSchemas(context.Background(), "domain/family")
+			require.NoError(t, err)
+			assert.Len(t, report.FailedTests[earlierKey], 1)
+		})
+	}
 }
