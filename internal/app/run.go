@@ -32,6 +32,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, envProvid
 			_, _ = fmt.Fprintln(stderr, "Interrupted by user")
 			return nil
 		}
+		if errors.Is(err, ErrTestsFailed) {
+			return err
+		}
 		// Print error to stderr for script tests and CLI users (SilenceErrors is set)
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return err

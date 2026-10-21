@@ -160,3 +160,33 @@ func TestBinary_Validate(t *testing.T) {
 		assert.Error(t, errVal)
 	})
 }
+
+func TestBinary_ValidateFailedTestsExitCode(t *testing.T) {
+	t.Parallel()
+	if err := ensureBinary(); err != nil {
+		t.Fatal(err)
+	}
+	regDir := setupIntegrationRegistry(t)
+
+	schemaPath := filepath.Join(regDir, "domain", "family", "1", "0", "0")
+	require.NoError(t, os.MkdirAll(filepath.Join(schemaPath, "pass"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(schemaPath, "fail"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(schemaPath, "domain_family_1_0_0.schema.json"),
+		[]byte(`{"type": "object"}`), 0o600))
+	// Valid against the schema, so this fail test fails
+	require.NoError(t, os.WriteFile(filepath.Join(schemaPath, "fail", "accepted.json"), []byte(`{}`), 0o600))
+
+	for _, format := range []string{"text", "json"} {
+		cmd := exec.CommandContext(context.Background(), binaryPath, "validate", "domain_family_1_0_0", "-o", format)
+		cmd.Env = append(os.Environ(), "JSM_REGISTRY_ROOT_DIR="+regDir)
+
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+
+		runErr := cmd.Run()
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, runErr, &exitErr, "%s output: %s", format, stdout.String())
+		assert.Equal(t, 1, exitErr.ExitCode(), format)
+		assert.Contains(t, stdout.String(), "accepted.json", format)
+	}
+}

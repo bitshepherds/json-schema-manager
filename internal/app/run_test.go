@@ -152,6 +152,30 @@ environments:
 		assert.Contains(t, stdout.String(), "jsm is a CLI tool")
 	})
 
+	t.Run("run validate with failed tests", func(t *testing.T) {
+		t.Parallel()
+		regDir := t.TempDir()
+		cfgData := `environments: {prod: {publicUrlRoot: 'https://p', privateUrlRoot: 'https://pr', isProduction: true}}`
+		require.NoError(t, os.WriteFile(filepath.Join(regDir, config.JsmRegistryConfigFile), []byte(cfgData), 0o600))
+		env := &mockEnvProvider{values: map[string]string{
+			"JSM_REGISTRY_ROOT_DIR": regDir,
+		}}
+
+		homeDir := filepath.Join(regDir, "domain", "family", "1", "0", "0")
+		require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "pass"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "fail"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(homeDir, "domain_family_1_0_0.schema.json"),
+			[]byte(`{"type":"object"}`), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(homeDir, "fail", "accepted.json"), []byte(`{}`), 0o600))
+
+		var stdout, stderr bytes.Buffer
+		err := Run(context.Background(), []string{"jsm", "validate", "domain_family_1_0_0"}, &stdout, &stderr, env)
+
+		require.ErrorIs(t, err, ErrTestsFailed)
+		assert.Contains(t, stdout.String(), "1 failed")
+		assert.NotContains(t, stderr.String(), "Error:")
+	})
+
 	t.Run("run interrupted by user", func(t *testing.T) {
 		t.Parallel()
 		regDir := t.TempDir()
