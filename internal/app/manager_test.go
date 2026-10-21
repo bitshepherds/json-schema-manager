@@ -1336,7 +1336,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, true)
 		require.NoError(t, err)
 	})
 
@@ -1351,7 +1351,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
 		require.NoError(t, err)
 	})
 
@@ -1365,7 +1365,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, true)
 		require.NoError(t, err)
 	})
 
@@ -1379,7 +1379,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build failed")
 	})
@@ -1395,7 +1395,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, mockGitter, nil, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot modify deployed schemas")
 	})
@@ -1415,7 +1415,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, mockGitter, nil, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "git anchor failed")
 	})
@@ -1430,9 +1430,93 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build changed failed")
+	})
+}
+
+// writeBuildDistSchema writes a schema with pass and fail directories, and, if failDoc is set,
+// a fail document. The mock compiler's validator accepts everything, so that document's test fails.
+func writeBuildDistSchema(t *testing.T, r *schema.Registry, failDoc bool) {
+	t.Helper()
+	s := schema.New("domain_family_1_0_0", r)
+	homeDir := s.Path(schema.HomeDir)
+	require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "pass"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "fail"), 0o755))
+	require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+	if failDoc {
+		require.NoError(t, os.WriteFile(filepath.Join(homeDir, "fail", "bad.json"), []byte(`{}`), 0o600))
+	}
+}
+
+func TestCLIManager_BuildDistRunsTests(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	unexpectedBuild := &MockDistBuilder{
+		BuildAllFunc: func(_ context.Context, _ config.Env) (int, error) {
+			t.Error("BuildAll called although tests failed")
+			return 0, nil
+		},
+		BuildChangedFunc: func(_ context.Context, _ config.Env, _ repo.Revision) (int, error) {
+			t.Error("BuildChanged called although tests failed")
+			return 0, nil
+		},
+	}
+
+	for _, all := range []bool{true, false} {
+		t.Run(fmt.Sprintf("failing tests stop the build, all=%v", all), func(t *testing.T) {
+			t.Parallel()
+			r := setupTestRegistry(t)
+			writeBuildDistSchema(t, r, true)
+			var out bytes.Buffer
+			mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, &out)
+
+			err := mgr.BuildDist(context.Background(), "prod", all, false, false)
+			require.ErrorIs(t, err, ErrTestsFailed)
+			assert.Contains(t, out.String(), "bad.json")
+			assert.Contains(t, out.String(), "Not building: fix the failing tests, or use --skip-tests")
+		})
+	}
+
+	t.Run("passing tests let the build run", func(t *testing.T) {
+		t.Parallel()
+		r := setupTestRegistry(t)
+		writeBuildDistSchema(t, r, false)
+		built := false
+		builder := &MockDistBuilder{
+			BuildAllFunc: func(_ context.Context, _ config.Env) (int, error) {
+				built = true
+				return 1, nil
+			},
+		}
+		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, builder, io.Discard)
+
+		require.NoError(t, mgr.BuildDist(context.Background(), "prod", true, false, false))
+		assert.True(t, built)
+	})
+
+	t.Run("tester error", func(t *testing.T) {
+		t.Parallel()
+		r := setupTestRegistry(t)
+		s := schema.New("domain_family_1_0_0", r)
+		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
+		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{}`), 0o600))
+		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, io.Discard)
+
+		err := mgr.BuildDist(context.Background(), "prod", true, false, false)
+		require.ErrorContains(t, err, "pass directory missing")
+	})
+
+	t.Run("report write error", func(t *testing.T) {
+		t.Parallel()
+		r := setupTestRegistry(t)
+		writeBuildDistSchema(t, r, true)
+		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, &failingWriter{})
+
+		err := mgr.BuildDist(context.Background(), "prod", true, false, false)
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrTestsFailed)
 	})
 }
 
@@ -1442,7 +1526,7 @@ func TestNewBuildDistCmd(t *testing.T) {
 		t.Parallel()
 		mockMgr := &MockManager{}
 		cmd := NewBuildDistCmd(mockMgr)
-		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false).Return(nil)
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, false).Return(nil)
 		cmd.SetArgs([]string{"prod"})
 		err := cmd.Execute()
 		require.NoError(t, err)
@@ -1453,11 +1537,22 @@ func TestNewBuildDistCmd(t *testing.T) {
 		t.Parallel()
 		mockMgr := &MockManager{}
 		cmd := NewBuildDistCmd(mockMgr)
-		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false).Return(errors.New("build failed"))
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, false).
+			Return(errors.New("build failed"))
 		cmd.SetArgs([]string{"prod"})
 		err := cmd.Execute()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build failed")
+		mockMgr.AssertExpectations(t)
+	})
+
+	t.Run("--skip-tests", func(t *testing.T) {
+		t.Parallel()
+		mockMgr := &MockManager{}
+		cmd := NewBuildDistCmd(mockMgr)
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, true).Return(nil)
+		cmd.SetArgs([]string{"prod", "--skip-tests"})
+		require.NoError(t, cmd.Execute())
 		mockMgr.AssertExpectations(t)
 	})
 }
@@ -1538,8 +1633,8 @@ func TestLazyManager_Delegation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test BuildDist delegation
-	mockMgr.On("BuildDist", ctx, config.Env("prod"), false, false).Return(nil)
-	err = lazy.BuildDist(ctx, config.Env("prod"), false, false)
+	mockMgr.On("BuildDist", ctx, config.Env("prod"), false, false, false).Return(nil)
+	err = lazy.BuildDist(ctx, config.Env("prod"), false, false, false)
 	require.NoError(t, err)
 
 	// Test WatchValidation delegation

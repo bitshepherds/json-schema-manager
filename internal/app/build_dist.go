@@ -10,12 +10,17 @@ import (
 func NewBuildDistCmd(m Manager) *cobra.Command {
 	var all bool
 	var collapse bool
+	var skipTests bool
 
 	cmd := &cobra.Command{
 		Use:   "build-dist [environment]",
 		Short: "Build a distribution directory of rendered schemas",
 		Long: `
 Build rendered schemas for the specified environment and write them to [repo root]/dist/[env].
+
+Before building, it runs every schema's tests and compatibility check, as
+'jsm validate all' does. If any fail, it prints the report, builds nothing and exits
+with code 1. Use --skip-tests if your pipeline already runs validate.
 
 By default, this command only builds schemas that have been added or modified since 
 the last successful deployment to that environment. A mutation check is performed 
@@ -39,7 +44,7 @@ for local troubleshooting or manual overrides.
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := args[0]
-			if err := m.BuildDist(cmd.Context(), config.Env(env), all, collapse); err != nil {
+			if err := m.BuildDist(cmd.Context(), config.Env(env), all, collapse, skipTests); err != nil {
 				return err
 			}
 			return nil
@@ -49,6 +54,8 @@ for local troubleshooting or manual overrides.
 	cmd.Flags().BoolVarP(&all, "all", "a", false, "Render and build all schemas, skipping mutation checks")
 	cmd.Flags().BoolVarP(&collapse, "collapse", "C", false,
 		"Inline external $ref dependencies into each schema's $defs block")
+	cmd.Flags().BoolVar(&skipTests, "skip-tests", false,
+		"Build without first running the schemas' tests and compatibility check")
 
 	return cmd
 }
