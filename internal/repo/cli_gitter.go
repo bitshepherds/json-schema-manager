@@ -200,3 +200,24 @@ func (g *CLIGitter) GetSchemaChanges(ctx context.Context, anchor Revision, sourc
 	}
 	return changes, nil
 }
+
+// ShowFile returns the content of the file at path, as returned in a Change, at the given revision.
+func (g *CLIGitter) ShowFile(ctx context.Context, rev Revision, path string) ([]byte, error) {
+	root, err := g.getGitRoot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return nil, err
+	}
+
+	//nolint:gosec // CMD arguments are internal
+	cmd := exec.CommandContext(ctx, g.gitBinary, "show", rev.String()+":"+filepath.ToSlash(rel))
+	cmd.Dir = g.repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s at %s: %w", rel, rev, err)
+	}
+	return out, nil
+}

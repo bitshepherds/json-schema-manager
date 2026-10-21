@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -904,6 +905,94 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
 		require.Error(t, err)
 	})
+}
+
+func TestCLIManager_CheckChangesURLRoots(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	registry := setupTestRegistry(t)
+	configChange := []repo.Change{{Path: filepath.Join(registry.RootDirectory(), config.JsmRegistryConfigFile)}}
+	gitter := func(deployed string, err error) *MockGitter {
+		return &MockGitter{
+			GetSchemaChangesFunc: func(_ context.Context, _ repo.Revision, _, _ string) ([]repo.Change, error) {
+				return configChange, nil
+			},
+			ShowFileFunc: func(_ context.Context, _ repo.Revision, _ string) ([]byte, error) {
+				return []byte(deployed), err
+			},
+		}
+	}
+
+	t.Run("changed URL roots", func(t *testing.T) {
+		t.Parallel()
+		deployed := strings.ReplaceAll(testConfig, "https://", "https://old.")
+		m := NewCLIManager(logger, registry, nil, gitter(deployed, nil), nil, io.Discard)
+		err := m.CheckChanges(context.Background(), "prod")
+		var cErr *schema.ChangedDeployedSchemasError
+		require.ErrorAs(t, err, &cErr)
+		assert.Len(t, cErr.URLRoots, 2)
+		assert.Empty(t, cErr.Paths)
+		assert.NotContains(t, err.Error(), "test documents")
+	})
+
+	t.Run("unchanged URL roots", func(t *testing.T) {
+		t.Parallel()
+		m := NewCLIManager(logger, registry, nil, gitter(testConfig, nil), nil, io.Discard)
+		require.NoError(t, m.CheckChanges(context.Background(), "prod"))
+	})
+
+	t.Run("environment added since the deployment", func(t *testing.T) {
+		t.Parallel()
+		m := NewCLIManager(logger, registry, nil, gitter("environments: {}", nil), nil, io.Discard)
+		require.NoError(t, m.CheckChanges(context.Background(), "prod"))
+	})
+
+	t.Run("deployed config cannot be read", func(t *testing.T) {
+		t.Parallel()
+		m := NewCLIManager(logger, registry, nil, gitter("", errors.New("show failed")), nil, io.Discard)
+		require.ErrorContains(t, m.CheckChanges(context.Background(), "prod"), "show failed")
+	})
+
+	t.Run("deployed config is not YAML", func(t *testing.T) {
+		t.Parallel()
+		m := NewCLIManager(logger, registry, nil, gitter("environments: [", nil), nil, io.Discard)
+		require.ErrorAs(t, m.CheckChanges(context.Background(), "prod"), new(*config.InvalidYAMLError))
+	})
+}
+
+func TestDeployedMutations(t *testing.T) {
+	t.Parallel()
+	v := filepath.Join("reg", "d", "f", "1", "0", "0")
+	schemaFile := filepath.Join(v, "d_f_1_0_0.schema.json")
+	passDoc := filepath.Join(v, "pass", "a.json")
+	failDoc := filepath.Join(v, "fail", "b.json")
+	other := filepath.Join(v, "notes.md")
+	otherJSON := filepath.Join(v, "extra", "c.json")
+
+	tests := []struct {
+		name    string
+		changes []repo.Change
+		want    []string
+	}{
+		{"modified schema", []repo.Change{{Path: schemaFile}}, []string{schemaFile}},
+		{"deleted schema", []repo.Change{{Path: schemaFile, IsDeleted: true}}, nil},
+		{"new documents", []repo.Change{{Path: passDoc, IsNew: true}}, nil},
+		{
+			"modified and deleted documents",
+			[]repo.Change{{Path: passDoc}, {Path: failDoc, IsDeleted: true}},
+			[]string{passDoc, failDoc},
+		},
+		{"whole version deleted", []repo.Change{
+			{Path: schemaFile, IsDeleted: true}, {Path: passDoc, IsDeleted: true}, {Path: failDoc, IsDeleted: true},
+		}, nil},
+		{"other files", []repo.Change{{Path: other}, {Path: otherJSON}}, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, deployedMutations(tc.changes))
+		})
+	}
 }
 
 func TestCLIManager_CheckChanges(t *testing.T) {
