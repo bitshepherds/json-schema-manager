@@ -1,22 +1,66 @@
-# Setup: Create a git repo
-exec git init
+# Each scenario uses its own repo, as tag names are timestamped to the second
+
+# The push fails: tag-deployment fails, and says how to push the tag it created (#47)
+mkdir nopush-origin
+cd nopush-origin
+exec git init -q
 exec git config user.email test@example.com
 exec git config user.name test
-exec git commit --allow-empty -m "initial"
-
-# Create a registry config
 mkdir registry
-cp config.yml registry/json-schema-manager-config.yml
+cp $WORK/config.yml registry/json-schema-manager-config.yml
+exec git add .
+exec git commit -q -m initial
 env JSM_REGISTRY_ROOT_DIR=registry
-
-# Run jsm tag-deployment (should succeed locally even if push fails)
-exec jsm tag-deployment production
-stdout 'Tag created locally but failed to push: jsm-deploy/production/'
-
-# Verify the tag exists
-# We can't use the exact name easily, but we can list tags
+! exec jsm tag-deployment production
+stderr 'was created locally but could not be pushed'
+stderr 'git push origin jsm-deploy/production/'
 exec git tag
 stdout 'jsm-deploy/production/'
+
+# --no-push creates the tag without pushing, and succeeds
+cd $WORK
+mkdir local
+cd local
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+mkdir registry
+cp $WORK/config.yml registry/json-schema-manager-config.yml
+exec git add .
+exec git commit -q -m initial
+env JSM_REGISTRY_ROOT_DIR=registry
+exec jsm tag-deployment production --no-push
+stdout 'Tagged deployment locally \(not pushed\): jsm-deploy/production/'
+exec git tag
+stdout 'jsm-deploy/production/'
+
+# With a reachable origin, the tag is pushed
+cd $WORK
+exec git init -q --bare origin.git
+mkdir pushed
+cd pushed
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+mkdir registry
+cp $WORK/config.yml registry/json-schema-manager-config.yml
+exec git add .
+exec git commit -q -m initial
+exec git remote add origin $WORK/origin.git
+env JSM_REGISTRY_ROOT_DIR=registry
+exec jsm tag-deployment production
+stdout 'Successfully tagged and pushed deployment: jsm-deploy/production/'
+exec git --git-dir=$WORK/origin.git tag
+stdout 'jsm-deploy/production/'
+
+# git runs in the registry's repository, not the current directory (#47)
+cd $WORK
+mkdir elsewhere
+cd elsewhere
+env JSM_REGISTRY_ROOT_DIR=$WORK/local/registry
+exec jsm check-changes production
+stdout 'All changes are valid'
+! stdout 'No deployment'
 
 -- config.yml --
 environments:

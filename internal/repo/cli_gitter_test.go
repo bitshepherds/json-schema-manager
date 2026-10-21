@@ -412,7 +412,7 @@ func TestCLIGitter_TagDeploymentSuccess(t *testing.T) {
 		tmpDir := setupTestRepo(t)
 		g := NewCLIGitter(cfg, pathResolver, tmpDir)
 
-		tagName, err := g.TagDeploymentSuccess(context.Background(), "prod")
+		tagName, err := g.TagDeploymentSuccess(context.Background(), "prod", true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to push git tag to origin")
 		assert.NotEmpty(t, tagName)
@@ -420,6 +420,18 @@ func TestCLIGitter_TagDeploymentSuccess(t *testing.T) {
 		cmd := exec.CommandContext(context.Background(), "git", "rev-parse", tagName)
 		cmd.Dir = tmpDir
 		require.NoError(t, cmd.Run())
+	})
+
+	t.Run("no push - tag created, push not attempted", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := setupTestRepo(t)
+		g := NewCLIGitter(cfg, pathResolver, tmpDir)
+
+		// No origin exists, so attempting a push would fail
+		tagName, err := g.TagDeploymentSuccess(context.Background(), "prod", false)
+		require.NoError(t, err)
+		assert.Contains(t, tagName, "jsm-deploy/prod/")
+		runGit(t, tmpDir, "rev-parse", tagName)
 	})
 
 	t.Run("success with remote", func(t *testing.T) {
@@ -448,7 +460,7 @@ func TestCLIGitter_TagDeploymentSuccess(t *testing.T) {
 		)
 
 		g := NewCLIGitter(cfg, pathResolver, repoDir)
-		tagName, err := g.TagDeploymentSuccess(context.Background(), "prod")
+		tagName, err := g.TagDeploymentSuccess(context.Background(), "prod", true)
 		require.NoError(t, err)
 
 		cmd := exec.CommandContext(context.Background(), "git", "-C", remoteDir, "rev-parse", tagName)
@@ -473,7 +485,7 @@ exec %s "$@"
 		g := NewCLIGitter(cfg, pathResolver, tmpDir)
 		g.SetGitBinary(gitPath)
 
-		_, err := g.TagDeploymentSuccess(context.Background(), "prod")
+		_, err := g.TagDeploymentSuccess(context.Background(), "prod", true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create git tag")
 	})
@@ -481,7 +493,7 @@ exec %s "$@"
 	t.Run("error - invalid env", func(t *testing.T) {
 		t.Parallel()
 		g := NewCLIGitter(cfg, pathResolver, "")
-		_, err := g.TagDeploymentSuccess(context.Background(), "invalid-env")
+		_, err := g.TagDeploymentSuccess(context.Background(), "invalid-env", true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "does not define environment")
 	})

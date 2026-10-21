@@ -108,7 +108,8 @@ func NewRootCmd(
 
 			tester := schema.NewTester(registry)
 			cfg, _ := registry.Config()
-			gitter := repo.NewCLIGitter(cfg, pathResolver, "")
+			// Run git in the registry's repository, wherever jsm is run from
+			gitter := repo.NewCLIGitter(cfg, pathResolver, registry.RootDirectory())
 			distBuilder, err := schema.NewFSDistBuilder(cmd.Context(), registry, cfg, gitter, "dist")
 			if err != nil {
 				return fmt.Errorf("failed to initialise distribution builder: %w", err)

@@ -110,8 +110,9 @@ func (g *CLIGitter) getGitRoot(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// TagDeploymentSuccess creates and pushes a new environment-specific deployment tag.
-func (g *CLIGitter) TagDeploymentSuccess(ctx context.Context, env config.Env) (string, error) {
+// TagDeploymentSuccess creates a new environment-specific deployment tag, and pushes it to origin if push is set.
+// If the push fails, it returns the created tag's name with the error.
+func (g *CLIGitter) TagDeploymentSuccess(ctx context.Context, env config.Env, push bool) (string, error) {
 	if _, err := g.getEnvConfig(env); err != nil {
 		return "", err
 	}
@@ -133,6 +134,10 @@ func (g *CLIGitter) TagDeploymentSuccess(ctx context.Context, env config.Env) (s
 	tagCmd.Dir = g.repoRoot
 	if err := tagCmd.Run(); err != nil {
 		return "", fmt.Errorf("failed to create git tag: %w", err)
+	}
+
+	if !push {
+		return tagName, nil
 	}
 
 	// 2. Push the tag to origin
