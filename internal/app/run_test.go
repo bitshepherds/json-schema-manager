@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -14,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/internal/schema"
 )
 
 func TestRun(t *testing.T) {
@@ -152,6 +155,30 @@ environments:
 		assert.Contains(t, stdout.String(), "jsm is a CLI tool")
 	})
 
+	t.Run("run validate with failed tests", func(t *testing.T) {
+		t.Parallel()
+		regDir := t.TempDir()
+		cfgData := `environments: {prod: {publicUrlRoot: 'https://p', privateUrlRoot: 'https://pr', isProduction: true}}`
+		require.NoError(t, os.WriteFile(filepath.Join(regDir, config.JsmRegistryConfigFile), []byte(cfgData), 0o600))
+		env := &mockEnvProvider{values: map[string]string{
+			"JSM_REGISTRY_ROOT_DIR": regDir,
+		}}
+
+		homeDir := filepath.Join(regDir, "domain", "family", "1", "0", "0")
+		require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "pass"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "fail"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(homeDir, "domain_family_1_0_0.schema.json"),
+			[]byte(`{"type":"object"}`), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(homeDir, "fail", "accepted.json"), []byte(`{}`), 0o600))
+
+		var stdout, stderr bytes.Buffer
+		err := Run(context.Background(), []string{"jsm", "validate", "domain_family_1_0_0"}, &stdout, &stderr, env)
+
+		require.ErrorIs(t, err, ErrTestsFailed)
+		assert.Contains(t, stdout.String(), "1 failed")
+		assert.NotContains(t, stderr.String(), "Error:")
+	})
+
 	t.Run("run interrupted by user", func(t *testing.T) {
 		t.Parallel()
 		regDir := t.TempDir()
@@ -182,4 +209,28 @@ environments:
 		require.NoError(t, err)
 		assert.Contains(t, stderr.String(), "Interrupted by user", "Stderr was: %q, Err was: %v", stderr.String(), err)
 	})
+}
+
+func TestExitCode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"success", nil, ExitOK},
+		{"tests failed", ErrTestsFailed, ExitCheckFailed},
+		{"wrapped tests failed", fmt.Errorf("validate: %w", ErrTestsFailed), ExitCheckFailed},
+		{"deployed schemas changed", &schema.ChangedDeployedSchemasError{Paths: []string{"a"}}, ExitCheckFailed},
+		{"setup error", &schema.NoSchemaTargetsError{}, ExitCannotRun},
+		{"other error", errors.New("boom"), ExitCannotRun},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, ExitCode(tt.err))
+		})
+	}
 }
