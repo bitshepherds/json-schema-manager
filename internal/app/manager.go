@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -385,26 +386,104 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 			"If %s has been deployed, fetch the %s/%s/* tags.\n", envName, envName, repo.JSMDeployTagPrefix, envName)
 	}
 
-	changes, err := m.gitter.GetSchemaChanges(ctx, anchor, m.registry.RootDirectory(), schema.SchemaSuffix)
+	// Every changed file in the registry, to cover test documents and the config file too
+	changes, err := m.gitter.GetSchemaChanges(ctx, anchor, m.registry.RootDirectory(), "")
 	if err != nil {
 		return err
 	}
 
 	if !envCfg.AllowSchemaMutation {
-		var modifiedPaths []string
-		for _, change := range changes {
-			if !change.IsNew && !change.IsDeleted {
-				modifiedPaths = append(modifiedPaths, change.Path)
-			}
+		urlRoots, uErr := m.changedURLRoots(ctx, anchor, envCfg, changes)
+		if uErr != nil {
+			return uErr
 		}
 
-		if len(modifiedPaths) > 0 {
-			return &schema.ChangedDeployedSchemasError{Paths: modifiedPaths}
+		if modifiedPaths := deployedMutations(changes); len(modifiedPaths) > 0 || len(urlRoots) > 0 {
+			return &schema.ChangedDeployedSchemasError{Paths: modifiedPaths, URLRoots: urlRoots}
 		}
 	}
 
 	_, _ = fmt.Fprintln(m.reporterWriter, "All changes are valid")
 	return nil
+}
+
+// deployedMutations returns the paths of the deployed schema files and test documents which the
+// changes modify or delete. New schemas and test documents may be added, and a whole version,
+// including its schema file, may be deleted.
+func deployedMutations(changes []repo.Change) []string {
+	deletedVersions := make(map[string]bool)
+	for _, c := range changes {
+		if c.IsDeleted && strings.HasSuffix(c.Path, schema.SchemaSuffix) {
+			deletedVersions[filepath.Dir(c.Path)] = true
+		}
+	}
+
+	var paths []string
+	for _, c := range changes {
+		if isDeployedMutation(c, deletedVersions) {
+			paths = append(paths, c.Path)
+		}
+	}
+	return paths
+}
+
+// isDeployedMutation reports whether c modifies or deletes a deployed schema file or test document,
+// other than by deleting a whole version, whose home directory is in deletedVersions.
+func isDeployedMutation(c repo.Change, deletedVersions map[string]bool) bool {
+	if c.IsNew {
+		return false
+	}
+	if strings.HasSuffix(c.Path, schema.SchemaSuffix) {
+		return !c.IsDeleted
+	}
+
+	docDir := filepath.Dir(c.Path)
+	docType := schema.TestDocType(filepath.Base(docDir))
+	if filepath.Ext(c.Path) != ".json" || (docType != schema.TestDocTypePass && docType != schema.TestDocTypeFail) {
+		return false
+	}
+	return !c.IsDeleted || !deletedVersions[filepath.Dir(docDir)]
+}
+
+// changedURLRoots describes each change to envCfg's URL roots since the anchor, which would change
+// the IDs of the schemas deployed to it.
+func (m *CLIManager) changedURLRoots(
+	ctx context.Context,
+	anchor repo.Revision,
+	envCfg *config.EnvConfig,
+	changes []repo.Change,
+) ([]string, error) {
+	i := slices.IndexFunc(changes, func(c repo.Change) bool {
+		return !c.IsNew && !c.IsDeleted && filepath.Base(c.Path) == config.JsmRegistryConfigFile
+	})
+	if i < 0 {
+		return nil, nil
+	}
+
+	data, err := m.gitter.ShowFile(ctx, anchor, changes[i].Path)
+	if err != nil {
+		return nil, err
+	}
+	deployed, err := config.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	was := deployed.Environments[envCfg.Env]
+	if was == nil {
+		// The environment was added since the anchor
+		return nil, nil
+	}
+
+	var roots []string
+	for _, r := range []struct{ name, was, is string }{
+		{"privateUrlRoot", was.PrivateURLRoot, envCfg.PrivateURLRoot},
+		{"publicUrlRoot", was.PublicURLRoot, envCfg.PublicURLRoot},
+	} {
+		if r.was != r.is {
+			roots = append(roots, fmt.Sprintf("%s of %s changed from %q to %q", r.name, envCfg.Env, r.was, r.is))
+		}
+	}
+	return roots, nil
 }
 
 // TagDeployment ensures that a successful deployment is tagged in git.

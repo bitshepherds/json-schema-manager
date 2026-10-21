@@ -27,6 +27,73 @@ exec git commit -m "mutation"
 ! exec jsm check-changes production
 stderr 'cannot modify deployed schemas'
 
+# Test documents of a deployed version are part of it too (#51)
+cd $WORK
+mkdir docs
+cd docs
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+mkdir registry/domain/family/1/0/0/pass registry/domain/family/1/0/0/fail
+cp $WORK/config.yml registry/json-schema-manager-config.yml
+cp $WORK/schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/doc.json registry/domain/family/1/0/0/pass/a.json
+cp $WORK/doc.json registry/domain/family/1/0/0/fail/b.json
+exec git add .
+exec git commit -q -m first
+exec git tag jsm-deploy/production/v1
+env JSM_REGISTRY_ROOT_DIR=registry
+
+# Deleting a deployed version's pass/ document fails
+rm registry/domain/family/1/0/0/pass/a.json
+! exec jsm check-changes production
+stderr 'cannot modify deployed schemas or their test documents: .*pass/a.json'
+exec git checkout -q -- registry
+
+# Editing a fail/ document fails
+cp $WORK/modified.schema.json registry/domain/family/1/0/0/fail/b.json
+! exec jsm check-changes production
+stderr 'cannot modify deployed schemas or their test documents: .*fail/b.json'
+exec git checkout -q -- registry
+
+# Adding a new pass/ document is allowed
+cp $WORK/doc.json registry/domain/family/1/0/0/pass/new.json
+exec git add .
+exec jsm check-changes production
+stdout 'All changes are valid'
+exec git reset -q --hard
+
+# Deleting the whole version directory is allowed
+rm registry/domain/family/1/0/0
+exec jsm check-changes production
+stdout 'All changes are valid'
+exec git checkout -q -- registry
+
+# Changing the environment's privateUrlRoot fails
+cp $WORK/moved-config.yml registry/json-schema-manager-config.yml
+! exec jsm check-changes production
+stderr 'cannot change the URL roots of deployed schemas: privateUrlRoot of production changed from "https://json-schemas.internal.myorg.io/" to "https://schemas.internal.myorg.io/"'
+exec git checkout -q -- registry
+
+# An environment which allows mutation accepts all of these
+cp $WORK/moved-config.yml registry/json-schema-manager-config.yml
+rm registry/domain/family/1/0/0/pass/a.json
+exec jsm check-changes development
+stdout 'All changes are valid'
+
+-- doc.json --
+{}
+-- moved-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+    allowSchemaMutation: false
+  development:
+    privateUrlRoot: "https://dev.internal.myorg.io/"
+    publicUrlRoot: "https://dev.myorg.io/"
+    allowSchemaMutation: true
 -- config.yml --
 environments:
   production:
@@ -34,6 +101,10 @@ environments:
     publicUrlRoot: "https://json-schemas.myorg.io/"
     isProduction: true
     allowSchemaMutation: false
+  development:
+    privateUrlRoot: "https://dev.internal.myorg.io/"
+    publicUrlRoot: "https://dev.myorg.io/"
+    allowSchemaMutation: true
 -- schema.json --
 {}
 -- modified.schema.json --

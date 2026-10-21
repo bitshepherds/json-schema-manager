@@ -3,6 +3,7 @@ package schema
 
 import (
 	"fmt"
+	"strings"
 )
 
 // NoDomainError is returned when a schema does not have a domain.
@@ -342,13 +343,22 @@ func (e *NoTargetArgumentError) Error() string {
 	return "No target has been provided"
 }
 
-// ChangedDeployedSchemasError is returned when deployed schemas are modified.
+// ChangedDeployedSchemasError is returned when deployed schemas or their test documents are
+// modified, or the URL roots which give deployed schemas their IDs are changed.
 type ChangedDeployedSchemasError struct {
-	Paths []string
+	Paths    []string // the modified or deleted schema files and test documents
+	URLRoots []string // a description of each changed URL root
 }
 
 func (e *ChangedDeployedSchemasError) Error() string {
-	return fmt.Sprintf("cannot modify deployed schemas: %v", e.Paths)
+	var problems []string
+	if len(e.Paths) > 0 {
+		problems = append(problems, fmt.Sprintf("cannot modify deployed schemas or their test documents: %v", e.Paths))
+	}
+	if len(e.URLRoots) > 0 {
+		problems = append(problems, "cannot change the URL roots of deployed schemas: "+strings.Join(e.URLRoots, "; "))
+	}
+	return strings.Join(problems, ". ")
 }
 
 // CollapsedSchemaError is returned when a collapsed schema does not compile, or does not give the

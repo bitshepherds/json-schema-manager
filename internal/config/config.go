@@ -115,20 +115,32 @@ func New(registryRootDir string, compiler validator.Compiler) (*Config, error) {
 		return nil, err
 	}
 
-	var config Config
-	if err = yaml.Unmarshal(data, &config); err != nil {
-		// return a wrapped error or the raw yaml error depending on preference.
-		// For now, we wrap it to match previous behaviour partially, but strictly speaking
-		// the yaml library returns nice errors on its own.
-		return nil, &InvalidYAMLError{Wrapped: err}
+	config, err := Parse(data)
+	if err != nil {
+		return nil, err
 	}
 
 	if vErr := config.Validate(compiler); vErr != nil {
 		return nil, vErr
 	}
 
-	for envName := range config.Environments {
-		config.Environments[envName].Env = envName
+	return config, nil
+}
+
+// Parse reads a Config from the content of a registry config file, without validating it.
+func Parse(data []byte) (*Config, error) {
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		// return a wrapped error or the raw yaml error depending on preference.
+		// For now, we wrap it to match previous behaviour partially, but strictly speaking
+		// the yaml library returns nice errors on its own.
+		return nil, &InvalidYAMLError{Wrapped: err}
+	}
+
+	for envName, ec := range config.Environments {
+		if ec != nil {
+			ec.Env = envName
+		}
 	}
 
 	return &config, nil

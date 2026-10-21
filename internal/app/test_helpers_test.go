@@ -88,6 +88,14 @@ type MockGitter struct {
 	GetLatestAnchorFunc  func(ctx context.Context, env config.Env) (repo.Revision, error)
 	TagDeploymentFunc    func(ctx context.Context, env config.Env, push bool) (string, error)
 	GetSchemaChangesFunc func(ctx context.Context, anchor repo.Revision, sourceDir, suffix string) ([]repo.Change, error)
+	ShowFileFunc         func(ctx context.Context, rev repo.Revision, path string) ([]byte, error)
+}
+
+func (m *MockGitter) ShowFile(ctx context.Context, rev repo.Revision, path string) ([]byte, error) {
+	if m.ShowFileFunc != nil {
+		return m.ShowFileFunc(ctx, rev, path)
+	}
+	return nil, nil
 }
 
 func (m *MockGitter) GetLatestAnchor(ctx context.Context, env config.Env) (repo.Revision, error) {

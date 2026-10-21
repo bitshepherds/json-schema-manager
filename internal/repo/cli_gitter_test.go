@@ -539,3 +539,50 @@ func TestRevision_IsEmptyTree(t *testing.T) {
 	assert.False(t, Revision("jsm-deploy/prod/v1").IsEmptyTree())
 	assert.False(t, Revision("").IsEmptyTree())
 }
+
+func TestCLIGitter_ShowFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reads the file at the revision", func(t *testing.T) {
+		t.Parallel()
+		dir := setupTestRepo(t)
+		f := filepath.Join(dir, "reg", "config.yml")
+		require.NoError(t, os.MkdirAll(filepath.Dir(f), 0o755))
+		require.NoError(t, os.WriteFile(f, []byte("first"), 0o600))
+		runGit(t, dir, "add", ".")
+		runGit(t, dir, "commit", "-q", "-m", "1")
+		runGit(t, dir, "tag", "v1")
+		require.NoError(t, os.WriteFile(f, []byte("second"), 0o600))
+
+		root, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), dir)
+		data, err := g.ShowFile(context.Background(), "v1", filepath.Join(root, "reg", "config.yml"))
+		require.NoError(t, err)
+		assert.Equal(t, "first", string(data))
+	})
+
+	t.Run("file not at the revision", func(t *testing.T) {
+		t.Parallel()
+		dir := setupTestRepo(t)
+		root, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), dir)
+		_, err = g.ShowFile(context.Background(), "HEAD", filepath.Join(root, "missing.yml"))
+		require.ErrorContains(t, err, "failed to read missing.yml at HEAD")
+	})
+
+	t.Run("relative path", func(t *testing.T) {
+		t.Parallel()
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), setupTestRepo(t))
+		_, err := g.ShowFile(context.Background(), "HEAD", "relative.yml")
+		require.Error(t, err)
+	})
+
+	t.Run("not a git repo", func(t *testing.T) {
+		t.Parallel()
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), t.TempDir())
+		_, err := g.ShowFile(context.Background(), "HEAD", "/x.yml")
+		require.ErrorContains(t, err, "failed to find git root")
+	})
+}

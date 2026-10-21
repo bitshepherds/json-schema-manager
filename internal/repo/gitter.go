@@ -45,4 +45,7 @@ type Gitter interface {
 
 	// GetSchemaChanges identifies files with the given suffix changed between the anchor and HEAD.
 	GetSchemaChanges(ctx context.Context, anchor Revision, sourceDir, suffix string) ([]Change, error)
+
+	// ShowFile returns the content of the file at path, as returned in a Change, at the given revision.
+	ShowFile(ctx context.Context, rev Revision, path string) ([]byte, error)
 }

@@ -25,6 +25,12 @@ Check for schema changes against the latest deployment anchor for the given envi
 Use this command in a CI/CD pipeline to prevent deploying a schema change to an environment which does not permit
 schema mutation. Your production environment should never permit schema mutation, but it is recommended to allow 
 mutations in dev environments to allow teams to iterate on a new schema together before the contract is locked down.
+
+In an environment which does not permit schema mutation, these changes since the deployment fail the check:
+  - modifying a deployed schema file
+  - modifying or deleting a pass/ or fail/ test document of a deployed version
+  - changing the environment's privateUrlRoot or publicUrlRoot, which give deployed schemas their IDs
+Adding new schemas and test documents is allowed, and so is deleting a whole version.
 ` + deploymentHistoryHelp,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
