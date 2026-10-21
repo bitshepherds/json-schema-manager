@@ -15,10 +15,10 @@ env JSM_REGISTRY_ROOT_DIR=registry
 ! exec jsm check-changes non-existent
 stderr 'does not define environment'
 
-# Error: git history error (running from outside repo)
-env JSM_REGISTRY_ROOT_DIR=$WORK/registry
-mkdir $WORK/../outside
-cd $WORK/../outside
+# Error: git history error (registry outside any git repo)
+mkdir $WORK/../outside/registry
+cp $WORK/config.yml $WORK/../outside/registry/json-schema-manager-config.yml
+env JSM_REGISTRY_ROOT_DIR=$WORK/../outside/registry
 ! exec jsm check-changes production
 stderr 'could not find git history'
 

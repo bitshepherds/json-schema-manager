@@ -39,8 +39,9 @@ type Gitter interface {
 	// or a ShallowCloneError if the history is too shallow to tell.
 	GetLatestAnchor(ctx context.Context, env config.Env) (Revision, error)
 
-	// TagDeploymentSuccess creates and pushes a new environment-specific deployment tag.
-	TagDeploymentSuccess(ctx context.Context, env config.Env) (string, error)
+	// TagDeploymentSuccess creates a new environment-specific deployment tag, and pushes it to origin if push is set.
+	// If the push fails, it returns the created tag's name with the error.
+	TagDeploymentSuccess(ctx context.Context, env config.Env, push bool) (string, error)
 
 	// GetSchemaChanges identifies files with the given suffix changed between the anchor and HEAD.
 	GetSchemaChanges(ctx context.Context, anchor Revision, sourceDir, suffix string) ([]Change, error)

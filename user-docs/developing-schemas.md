@@ -200,6 +200,8 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 
 In a shallow clone without the tag, both commands fail with exit code `2` rather than guess. With no deployment tag at all, every schema is treated as new.
 
+`jsm tag-deployment <env>` pushes the tag to `origin`, so the deploy job needs permission to push tags (in GitHub Actions, `permissions: contents: write`). If the push fails, the command fails with exit code `2` and prints the `git push` command to retry. Use `--no-push` to create the tag locally only.
+
 
 ---
 

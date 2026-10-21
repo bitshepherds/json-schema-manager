@@ -33,7 +33,7 @@ func (m *mockGitter) GetLatestAnchor(ctx context.Context, env config.Env) (repo.
 	return "HEAD", nil
 }
 
-func (m *mockGitter) TagDeploymentSuccess(ctx context.Context, env config.Env) (string, error) {
+func (m *mockGitter) TagDeploymentSuccess(ctx context.Context, env config.Env, _ bool) (string, error) {
 	if m.tagDeploymentFunc != nil {
 		return m.tagDeploymentFunc(ctx, env)
 	}
