@@ -32,7 +32,7 @@ type Manager interface {
 	CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (schema.Key, error)
 	RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env, collapse bool) ([]byte, error)
 	CheckChanges(ctx context.Context, envName config.Env) error
-	TagDeployment(ctx context.Context, envName config.Env) error
+	TagDeployment(ctx context.Context, envName config.Env, push bool) error
 	BuildDist(ctx context.Context, envName config.Env, all, collapse bool) error
 }
 
@@ -110,8 +110,8 @@ func (l *LazyManager) CheckChanges(ctx context.Context, envName config.Env) erro
 }
 
 // TagDeployment implements the Manager interface.
-func (l *LazyManager) TagDeployment(ctx context.Context, envName config.Env) error {
-	return l.check().TagDeployment(ctx, envName)
+func (l *LazyManager) TagDeployment(ctx context.Context, envName config.Env, push bool) error {
+	return l.check().TagDeployment(ctx, envName, push)
 }
 
 // BuildDist implements the Manager interface.
@@ -401,8 +401,8 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 }
 
 // TagDeployment ensures that a successful deployment is tagged in git.
-func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env) error {
-	m.logger.Debug("tagging deployment", "env", envName)
+func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env, push bool) error {
+	m.logger.Debug("tagging deployment", "env", envName, "push", push)
 
 	cfg, err := m.registry.Config()
 	if err != nil {
@@ -413,14 +413,19 @@ func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env) erro
 		return envErr
 	}
 
-	tagName, err := m.gitter.TagDeploymentSuccess(ctx, envName)
+	tagName, err := m.gitter.TagDeploymentSuccess(ctx, envName, push)
 	if err != nil {
 		if tagName != "" {
-			m.logger.Warn("tag was created but could not be pushed", "tag", tagName, "error", err)
-			_, _ = fmt.Fprintf(m.reporterWriter, "🏷️  Tag created locally but failed to push: %s\n", tagName)
-			return nil // Consider it success if tag created? Or error?
+			// The next check-changes run looks for the tag on origin, so an unpushed tag is a failed deployment record
+			return fmt.Errorf("tag %s was created locally but could not be pushed: %w. "+
+				"Push it with 'git push origin %s'", tagName, err, tagName)
 		}
 		return err
+	}
+
+	if !push {
+		_, _ = fmt.Fprintf(m.reporterWriter, "🏷️  Tagged deployment locally (not pushed): %s\n", tagName)
+		return nil
 	}
 
 	_, _ = fmt.Fprintf(m.reporterWriter, "🏷️  Successfully tagged and pushed deployment: %s\n", tagName)

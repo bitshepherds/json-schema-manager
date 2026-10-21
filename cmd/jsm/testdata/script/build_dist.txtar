@@ -21,7 +21,7 @@ exists dist/production/private/domain_person_1_0_0.schema.json
 # Tag it to establish a baseline for non-all runs
 exec git add .
 exec git commit -m add_schema
-exec jsm tag-deployment production
+exec jsm tag-deployment production --no-push
 
 # Run jsm build-dist production (should return "No schemas to build" as nothing changed)
 exec jsm build-dist production

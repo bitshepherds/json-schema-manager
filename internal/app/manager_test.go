@@ -1163,13 +1163,13 @@ func TestCLIManager_TagDeployment(t *testing.T) {
 	t.Run("config error", func(t *testing.T) {
 		t.Parallel()
 		m := NewCLIManager(logger, &schema.Registry{}, nil, &MockGitter{}, nil, io.Discard)
-		err := m.TagDeployment(context.Background(), "prod")
+		err := m.TagDeployment(context.Background(), "prod", true)
 		require.Error(t, err)
 	})
 
 	t.Run("invalid environment", func(t *testing.T) {
 		t.Parallel()
-		err := mgr.TagDeployment(context.Background(), "invalid")
+		err := mgr.TagDeployment(context.Background(), "invalid", true)
 		require.Error(t, err)
 	})
 
@@ -1198,7 +1198,7 @@ func TestCLIManager_TagDeployment(t *testing.T) {
 		m := NewCLIManager(logger, r, nil, &MockGitter{}, nil, io.Discard)
 
 		// This calls g.TagDeploymentSuccess() which will fail push but return tagName
-		err := m.TagDeployment(context.Background(), "prod")
+		err := m.TagDeployment(context.Background(), "prod", true)
 		require.NoError(t, err) // We return nil if tag created but push fails
 	})
 
@@ -1206,13 +1206,13 @@ func TestCLIManager_TagDeployment(t *testing.T) {
 		t.Parallel()
 		r := setupTestRegistry(t)
 		mockGitter := &MockGitter{
-			TagDeploymentFunc: func(_ context.Context, _ config.Env) (string, error) {
+			TagDeploymentFunc: func(_ context.Context, _ config.Env, _ bool) (string, error) {
 				return "", fmt.Errorf("failed to create git tag")
 			},
 		}
 		m := NewCLIManager(logger, r, nil, mockGitter, nil, io.Discard)
 
-		err := m.TagDeployment(context.Background(), "prod")
+		err := m.TagDeployment(context.Background(), "prod", true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create git tag")
 	})
@@ -1248,7 +1248,7 @@ func TestCLIManager_TagDeployment(t *testing.T) {
 		r, _ := schema.NewRegistry(repoDir, &mockCompiler{}, fsh.NewPathResolver(), fsh.NewEnvProvider())
 		m := NewCLIManager(logger, r, nil, &MockGitter{}, nil, io.Discard)
 
-		err := m.TagDeployment(context.Background(), "prod")
+		err := m.TagDeployment(context.Background(), "prod", true)
 		require.NoError(t, err)
 
 		// Verify tag exists on "remote"
@@ -1289,15 +1289,35 @@ func TestCLIManager_TagDeployment(t *testing.T) {
 		r, _ := schema.NewRegistry(dir, &mockCompiler{}, fsh.NewPathResolver(), fsh.NewEnvProvider())
 
 		mockGitter := &MockGitter{
-			TagDeploymentFunc: func(_ context.Context, _ config.Env) (string, error) {
+			TagDeploymentFunc: func(_ context.Context, _ config.Env, _ bool) (string, error) {
 				return "jsm-deploy/prod/failed-push", fmt.Errorf("git push failed")
 			},
 		}
 
 		m := NewCLIManager(logger, r, nil, mockGitter, nil, io.Discard)
 
-		err := m.TagDeployment(context.Background(), "prod")
-		require.NoError(t, err) // Should return nil if tag created but push failed
+		err := m.TagDeployment(context.Background(), "prod", true)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tag jsm-deploy/prod/failed-push was created locally but could not be pushed")
+		assert.Contains(t, err.Error(), "git push failed")
+		assert.Contains(t, err.Error(), "git push origin jsm-deploy/prod/failed-push")
+	})
+
+	t.Run("no push", func(t *testing.T) {
+		t.Parallel()
+		var gotPush bool
+		mockGitter := &MockGitter{
+			TagDeploymentFunc: func(_ context.Context, _ config.Env, push bool) (string, error) {
+				gotPush = push
+				return "jsm-deploy/prod/local", nil
+			},
+		}
+		var out bytes.Buffer
+		m := NewCLIManager(logger, setupTestRegistry(t), nil, mockGitter, nil, &out)
+
+		require.NoError(t, m.TagDeployment(context.Background(), "prod", false))
+		assert.False(t, gotPush)
+		assert.Contains(t, out.String(), "Tagged deployment locally (not pushed): jsm-deploy/prod/local")
 	})
 }
 
@@ -1514,7 +1534,7 @@ func TestLazyManager_Delegation(t *testing.T) {
 
 	// Test TagDeployment delegation
 	mockMgr.On("TagDeployment", ctx, config.Env("prod")).Return(nil)
-	err = lazy.TagDeployment(ctx, config.Env("prod"))
+	err = lazy.TagDeployment(ctx, config.Env("prod"), true)
 	require.NoError(t, err)
 
 	// Test BuildDist delegation
