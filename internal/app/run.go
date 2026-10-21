@@ -8,7 +8,26 @@ import (
 	"log/slog"
 
 	"github.com/bitshepherds/json-schema-manager/internal/fsh"
+	"github.com/bitshepherds/json-schema-manager/internal/schema"
 )
+
+// Exit codes returned by the jsm binary.
+const (
+	ExitOK          = 0 // the command succeeded and every check passed
+	ExitCheckFailed = 1 // JSM ran, and a test or check found a problem
+	ExitCannotRun   = 2 // JSM could not run: bad usage, configuration, schema or environment
+)
+
+// ExitCode maps an error returned by Run to the process exit code.
+func ExitCode(err error) int {
+	if err == nil {
+		return ExitOK
+	}
+	if errors.Is(err, ErrTestsFailed) || errors.As(err, new(*schema.ChangedDeployedSchemasError)) {
+		return ExitCheckFailed
+	}
+	return ExitCannotRun
+}
 
 // Run executes the application with the given arguments.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, envProvider fsh.EnvProvider) error {

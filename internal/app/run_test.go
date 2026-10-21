@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -14,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/internal/schema"
 )
 
 func TestRun(t *testing.T) {
@@ -206,4 +209,28 @@ environments:
 		require.NoError(t, err)
 		assert.Contains(t, stderr.String(), "Interrupted by user", "Stderr was: %q, Err was: %v", stderr.String(), err)
 	})
+}
+
+func TestExitCode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"success", nil, ExitOK},
+		{"tests failed", ErrTestsFailed, ExitCheckFailed},
+		{"wrapped tests failed", fmt.Errorf("validate: %w", ErrTestsFailed), ExitCheckFailed},
+		{"deployed schemas changed", &schema.ChangedDeployedSchemasError{Paths: []string{"a"}}, ExitCheckFailed},
+		{"setup error", &schema.NoSchemaTargetsError{}, ExitCannotRun},
+		{"other error", errors.New("boom"), ExitCannotRun},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, ExitCode(tt.err))
+		})
+	}
 }
