@@ -334,7 +334,7 @@ func (t *Tester) getSpecsForSchema(s *Schema) ([]Spec, error) {
 
 	// Pass Tests?
 	if t.scope != TestScopeFail && t.scope != TestScopeConsumerBreaking {
-		specs, err = t.appendSpecsByTestDocType(s, TestDocTypePass, false, specs)
+		specs, err = t.appendSpecsByTestDocType(s, s, TestDocTypePass, specs)
 		if err != nil {
 			return nil, err
 		}
@@ -342,7 +342,7 @@ func (t *Tester) getSpecsForSchema(s *Schema) ([]Spec, error) {
 
 	// Fail Tests?
 	if t.scope != TestScopePass && t.scope != TestScopeConsumerBreaking {
-		specs, err = t.appendSpecsByTestDocType(s, TestDocTypeFail, false, specs)
+		specs, err = t.appendSpecsByTestDocType(s, s, TestDocTypeFail, specs)
 		if err != nil {
 			return nil, err
 		}
@@ -375,7 +375,7 @@ func (t *Tester) appendBreakingSpecs(s *Schema, specs []Spec) ([]Spec, error) {
 		if err2 != nil {
 			return nil, err2
 		}
-		specs, err = t.appendSpecsByTestDocType(fs, TestDocTypePass, true, specs)
+		specs, err = t.appendSpecsByTestDocType(s, fs, TestDocTypePass, specs)
 		if err != nil {
 			return nil, err
 		}
@@ -384,17 +384,17 @@ func (t *Tester) appendBreakingSpecs(s *Schema, specs []Spec) ([]Spec, error) {
 	return specs, nil
 }
 
-// appendSpecsByTestDocType appends the specs for the given test document type to the given slice,
-// optimising allocations where possible.
-// If isBreakingTest is true, it indicates that the specs should set the ForwardVersion field, as
-// the tests are being appended to test an earlier version in the family sharing the same major version.
+// appendSpecsByTestDocType appends to the given slice the specs which test the schema under test
+// with source's test documents of the given type, optimising allocations where possible.
+// If source is a later version in the family sharing the same major version, the specs set the
+// ForwardVersion field to its version.
 func (t *Tester) appendSpecsByTestDocType(
-	s *Schema,
+	underTest *Schema,
+	source *Schema,
 	testDocType TestDocType,
-	isBreakingTest bool,
 	specs []Spec,
 ) ([]Spec, error) {
-	tests, err := s.TestDocuments(testDocType)
+	tests, err := source.TestDocuments(testDocType)
 	if err != nil {
 		return nil, err
 	}
@@ -408,12 +408,12 @@ func (t *Tester) appendSpecsByTestDocType(
 
 	var forwardVersion *SemVer
 
-	if isBreakingTest {
-		forwardVersion = &s.core.version
+	if source != underTest {
+		forwardVersion = &source.core.version
 	}
 
 	for _, test := range tests {
-		specs = append(specs, NewSpec(s, test, testDocType, forwardVersion))
+		specs = append(specs, NewSpec(underTest, test, testDocType, forwardVersion))
 	}
 
 	return specs, nil

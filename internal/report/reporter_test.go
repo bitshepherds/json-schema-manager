@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -159,4 +160,54 @@ func TestJSONReporter(t *testing.T) {
 	assert.Contains(t, output, `"path": "pass.json"`)
 	assert.Contains(t, output, `"path": "fail.json"`)
 	assert.Contains(t, output, `"error": "boom"`)
+}
+
+func TestJSONReporter_CompatibilityDetail(t *testing.T) {
+	t.Parallel()
+	r := schema.NewTestReport()
+
+	earlier := schema.Key("shop_order_1_0_0")
+	later := schema.Key("shop_order_1_1_0")
+	forward, err := schema.NewSemVer("1", "1", "0")
+	require.NoError(t, err)
+	breaking := schema.Spec{
+		Schema:         schema.New(earlier, nil),
+		TestInfo:       schema.TestInfo{Path: "1/1/0/pass/refunded.json"},
+		TestDocType:    schema.TestDocTypePass,
+		ForwardVersion: &forward,
+		Err:            fmt.Errorf("rejected"),
+	}
+	local := schema.Spec{
+		Schema:      schema.New(later, nil),
+		TestInfo:    schema.TestInfo{Path: "1/1/0/pass/refunded.json"},
+		TestDocType: schema.TestDocTypePass,
+	}
+	r.AddFailedTest(earlier, &breaking)
+	r.AddPassedTest(later, &local)
+
+	var buf bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+
+	var out struct {
+		Results map[schema.Key]struct {
+			Passed []map[string]any `json:"passed"`
+			Failed []map[string]any `json:"failed"`
+		} `json:"results"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+
+	failed := out.Results[earlier].Failed
+	require.Len(t, failed, 1)
+	assert.Equal(t, "shop_order_1_0_0", failed[0]["validatedBy"])
+	assert.Equal(t, "1.1.0", failed[0]["forwardVersion"])
+
+	passed := out.Results[later].Passed
+	require.Len(t, passed, 1)
+	assert.Equal(t, "shop_order_1_1_0", passed[0]["validatedBy"])
+	assert.NotContains(t, passed[0], "forwardVersion")
+
+	// Empty result lists are written as [], not null
+	assert.NotNil(t, out.Results[earlier].Passed)
+	assert.NotNil(t, out.Results[later].Failed)
+	assert.NotContains(t, buf.String(), "null")
 }

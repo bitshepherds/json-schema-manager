@@ -38,6 +38,22 @@ stdout 'Test summary: 4 passed, 1 failed'
 ! exec jsm validate all -c -C -t consumer-breaking
 stdout 'Test summary: 0 passed, 1 failed'
 
+# A breaking-change failure names the schema that rejected the document, 1.0.0 (#50)
+! exec jsm validate all -c -C -t consumer-breaking
+stdout 'did not pass validation as expected for schema \S*shop_order_1_0_0.schema.json'
+! stdout 'for schema \S*shop_order_1_1_0.schema.json'
+
+# The JSON report says which schema validated the document, and which version it came from
+! exec jsm validate all -C -t consumer-breaking -o json
+stdout '"validatedBy": "shop_order_1_0_0"'
+stdout '"forwardVersion": "1.1.0"'
+
+! exec jsm validate shop_order_1_1_0 -o json
+stdout '"validatedBy": "shop_order_1_0_0"'
+stdout '"forwardVersion": "1.1.0"'
+stdout '"failed": \[\]'
+! stdout 'null'
+
 # A registry with no breaking change passes
 env JSM_REGISTRY_ROOT_DIR=ok
 exec jsm validate all -c -C

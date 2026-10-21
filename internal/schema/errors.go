@@ -226,7 +226,7 @@ type FailTestPassedError struct {
 }
 
 func (e FailTestPassedError) Error() string {
-	return fmt.Sprintf("Fail Test document %s did not fail validation as expected for schema %s:",
+	return fmt.Sprintf("Fail Test document %s was accepted by schema %s, but was expected to fail validation",
 		e.TestDocPath, e.SchemaPath)
 }
 
