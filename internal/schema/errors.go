@@ -350,3 +350,18 @@ type ChangedDeployedSchemasError struct {
 func (e *ChangedDeployedSchemasError) Error() string {
 	return fmt.Sprintf("cannot modify deployed schemas: %v", e.Paths)
 }
+
+// CollapsedSchemaError is returned when a collapsed schema does not compile, or does not give the
+// same result as the original schema for one of its test documents.
+type CollapsedSchemaError struct {
+	Key     Key
+	Wrapped error
+}
+
+func (e *CollapsedSchemaError) Error() string {
+	return fmt.Sprintf("the collapsed form of %s is not equivalent to the original: %s", e.Key, e.Wrapped)
+}
+
+func (e *CollapsedSchemaError) Unwrap() error {
+	return e.Wrapped
+}

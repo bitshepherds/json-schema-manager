@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitshepherds/json-schema-manager/internal/config"
 	"github.com/bitshepherds/json-schema-manager/internal/fsh"
 	"github.com/bitshepherds/json-schema-manager/internal/validator"
 )
@@ -302,7 +303,8 @@ func TestInliner_IdStripped(t *testing.T) {
 	defBody, ok := defs["domain_withid_1_0_0"].(map[string]any)
 	require.True(t, ok)
 	assert.NotContains(t, defBody, "$id", "$id should be stripped from inlined schemas")
-	assert.Contains(t, defBody, "$schema", "other properties should be preserved")
+	assert.NotContains(t, defBody, "$schema", "$schema should be stripped from inlined schemas")
+	assert.Equal(t, "object", defBody["type"], "other properties should be preserved")
 }
 
 func TestInliner_InvalidJSON(t *testing.T) {
@@ -546,4 +548,260 @@ environments:
 		require.Contains(t, string(res), "https://example.com/schema.json")
 		require.NotContains(t, string(res), "$defs")
 	})
+}
+
+// setupCompilingTestRegistry returns a registry which compiles schemas with the real compiler.
+func setupCompilingTestRegistry(t *testing.T) *Registry {
+	t.Helper()
+	regDir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(regDir, config.JsmRegistryConfigFile), []byte(testConfigData), 0o600))
+	r, err := NewRegistry(regDir, validator.NewSanthoshCompiler(), fsh.NewPathResolver(), fsh.NewEnvProvider())
+	require.NoError(t, err)
+	return r
+}
+
+// createTestDocs writes the given test documents, keyed by filename, for the schema k.
+func createTestDocs(t *testing.T, r *Registry, k Key, tt TestDocType, docs map[string]string) {
+	t.Helper()
+	dir := filepath.Join(New(k, r).Path(HomeDir), string(tt))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	for name, content := range docs {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+	}
+}
+
+// collapseAndVerify renders and collapses the schema k, then verifies the result.
+func collapseAndVerify(t *testing.T, r *Registry, k Key) (map[string]any, error) {
+	t.Helper()
+	ec := r.config.ProductionEnvConfig()
+	s, err := r.GetSchemaByKey(k)
+	require.NoError(t, err)
+	ri, err := r.CoordinateRender(s, ec)
+	require.NoError(t, err)
+
+	inl := NewInliner(r, ec)
+	collapsed, err := inl.Collapse(ri.Rendered)
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(collapsed, &doc))
+	return doc, inl.Verify(s, ri.Validator, collapsed)
+}
+
+// moneyOrderSchemas returns a shared money schema, which refers to its own definition of a currency
+// code, and an order schema which refers to it. Each uses the given draft and definitions keyword.
+func moneyOrderSchemas(draft, defsKeyword string) schemaMap {
+	return schemaMap{
+		"shared_money_1_0_0": `{
+  "$schema": "` + draft + `",
+  "$id": "{{ ID }}",
+  "` + defsKeyword + `": { "currencyCode": { "type": "string", "pattern": "^[A-Z]{3}$" } },
+  "type": "object",
+  "properties": {
+    "value": { "type": "number" },
+    "currency": { "$ref": "#/` + defsKeyword + `/currencyCode" }
+  },
+  "required": ["value", "currency"]
+}`,
+		"shop_order_1_0_0": `{
+  "$schema": "` + draft + `",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "total": { "$ref": "{{ JSM %%shared_money_1_0_0%% }}" } },
+  "required": ["total"]
+}`,
+	}
+}
+
+func TestInliner_CollapseRebasesInternalRefs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		draft       string
+		defsKeyword string
+	}{
+		{"draft-07 definitions", string(validator.Draft7), "definitions"},
+		{"2020-12 $defs", string(validator.Draft2020_12), "$defs"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := setupCompilingTestRegistry(t)
+			createSchemaFiles(t, r, moneyOrderSchemas(tc.draft, tc.defsKeyword))
+			createTestDocs(t, r, "shop_order_1_0_0", TestDocTypePass, map[string]string{
+				"eur.json": `{"total": {"value": 1, "currency": "EUR"}}`,
+			})
+			createTestDocs(t, r, "shop_order_1_0_0", TestDocTypeFail, map[string]string{
+				"lowercase.json": `{"total": {"value": 1, "currency": "eur"}}`,
+			})
+
+			doc, err := collapseAndVerify(t, r, "shop_order_1_0_0")
+			require.NoError(t, err)
+
+			defs, ok := doc["$defs"].(map[string]any)
+			require.True(t, ok)
+			money, ok := defs["shared_money_1_0_0"].(map[string]any)
+			require.True(t, ok)
+			assert.NotContains(t, money, "$schema", "only the root may declare $schema")
+			props, ok := money["properties"].(map[string]any)
+			require.True(t, ok)
+			currency, ok := props["currency"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "#/$defs/shared_money_1_0_0/"+tc.defsKeyword+"/currencyCode", currency["$ref"])
+		})
+	}
+}
+
+func TestInliner_CollapseRefWithFragment(t *testing.T) {
+	t.Parallel()
+	r := setupCompilingTestRegistry(t)
+	schemas := moneyOrderSchemas(string(validator.Draft7), "definitions")
+	schemas["shop_till_1_0_0"] = `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "currency": { "$ref": "{{ JSM %%shared_money_1_0_0%% }}#/definitions/currencyCode" } }
+}`
+	createSchemaFiles(t, r, schemas)
+	createTestDocs(t, r, "shop_till_1_0_0", TestDocTypePass, map[string]string{"eur.json": `{"currency": "EUR"}`})
+	createTestDocs(t, r, "shop_till_1_0_0", TestDocTypeFail, map[string]string{"eur.json": `{"currency": "eur"}`})
+
+	doc, err := collapseAndVerify(t, r, "shop_till_1_0_0")
+	require.NoError(t, err)
+
+	props, ok := doc["properties"].(map[string]any)
+	require.True(t, ok)
+	currency, ok := props["currency"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "#/$defs/shared_money_1_0_0/definitions/currencyCode", currency["$ref"])
+}
+
+func TestInliner_CollapseRefToAnchor(t *testing.T) {
+	t.Parallel()
+	r := setupCompilingTestRegistry(t)
+	createSchemaFiles(t, r, schemaMap{
+		"shared_code_1_0_0": `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "{{ ID }}",
+  "$defs": { "currency": { "$anchor": "currency", "type": "string", "pattern": "^[A-Z]{3}$" } }
+}`,
+		"shop_till_1_0_0": `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "{{ ID }}",
+  "properties": { "currency": { "$ref": "{{ JSM %%shared_code_1_0_0%% }}#currency" } }
+}`,
+	})
+	createTestDocs(t, r, "shop_till_1_0_0", TestDocTypePass, map[string]string{"eur.json": `{"currency": "EUR"}`})
+	createTestDocs(t, r, "shop_till_1_0_0", TestDocTypeFail, map[string]string{"eur.json": `{"currency": "eur"}`})
+
+	doc, err := collapseAndVerify(t, r, "shop_till_1_0_0")
+	require.NoError(t, err)
+
+	props, ok := doc["properties"].(map[string]any)
+	require.True(t, ok)
+	currency, ok := props["currency"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "#currency", currency["$ref"])
+}
+
+func TestInliner_Verify(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fails when a test document gives a different result", func(t *testing.T) {
+		t.Parallel()
+		// A 2020-12 schema which inlines a draft-07 one: draft-07 ignores keywords beside $ref,
+		// but without its own $schema the inlined body is read as 2020-12, which applies them
+		r := setupCompilingTestRegistry(t)
+		createSchemaFiles(t, r, schemaMap{
+			"shared_name_1_0_0": `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "definitions": { "text": { "type": "string" } },
+  "$ref": "#/definitions/text",
+  "maxLength": 3
+}`,
+			"shop_entry_1_0_0": `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "{{ ID }}",
+  "properties": { "name": { "$ref": "{{ JSM %%shared_name_1_0_0%% }}" } }
+}`,
+		})
+		createTestDocs(t, r, "shop_entry_1_0_0", TestDocTypePass, map[string]string{
+			"long.json": `{"name": "a long name"}`,
+		})
+
+		_, err := collapseAndVerify(t, r, "shop_entry_1_0_0")
+		var cErr *CollapsedSchemaError
+		require.ErrorAs(t, err, &cErr)
+		assert.Equal(t, Key("shop_entry_1_0_0"), cErr.Key)
+		assert.Contains(t, err.Error(), "long.json is accepted by the original but rejected by the collapsed form")
+	})
+
+	t.Run("skips missing test directories", func(t *testing.T) {
+		t.Parallel()
+		r := setupCompilingTestRegistry(t)
+		createSchemaFiles(t, r, moneyOrderSchemas(string(validator.Draft7), "definitions"))
+
+		_, err := collapseAndVerify(t, r, "shop_order_1_0_0")
+		require.NoError(t, err)
+	})
+
+	t.Run("fails when a test document cannot be read", func(t *testing.T) {
+		t.Parallel()
+		r := setupCompilingTestRegistry(t)
+		createSchemaFiles(t, r, moneyOrderSchemas(string(validator.Draft7), "definitions"))
+		createTestDocs(t, r, "shop_order_1_0_0", TestDocTypePass, map[string]string{"bad.json": `{`})
+
+		_, err := collapseAndVerify(t, r, "shop_order_1_0_0")
+		require.ErrorAs(t, err, &InvalidTestDocumentError{})
+	})
+
+	t.Run("fails when the collapsed schema is not JSON", func(t *testing.T) {
+		t.Parallel()
+		r := setupCompilingTestRegistry(t)
+		createSchemaFiles(t, r, moneyOrderSchemas(string(validator.Draft7), "definitions"))
+		s, err := r.GetSchemaByKey("shop_order_1_0_0")
+		require.NoError(t, err)
+
+		err = NewInliner(r, r.config.ProductionEnvConfig()).Verify(s, &mockValidator{}, []byte(`{`))
+		var cErr *CollapsedSchemaError
+		require.ErrorAs(t, err, &cErr)
+	})
+
+	t.Run("fails when the collapsed schema does not compile", func(t *testing.T) {
+		t.Parallel()
+		r := setupCompilingTestRegistry(t)
+		createSchemaFiles(t, r, moneyOrderSchemas(string(validator.Draft7), "definitions"))
+		s, err := r.GetSchemaByKey("shop_order_1_0_0")
+		require.NoError(t, err)
+
+		collapsed := []byte(`{"properties": {"total": {"$ref": "#/definitions/missing"}}}`)
+		err = NewInliner(r, r.config.ProductionEnvConfig()).Verify(s, &mockValidator{}, collapsed)
+		var cErr *CollapsedSchemaError
+		require.ErrorAs(t, err, &cErr)
+		assert.Contains(t, err.Error(), "does not compile")
+	})
+
+	t.Run("fails when the collapsed schema cannot be added to the compiler", func(t *testing.T) {
+		t.Parallel()
+		r := setupCompilingTestRegistry(t)
+		createSchemaFiles(t, r, moneyOrderSchemas(string(validator.Draft7), "definitions"))
+		s, err := r.GetSchemaByKey("shop_order_1_0_0")
+		require.NoError(t, err)
+
+		inl := NewInliner(r, r.config.ProductionEnvConfig())
+		inl.newCompiler = func() validator.Compiler { return &failingAddCompiler{} }
+		err = inl.Verify(s, &mockValidator{}, []byte(`{}`))
+		var cErr *CollapsedSchemaError
+		require.ErrorAs(t, err, &cErr)
+	})
+}
+
+// failingAddCompiler is a compiler which cannot add any schema.
+type failingAddCompiler struct{ mockCompiler }
+
+func (f *failingAddCompiler) AddSchema(_ string, _ validator.JSONSchema) error {
+	return os.ErrInvalid
 }

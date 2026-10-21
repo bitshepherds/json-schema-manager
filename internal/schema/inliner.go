@@ -1,10 +1,16 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
 	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/internal/validator"
 )
 
 // Inliner collapses external $ref references to JSM-managed schemas into internal
@@ -12,23 +18,27 @@ import (
 // This process is recursive: if a referenced schema itself references other schemas,
 // those are also inlined. The result is a fully self-contained JSON Schema.
 type Inliner struct {
-	registry *Registry
-	envCfg   *config.EnvConfig
+	registry    *Registry
+	envCfg      *config.EnvConfig
+	newCompiler func() validator.Compiler
 }
 
 // NewInliner creates a new Inliner for the given registry and environment configuration.
 func NewInliner(r *Registry, ec *config.EnvConfig) *Inliner {
 	return &Inliner{
-		registry: r,
-		envCfg:   ec,
+		registry:    r,
+		envCfg:      ec,
+		newCompiler: validator.NewSanthoshCompiler,
 	}
 }
 
 // Collapse takes a rendered JSON Schema and returns a version with all external $ref
 // references to JSM-managed schemas resolved into #/$defs/<key> references.
 // Referenced schema bodies are collected in a top-level $defs block.
-// The $id property is stripped from each inlined schema, as the schema key
-// serves as the unique identifier in the $defs block.
+// The $id and $schema properties are stripped from each inlined schema, as the schema key
+// serves as the unique identifier in the $defs block, and only the root may declare $schema.
+// JSON pointer references within an inlined schema, such as #/definitions/x, are rebased to
+// its place in the $defs block.
 func (inl *Inliner) Collapse(rendered []byte) ([]byte, error) {
 	var doc map[string]any
 	if err := json.Unmarshal(rendered, &doc); err != nil {
@@ -101,12 +111,18 @@ func (inl *Inliner) handleRef(obj, defs map[string]any, visited map[Key]bool) er
 		return nil
 	}
 
-	key, matched := inl.matchJSMRef(ref)
+	base, fragment, _ := strings.Cut(ref, "#")
+	key, matched := inl.matchJSMRef(base)
 	if !matched {
 		return nil
 	}
 
-	obj["$ref"] = "#/$defs/" + string(key)
+	if fragment == "" || strings.HasPrefix(fragment, "/") {
+		obj["$ref"] = "#/$defs/" + string(key) + fragment
+	} else {
+		// A named anchor stays valid, as the inlined schema keeps its $anchor
+		obj["$ref"] = "#" + fragment
+	}
 	if visited[key] {
 		return nil
 	}
@@ -116,6 +132,7 @@ func (inl *Inliner) handleRef(obj, defs map[string]any, visited map[Key]bool) er
 	if err != nil {
 		return err
 	}
+	rebaseLocalRefs(defBody, "#/$defs/"+string(key))
 	defs[string(key)] = defBody
 
 	// Recursively process the inlined definition for its own refs
@@ -141,8 +158,26 @@ func (inl *Inliner) matchJSMRef(ref string) (Key, bool) {
 	return "", false
 }
 
+// rebaseLocalRefs rewrites the JSON pointer $refs within an inlined schema body, such as
+// #/definitions/x, to point into the body's new place at prefix in the collapsed schema.
+func rebaseLocalRefs(node any, prefix string) {
+	switch v := node.(type) {
+	case map[string]any:
+		if ref, ok := v["$ref"].(string); ok && (ref == "#" || strings.HasPrefix(ref, "#/")) {
+			v["$ref"] = prefix + ref[1:]
+		}
+		for _, val := range v {
+			rebaseLocalRefs(val, prefix)
+		}
+	case []any:
+		for _, item := range v {
+			rebaseLocalRefs(item, prefix)
+		}
+	}
+}
+
 // renderDef renders the referenced schema and returns its body as a map, with
-// the $id property stripped.
+// the $id and $schema properties stripped.
 func (inl *Inliner) renderDef(k Key) (map[string]any, error) {
 	s, err := inl.registry.GetSchemaByKey(k)
 	if err != nil {
@@ -161,6 +196,54 @@ func (inl *Inliner) renderDef(k Key) (map[string]any, error) {
 
 	// Strip $id as the schema key serves as the unique identifier in $defs
 	delete(body, "$id")
+	delete(body, "$schema")
 
 	return body, nil
+}
+
+// Verify compiles the collapsed form of s on its own, and checks that each of s's pass and fail
+// test documents gives the same result against it as against original, the validator for s.
+func (inl *Inliner) Verify(s *Schema, original validator.Validator, collapsed []byte) error {
+	k := s.Key()
+	data, err := jsonschema.UnmarshalJSON(bytes.NewReader(collapsed))
+	if err != nil {
+		return &CollapsedSchemaError{Key: k, Wrapped: err}
+	}
+
+	c := inl.newCompiler()
+	id := string(s.CanonicalID(inl.envCfg))
+	if err = c.AddSchema(id, data); err != nil {
+		return &CollapsedSchemaError{Key: k, Wrapped: err}
+	}
+	v, err := c.Compile(id)
+	if err != nil {
+		return &CollapsedSchemaError{Key: k, Wrapped: fmt.Errorf("it does not compile: %w", err)}
+	}
+
+	for _, tt := range []TestDocType{TestDocTypePass, TestDocTypeFail} {
+		docs, dErr := s.TestDocuments(tt)
+		var missing *TestDirMissingConfigError
+		if errors.As(dErr, &missing) {
+			continue
+		}
+		if dErr != nil {
+			return dErr
+		}
+		for _, doc := range docs {
+			wasValid := original.Validate(doc.Unmarshalled) == nil
+			if isValid := v.Validate(doc.Unmarshalled) == nil; isValid != wasValid {
+				return &CollapsedSchemaError{Key: k, Wrapped: fmt.Errorf(
+					"test document %s is %s by the original but %s by the collapsed form",
+					doc.Path, validity(wasValid), validity(isValid))}
+			}
+		}
+	}
+	return nil
+}
+
+func validity(valid bool) string {
+	if valid {
+		return "accepted"
+	}
+	return "rejected"
 }

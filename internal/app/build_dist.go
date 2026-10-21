@@ -29,6 +29,8 @@ If the --collapse (-C) flag is used, external $ref references to other JSM-manag
 schemas in the same registry are resolved and inlined into a $defs block within each
 schema. This produces self-contained schemas that can be used without loading their
 dependencies. The collapse is recursive: transitive dependencies are also inlined.
+Each collapsed schema is compiled on its own, and its pass and fail test documents
+must give the same results as with the original, or the command fails.
 
 WARNING: Using the --all (-a) flag is NOT recommended in a deployment pipeline, as it 
 bypasses safety checks and may deploy unintended changes. It is primarily intended 
