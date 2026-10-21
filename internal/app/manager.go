@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,10 @@ import (
 	"github.com/bitshepherds/json-schema-manager/internal/report"
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
 )
+
+// ErrTestsFailed is returned by ValidateSchema, after the report is written, when any test failed.
+// The report already describes the failures, so Run does not print it again.
+var ErrTestsFailed = errors.New("one or more tests failed")
 
 // Manager defines the business logic for JSON schema operations.
 type Manager interface {
@@ -205,7 +210,15 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 		reporter = &report.TextReporter{Verbose: verbose, UseColour: useColour}
 	}
 
-	return reporter.Write(m.reporterWriter, tr)
+	if wErr := reporter.Write(m.reporterWriter, tr); wErr != nil {
+		return wErr
+	}
+
+	if len(tr.FailedTests) > 0 {
+		return ErrTestsFailed
+	}
+
+	return nil
 }
 
 // WatchValidation watches for changes in the registry and triggers validation.

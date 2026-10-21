@@ -47,6 +47,11 @@ jsm is a CLI tool for developing and testing JSON Schemas which act as bulletpro
 data contracts between services in an organisation. 
 Use it to craft data contracts ahead of service implementation and validate that
 changes in data contracts will not break existing services.
+
+Exit codes:
+  0  success: every test and check passed
+  1  a test or check failed (validate, check-changes)
+  2  jsm could not run (usage, configuration, schema or git error)
 `
 
 // NewRootCmd creates the root command and wires up dependencies.

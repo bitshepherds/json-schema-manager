@@ -55,9 +55,7 @@ func TestMain(m *testing.M) {
 	testscript.Main(m, map[string]func(){
 		"jsm": func() {
 			ctx := context.Background()
-			if err := app.Run(ctx, os.Args, os.Stdout, os.Stderr, nil); err != nil {
-				os.Exit(1)
-			}
+			os.Exit(app.ExitCode(app.Run(ctx, os.Args, os.Stdout, os.Stderr, nil)))
 		},
 	})
 }
@@ -159,4 +157,66 @@ func TestBinary_Validate(t *testing.T) {
 		errVal := cmd.Run()
 		assert.Error(t, errVal)
 	})
+}
+
+func TestBinary_ValidateFailedTestsExitCode(t *testing.T) {
+	t.Parallel()
+	if err := ensureBinary(); err != nil {
+		t.Fatal(err)
+	}
+	regDir := setupIntegrationRegistry(t)
+
+	schemaPath := filepath.Join(regDir, "domain", "family", "1", "0", "0")
+	require.NoError(t, os.MkdirAll(filepath.Join(schemaPath, "pass"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(schemaPath, "fail"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(schemaPath, "domain_family_1_0_0.schema.json"),
+		[]byte(`{"type": "object"}`), 0o600))
+	// Valid against the schema, so this fail test fails
+	require.NoError(t, os.WriteFile(filepath.Join(schemaPath, "fail", "accepted.json"), []byte(`{}`), 0o600))
+
+	for _, format := range []string{"text", "json"} {
+		cmd := exec.CommandContext(context.Background(), binaryPath, "validate", "domain_family_1_0_0", "-o", format)
+		cmd.Env = append(os.Environ(), "JSM_REGISTRY_ROOT_DIR="+regDir)
+
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+
+		runErr := cmd.Run()
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, runErr, &exitErr, "%s output: %s", format, stdout.String())
+		assert.Equal(t, 1, exitErr.ExitCode(), format)
+		assert.Contains(t, stdout.String(), "accepted.json", format)
+	}
+}
+
+func TestBinary_CannotRunExitCode(t *testing.T) {
+	t.Parallel()
+	if err := ensureBinary(); err != nil {
+		t.Fatal(err)
+	}
+	regDir := setupIntegrationRegistry(t)
+
+	tests := []struct {
+		name string
+		env  string
+		args []string
+	}{
+		{"unknown command", regDir, []string{"no-such-command"}},
+		{"unknown flag", regDir, []string{"validate", "all", "--no-such-flag"}},
+		{"missing schema", regDir, []string{"validate", "missing_family_1_0_0"}},
+		{"missing registry", filepath.Join(regDir, "missing"), []string{"validate", "all"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.CommandContext(context.Background(), binaryPath, tt.args...)
+			cmd.Env = append(os.Environ(), "JSM_REGISTRY_ROOT_DIR="+tt.env)
+
+			runErr := cmd.Run()
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, runErr, &exitErr)
+			assert.Equal(t, 2, exitErr.ExitCode())
+		})
+	}
 }

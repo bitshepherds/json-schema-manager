@@ -178,6 +178,16 @@ E.g. Given a family 'my-schema' with the following 5 versions:
 
 Note that JSON Schema Manager will automatically calculate which test documents to use in testing. For a given version of a schema in a family, it will also automatically apply test documents from certain other versions of the family to ensure that no inadvertent breaking changes have been introduced.
 
+## Exit codes
+
+Every `jsm` command exits with one of these codes, so CI can gate on it without parsing the output:
+
+| Code | Meaning |
+|------|---------|
+| `0`  | The command succeeded, and every test and check passed. |
+| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` (including a newer version breaking an earlier one), or `check-changes` found a deployed schema modified. The report says which. |
+| `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
+
 
 ---
 

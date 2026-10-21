@@ -238,6 +238,36 @@ environments:
 		require.Error(t, vErr)
 		require.ErrorContains(t, vErr, "pass directory missing")
 	})
+
+	t.Run("failed tests return ErrTestsFailed after writing the report", func(t *testing.T) {
+		t.Parallel()
+		fKey := schema.Key("domain_failing_1_0_0")
+		fs := schema.New(fKey, registry)
+		fHomeDir := fs.Path(schema.HomeDir)
+		require.NoError(t, os.MkdirAll(filepath.Join(fHomeDir, "pass"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(fHomeDir, "fail"), 0o755))
+		require.NoError(t, os.WriteFile(fs.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+		// The mock validator accepts every document, so this fail test fails
+		require.NoError(t, os.WriteFile(filepath.Join(fHomeDir, "fail", "accepted.json"), []byte(`{}`), 0o600))
+
+		for _, format := range []string{"text", "json"} {
+			var out bytes.Buffer
+			mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &out)
+			vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &fKey},
+				false, format, false, true, schema.TestScopeLocal, false)
+			require.ErrorIs(t, vErr, ErrTestsFailed, format)
+			assert.Contains(t, out.String(), "accepted.json", format)
+		}
+	})
+
+	t.Run("report write error", func(t *testing.T) {
+		t.Parallel()
+		mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &failingWriter{})
+		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
+			false, "text", false, false, schema.TestScopeLocal, false)
+		require.Error(t, vErr)
+		assert.NotErrorIs(t, vErr, ErrTestsFailed)
+	})
 }
 
 func TestCLIManager_WatchValidation(t *testing.T) {
