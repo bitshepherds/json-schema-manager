@@ -188,6 +188,18 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 | `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` (including a newer version breaking an earlier one), or `check-changes` found a deployed schema modified. The report says which. |
 | `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
 
+## Git history in CI
+
+`check-changes` and `build-dist` compare the registry with the last deployment to an environment, which is the newest `jsm-deploy/<env>/*` tag created by `jsm tag-deployment`. They need the history and tags back to that tag. CI systems often clone with only the latest commit, so fetch the full history. In GitHub Actions:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+```
+
+In a shallow clone without the tag, both commands fail with exit code `2` rather than guess. With no deployment tag at all, every schema is treated as new.
+
 
 ---
 
