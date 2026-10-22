@@ -38,3 +38,41 @@ func TestFailedKeywords(t *testing.T) {
 	assert.Nil(t, FailedKeywords(errors.New("other"), id))
 	assert.Nil(t, FailedKeywords(nil, id))
 }
+
+func TestSanthoshCompiler_AssertFormat(t *testing.T) {
+	t.Parallel()
+
+	const id = "https://example.com/email.schema.json"
+	schema := map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"format":  "email",
+	}
+	compile := func(c Compiler) Validator {
+		require.NoError(t, c.AddSchema(id, schema))
+		v, err := c.Compile(id)
+		require.NoError(t, err)
+		return v
+	}
+
+	c := NewSanthoshCompiler()
+	require.NoError(t, compile(c).Validate("not-an-email"), "format is an annotation under 2020-12")
+
+	fa, ok := c.(FormatAsserter)
+	require.True(t, ok)
+	fa.AssertFormat()
+	c.Clear()
+	v := compile(c)
+	require.Error(t, v.Validate("not-an-email"), "format is asserted, and stays so after Clear")
+	require.NoError(t, v.Validate("ann@example.com"))
+}
+
+func TestSanthoshCompiler_ExternalRef(t *testing.T) {
+	t.Parallel()
+
+	const id = "https://example.com/place.schema.json"
+	c := NewSanthoshCompiler()
+	require.NoError(t, c.AddSchema(id, map[string]any{"$ref": "https://geojson.org/schema/Point.json"}))
+	_, err := c.Compile(id)
+	require.ErrorContains(t, err,
+		"$ref https://geojson.org/schema/Point.json is external, and external $refs are not supported")
+}

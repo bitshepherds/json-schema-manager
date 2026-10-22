@@ -12,7 +12,6 @@ import (
 //
 //nolint:gocognit // high complexity command setup
 func NewCreateSchemaVersionCmd(mgr Manager) *cobra.Command {
-	var verbose bool
 	var keyStr string
 	var idStr string
 
@@ -46,7 +45,6 @@ IDENTIFYING A TARGET SCHEMA
 `,
 	}
 
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show details of the new version")
 	cmd.Flags().StringVarP(&keyStr, "key", "k", "", "Identify a target schema by its key")
 	cmd.Flags().StringVarP(&idStr, "id", "i", "", "Identify a target schema by its canonical ID")
 

@@ -2,10 +2,12 @@ package app
 
 import (
 	"bytes"
+	"io"
 	"log/slog"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -107,4 +109,31 @@ func TestRootCmd(t *testing.T) {
 		err := rootCmd.Execute()
 		require.NoError(t, err)
 	})
+}
+
+// TestShortFlagsMeanOneThing checks that each short flag means the same on every command, apart
+// from the root's -v for --version.
+func TestShortFlagsMeanOneThing(t *testing.T) {
+	t.Parallel()
+
+	root := NewRootCmd(&LazyManager{}, new(slog.LevelVar), io.Discard, io.Discard, fsh.NewEnvProvider())
+	meanings := make(map[string]map[string]bool)
+	for _, cmd := range root.Commands() {
+		cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			if f.Shorthand == "" || f.Name == "help" {
+				return
+			}
+			if meanings[f.Shorthand] == nil {
+				meanings[f.Shorthand] = make(map[string]bool)
+			}
+			meanings[f.Shorthand][f.Name] = true
+		})
+	}
+	for short, names := range meanings {
+		assert.Len(t, names, 1, "-%s means %v", short, names)
+	}
+
+	csv, _, err := root.Find([]string{"create-schema-version"})
+	require.NoError(t, err)
+	assert.Nil(t, csv.Flags().Lookup("verbose"), "create-schema-version has no verbose output")
 }

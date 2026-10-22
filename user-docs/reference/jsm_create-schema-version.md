@@ -38,7 +38,6 @@ IDENTIFYING A TARGET SCHEMA
   -h, --help         help for create-schema-version
   -i, --id string    Identify a target schema by its canonical ID
   -k, --key string   Identify a target schema by its key
-  -v, --verbose      Show details of the new version
 ```
 
 ### Options inherited from parent commands

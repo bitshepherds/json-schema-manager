@@ -49,6 +49,7 @@ environments:
 
 This file defines the following:
 - the JSON Schema version (`$schema`) of new schemas, `defaultJsonSchemaVersion`. The supported values are listed in the file `jsm create-registry` writes; the default is draft-07.
+- whether the `format` keyword rejects invalid values, `assertFormat`. Under draft-07 and earlier it does, but under 2019-09 and 2020-12 it is only an annotation, so `"format": "email"` accepts any string. Set `assertFormat: true` to make it reject invalid values under every version, so that moving a family to a newer version does not weaken its validation.
 - the environments that schemas can be published to, exactly one of which must be marked `isProduction: true`
 - the private URL root for each environment
 - the public URL root for each environment
@@ -148,7 +149,7 @@ The `_` character is used to separate components of the directory path in the fi
 
 ### Identity Follows Directory Structure
 
-The `$id` property of a JSON Schema **must** match the directory structure. JSON Schema Manager will auto-generate the ID based on the directory structure, the environment being published to, and the settings in the registry configuration file in the root of the registry: `json-schema-manager-config.yml`
+The `$id` property of a JSON Schema **must** match the directory structure. JSON Schema Manager will auto-generate the ID based on the directory structure, the environment being published to, and the settings in the registry configuration file in the root of the registry: `json-schema-manager-config.yml`. A schema which sets `$id` to anything but `{{ ID }}` fails to render, so `validate` and `build-dist` fail too.
 
 See [Special Properties](#special-properties) below for more details.
 
@@ -184,7 +185,9 @@ e.g.
 "$ref": "{{ JSM `customer_b2c-customer_2_0_0` }}"
 ```
 
-If referencing schema within the same file, or an external schema not managed by JSON Schema Manager, just set `$ref` in the usual way defined in the JSON Schema specification.
+To refer to a part of the same schema, set `$ref` in the usual way defined in the JSON Schema specification, e.g. `"$ref": "#/$defs/money"`.
+
+A registry is closed: every schema it uses is in the registry, and tested there. So JSM does not fetch schemas from the network, and a `$ref` to any other URL, such as `https://geojson.org/schema/Point.json`, fails with an error naming the URL. To use an external schema, copy it into the registry as a schema family of its own, and refer to it with `{{ JSM ... }}`.
 
 ### Visibility Control
 

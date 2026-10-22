@@ -52,7 +52,7 @@ func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
 	cmd.Flags().StringVarP(&keyStr, "key", "k", "", "Identify a target schema by its key")
 	cmd.Flags().StringVarP(&idStr, "id", "i", "", "Identify a target schema by its canonical ID")
 	cmd.Flags().StringVarP(&envStr, "env", "e", "", "The environment to use for rendering (defaults to production)")
-	cmd.Flags().BoolVarP(&collapse, "collapse", "C", false,
+	cmd.Flags().BoolVar(&collapse, "collapse", false,
 		"Inline external $ref dependencies into the schema's $defs block, failing if the result "+
 			"does not compile or its test documents give different results")
 

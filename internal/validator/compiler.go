@@ -30,6 +30,11 @@ type Validator interface {
 	Validate(v JSONDocument) error
 }
 
+// FormatAsserter is a Compiler which can treat the format keyword as an assertion.
+type FormatAsserter interface {
+	AssertFormat()
+}
+
 // Compiler defines a JSON Schema compiler. Because JSON schemas can, and often do reference
 // other sub-schemas via the $ref property, a Compiler first must register all the
 // JSON Schemas that it will need to compile.

@@ -268,6 +268,8 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 | `0`  | The command succeeded, and every test and check passed. |
 | `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), `check-changes` found a deployed schema modified, or `check-consumer` found a listed version missing or broken by a later one. With `--strict`, a warning also exits `1`. The report says which. |
 | `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
+| `130` | JSM was interrupted, by Ctrl+C (SIGINT), before it finished. |
+| `143` | JSM was stopped by SIGTERM, for example when a CI job times out, before it finished. |
 
 ## Running JSM in CI
 

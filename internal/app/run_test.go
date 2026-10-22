@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -193,21 +194,32 @@ environments:
 		require.NoError(t, os.WriteFile(filepath.Join(regDir, "domain", "family", "1", "0", "0",
 			"domain_family_1_0_0.schema.json"), []byte(`{"type":"object"}`), 0o600))
 
-		ctx, cancel := context.WithCancel(context.Background())
+		for _, tt := range []struct {
+			cause    error
+			wantMsg  string
+			wantExit int
+		}{
+			{nil, "Interrupted by user", ExitInterrupted},
+			{&SignalError{Signal: os.Interrupt}, "Interrupted by user", ExitInterrupted},
+			{&SignalError{Signal: syscall.SIGTERM}, "Terminated", ExitTerminated},
+		} {
+			ctx, cancel := context.WithCancelCause(context.Background())
 
-		var stderr bytes.Buffer
-		done := make(chan error, 1)
-		go func() {
-			done <- Run(ctx, []string{"jsm", "validate", "domain_family_1_0_0", "--watch"}, io.Discard, &stderr, env)
-		}()
+			var stderr bytes.Buffer
+			done := make(chan error, 1)
+			go func() {
+				done <- Run(ctx, []string{"jsm", "validate", "domain_family_1_0_0", "--watch"}, io.Discard, &stderr, env)
+			}()
 
-		// Wait a bit for it to start watching
-		time.Sleep(500 * time.Millisecond)
-		cancel()
-		err := <-done
+			// Wait a bit for it to start watching
+			time.Sleep(500 * time.Millisecond)
+			cancel(tt.cause)
+			err := <-done
 
-		require.NoError(t, err)
-		assert.Contains(t, stderr.String(), "Interrupted by user", "Stderr was: %q, Err was: %v", stderr.String(), err)
+			require.Error(t, err)
+			assert.Equal(t, tt.wantExit, ExitCode(err), "a stopped run does not exit 0")
+			assert.Contains(t, stderr.String(), tt.wantMsg, "Stderr was: %q, Err was: %v", stderr.String(), err)
+		}
 	})
 }
 
@@ -225,6 +237,9 @@ func TestExitCode(t *testing.T) {
 		{"deployed schemas changed", &schema.ChangedDeployedSchemasError{Paths: []string{"a"}}, ExitCheckFailed},
 		{"setup error", &schema.NoSchemaTargetsError{}, ExitCannotRun},
 		{"other error", errors.New("boom"), ExitCannotRun},
+		{"cancelled", context.Canceled, ExitInterrupted},
+		{"SIGINT", &SignalError{Signal: os.Interrupt}, ExitInterrupted},
+		{"SIGTERM", fmt.Errorf("run: %w", &SignalError{Signal: syscall.SIGTERM}), ExitTerminated},
 	}
 
 	for _, tt := range tests {

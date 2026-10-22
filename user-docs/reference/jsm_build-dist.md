@@ -19,7 +19,7 @@ mutations are forbidden.
 If the --all (-a) flag is used, all schemas in the registry are rendered and written 
 to the dist directory, skipping the mutation check.
 
-If the --collapse (-C) flag is used, external $ref references to other JSM-managed
+If the --collapse flag is used, external $ref references to other JSM-managed
 schemas in the same registry are resolved and inlined into a $defs block within each
 schema. This produces self-contained schemas that can be used without loading their
 dependencies. The collapse is recursive: transitive dependencies are also inlined.
@@ -43,7 +43,7 @@ jsm build-dist [environment] [flags]
 
 ```
   -a, --all          Render and build all schemas, skipping mutation checks
-  -C, --collapse     Inline external $ref dependencies into each schema's $defs block
+      --collapse     Inline external $ref dependencies into each schema's $defs block
   -h, --help         help for build-dist
       --skip-tests   Build without first running the schemas' tests and compatibility check
 ```

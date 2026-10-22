@@ -1,0 +1,83 @@
+# A schema's $id must be {{ ID }}, external $refs are refused with a clear error, and assertFormat
+# makes format reject invalid values under 2020-12 (#55)
+
+exec git init -q
+
+# A hard-coded $id fails
+env JSM_REGISTRY_ROOT_DIR=ids
+! exec jsm validate misc_hard-id_1_0_0 -c
+stderr 'misc_hard-id_1_0_0.schema.json sets \$id to https://elsewhere.example.com/x.json: set "\$id": "\{\{ ID \}\}"'
+exec jsm validate misc_good-id_1_0_0 -c
+stdout 'Test summary: 2 passed, 0 failed'
+
+# An external $ref is refused, naming the URL
+env JSM_REGISTRY_ROOT_DIR=external
+! exec jsm validate geo_place_1_0_0 -c
+stderr '\$ref https://geojson.org/schema/Point.json is external, and external \$refs are not supported'
+
+# Under 2020-12, format is an annotation by default, so the invalid email is accepted
+env JSM_REGISTRY_ROOT_DIR=format
+! exec jsm validate people_contact_1_0_0 -c
+stdout 'bad-email.json \(passed, when expected fail\)'
+
+# With assertFormat, it is rejected
+cp assert-format.yml format/json-schema-manager-config.yml
+exec jsm validate people_contact_1_0_0 -c
+stdout 'Test summary: 2 passed, 0 failed'
+
+-- assert-format.yml --
+assertFormat: true
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- ids/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- ids/misc/hard-id/1/0/0/misc_hard-id_1_0_0.schema.json --
+{"$schema": "http://json-schema.org/draft-07/schema#", "$id": "https://elsewhere.example.com/x.json", "type": "object"}
+-- ids/misc/hard-id/1/0/0/pass/a.json --
+{}
+-- ids/misc/hard-id/1/0/0/fail/b.json --
+[]
+-- ids/misc/good-id/1/0/0/misc_good-id_1_0_0.schema.json --
+{"$schema": "http://json-schema.org/draft-07/schema#", "$id": "{{ ID }}", "type": "object"}
+-- ids/misc/good-id/1/0/0/pass/a.json --
+{}
+-- ids/misc/good-id/1/0/0/fail/b.json --
+[]
+-- external/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- external/geo/place/1/0/0/geo_place_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "properties": { "location": { "$ref": "https://geojson.org/schema/Point.json" } }
+}
+-- external/geo/place/1/0/0/pass/a.json --
+{}
+-- external/geo/place/1/0/0/fail/.keep --
+-- format/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- format/people/contact/1/0/0/people_contact_1_0_0.schema.json --
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "{{ ID }}",
+  "properties": { "email": { "type": "string", "format": "email" } }
+}
+-- format/people/contact/1/0/0/pass/good-email.json --
+{"email": "ann@example.com"}
+-- format/people/contact/1/0/0/fail/bad-email.json --
+{"email": "not-an-email"}

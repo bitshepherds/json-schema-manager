@@ -54,6 +54,12 @@ func (r *Renderer) Render() ([]byte, validator.JSONSchema, error) {
 	if err != nil {
 		return nil, nil, &InvalidJSONError{Path: fp, Wrapped: err}
 	}
+	// The $id must come from {{ ID }}, so that it follows the schema's place in the registry
+	if m, ok := data.(map[string]any); ok {
+		if id, has := m["$id"]; has && id != string(r.s.CanonicalID(r.ec)) {
+			return nil, nil, &HardCodedIDError{Path: fp, ID: id}
+		}
+	}
 	return renderedBytes, validator.JSONSchema(data), nil
 }
 

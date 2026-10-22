@@ -47,6 +47,9 @@ func NewRegistry(
 	if err != nil {
 		return nil, err
 	}
+	if fa, ok := compiler.(validator.FormatAsserter); ok && cfg.AssertFormat {
+		fa.AssertFormat()
+	}
 
 	return &Registry{
 		cache:         make(Cache),
