@@ -1,0 +1,23 @@
+# An OpenAPI document whose response body is a JSM schema. The $ref points at the collapsed
+# schema which 'jsm build-dist prod --collapse' writes, so tools resolve it without the network.
+openapi: 3.1.0
+info:
+  title: Customer API
+  version: 1.0.0
+paths:
+  /customers/{customerNumber}:
+    get:
+      operationId: getCustomer
+      parameters:
+        - name: customerNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The customer
+          content:
+            application/json:
+              schema:
+                $ref: '../../dist/prod/private/domain-c_domain-c-a_customer_1_0_0.schema.json'

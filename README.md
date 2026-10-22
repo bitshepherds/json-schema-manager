@@ -42,6 +42,7 @@ See the user docs:
 - [Developing Schemas](./user-docs/developing-schemas.md): the workflow, CI, exit codes, and how JSM checks compatibility.
 - [Registry](./user-docs/registry.md): how a registry is laid out and configured.
 - [Generating Typed Models](./user-docs/generating-models.md): TypeScript, Go and other models from the registry's schemas.
+- [Referring to JSM Schemas from AsyncAPI and OpenAPI](./user-docs/api-documents.md): message and body schemas for API documents.
 - [Command reference](./user-docs/reference/jsm.md): every command and flag, generated from the CLI.
 
 ## Contributing

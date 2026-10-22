@@ -237,7 +237,7 @@ Source schemas contain templates, such as `"$id": "{{ ID }}"`, which JSM fills i
 - `jsm check-changes <env>` - fails if a deployed schema or its test documents were changed, in an environment which does not allow schema mutation.
 - `jsm tag-deployment <env>` - records a successful deployment with a git tag, which `check-changes` and `build-dist` compare against.
 
-Add `--collapse` to `render-schema` or `build-dist` to inline the other JSM schemas a schema refers to, making each schema self-contained. Generate typed models from collapsed schemas: see [Generating Typed Models](./generating-models.md).
+Add `--collapse` to `render-schema` or `build-dist` to inline the other JSM schemas a schema refers to, making each schema self-contained. Generate typed models from collapsed schemas: see [Generating Typed Models](./generating-models.md). AsyncAPI and OpenAPI documents can refer to them too: see [Referring to JSM Schemas from AsyncAPI and OpenAPI](./api-documents.md).
 
 JSM does not publish the `dist` directory: copy it to wherever your schemas are served from, at the URL roots in the configuration file.
 

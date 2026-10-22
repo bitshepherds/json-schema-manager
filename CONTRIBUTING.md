@@ -158,6 +158,7 @@ make test-race
 | `make cover-html`    | Opens test coverage report in browser.                                                    |
 | `make lint`          | Runs the linter.                                                                          |
 | `make check-models`  | Checks that the commands in `user-docs/generating-models.md` generate models which compile (needs Node.js). |
+| `make check-apis`    | Checks that the AsyncAPI and OpenAPI examples in `examples/apis` are valid (needs Node.js). |
 | `make docs`          | Regenerates the command reference in `user-docs/reference` after a command or flag change. |
 | `make snapshot`      | Runs a GoReleaser snapshot build to verify release configuration locally.                 |
 | `make release-check` | Validates the GoReleaser configuration file.                                              |
