@@ -2,8 +2,12 @@
 package schema
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
+
+	"github.com/bitshepherds/json-schema-manager/internal/config"
 )
 
 // NoDomainError is returned when a schema does not have a domain.
@@ -157,12 +161,31 @@ func (e TemplateExecutionFailedError) Error() string {
 
 // RegistryInitError is returned when the registry cannot be initialised.
 type RegistryInitError struct {
-	Path string
-	Err  error
+	Path   string
+	Source string // where the path came from: the --registry flag or the environment variable
+	Err    error
 }
 
 func (e *RegistryInitError) Error() string {
+	if errors.Is(e.Err, fs.ErrNotExist) {
+		return fmt.Sprintf("registry root %s, given by %s, does not exist", e.Path, e.Source)
+	}
 	return fmt.Sprintf("Registry could not be initialised. Path: %s, Error: %s", e.Path, e.Err)
+}
+
+func (e *RegistryInitError) Unwrap() error {
+	return e.Err
+}
+
+// NoRegistryError is returned when no registry root was given, and the current directory is not one.
+type NoRegistryError struct {
+	Dir string
+}
+
+func (e *NoRegistryError) Error() string {
+	return fmt.Sprintf("no registry found: %s has no %s. Run jsm in a registry's root directory, give its "+
+		"path with --registry (-r) or $%s, or create a registry with 'jsm create-registry <dir>'",
+		e.Dir, config.JsmRegistryConfigFile, RootDirEnvVar)
 }
 
 // RegistryRootNotFolderError is returned when the registry root is not a directory.

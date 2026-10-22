@@ -2,6 +2,7 @@ package schema
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,8 +36,7 @@ func TestNewRegistry(t *testing.T) {
 				if !errors.As(err, &target) {
 					t.Fatalf("expected RegistryInitError, got %v", err)
 				}
-				assert.Contains(t, err.Error(), "Registry could not be initialised")
-				assert.Contains(t, err.Error(), target.Path)
+				assert.Equal(t, "registry root "+target.Path+", given by --registry, does not exist", err.Error())
 			},
 		},
 		{
@@ -152,6 +152,34 @@ environments:
 			}
 		})
 	}
+}
+
+func TestNewRegistry_NotFound(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no registry given, and the current directory is not one", func(t *testing.T) {
+		t.Parallel()
+		_, err := NewRegistry("", &mockCompiler{}, fsh.NewPathResolver(), &mockEnvProvider{})
+		var target *NoRegistryError
+		require.ErrorAs(t, err, &target)
+		assert.Contains(t, err.Error(), "has no json-schema-manager-config.yml. Run jsm in a registry's root directory")
+		assert.Contains(t, err.Error(), "jsm create-registry <dir>")
+	})
+
+	t.Run("a path from the environment which does not exist", func(t *testing.T) {
+		t.Parallel()
+		missing := filepath.Join(t.TempDir(), "missing")
+		env := &mockEnvProvider{values: map[string]string{RootDirEnvVar: missing}}
+		_, err := NewRegistry("", &mockCompiler{}, fsh.NewPathResolver(), env)
+		require.EqualError(t, err, "registry root "+missing+", given by $JSM_REGISTRY_ROOT_DIR, does not exist")
+		require.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
+	t.Run("a registry given without a config file", func(t *testing.T) {
+		t.Parallel()
+		_, err := NewRegistry(t.TempDir(), &mockCompiler{}, fsh.NewPathResolver(), &mockEnvProvider{})
+		require.ErrorAs(t, err, new(*config.MissingConfigError), "only a missing registry gets the setup advice")
+	})
 }
 
 func TestKeyFromSchemaPath(t *testing.T) {
