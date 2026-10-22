@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -451,4 +452,41 @@ func TestWatcher(t *testing.T) {
 		})
 		assert.ErrorContains(t, err, "injected factory fail")
 	})
+}
+
+func TestWatcher_SaysWhatItWatches(t *testing.T) {
+	t.Parallel()
+
+	r := setupTestRegistry(t)
+	s, err := r.CreateSchema("domain/family-1")
+	require.NoError(t, err)
+	key := s.Key()
+	scope := SearchScope("domain")
+
+	for _, tt := range []struct {
+		target ResolvedTarget
+		want   string
+	}{
+		{ResolvedTarget{}, "Watching every schema in the registry at "},
+		{ResolvedTarget{Scope: &scope}, "Watching the schemas in domain in the registry at "},
+		{ResolvedTarget{Key: &key}, "Watching " + string(key) + " in the registry at "},
+	} {
+		var buf bytes.Buffer
+		w := NewWatcher(r, slog.New(slog.NewTextHandler(&buf, nil)))
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			_ = w.Watch(ctx, tt.target, func(WatchEvent) {})
+			close(done)
+		}()
+		select {
+		case <-w.Ready:
+		case <-time.After(time.Second):
+			t.Fatal("watcher did not become ready in time")
+		}
+		cancel()
+		<-done
+		assert.Contains(t, buf.String(), tt.want)
+		assert.Contains(t, buf.String(), "Press Ctrl+C to stop.")
+	}
 }

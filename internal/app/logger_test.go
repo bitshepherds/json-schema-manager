@@ -227,6 +227,12 @@ func TestConsoleHandler_Thorough(t *testing.T) {
 		require.NoError(t, err3)
 		assert.Contains(t, buf.String(), "msg pid=123")
 
+		// The component attribute is for the log file, not the console
+		buf.Reset()
+		h4 := handler.WithAttrs([]slog.Attr{slog.String("component", "watcher")})
+		require.NoError(t, h4.Handle(context.Background(), slog.NewRecord(time.Now(), slog.LevelInfo, "msg", 0)))
+		assert.Equal(t, "msg\n", buf.String())
+
 		// Test WithGroup
 		h3 := h2.WithGroup("somegroup")
 		assert.Equal(t, h2, h3) // Currently returns self
