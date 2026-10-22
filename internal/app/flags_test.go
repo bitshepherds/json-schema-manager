@@ -10,26 +10,27 @@ import (
 func TestFormatValue(t *testing.T) {
 	t.Parallel()
 
-	f := formatValue("text")
-	assert.Equal(t, "text", f.String())
-	assert.Equal(t, "<format>", f.Type())
+	t.Run("defaults to the first format", func(t *testing.T) {
+		t.Parallel()
+		f := newFormatValue(formatText, formatJSON)
+		assert.Equal(t, "text", f.String())
+		assert.Equal(t, "<format>", f.Type())
+	})
 
 	t.Run("valid values", func(t *testing.T) {
 		t.Parallel()
-		err := f.Set("json")
-		require.NoError(t, err)
-		assert.Equal(t, "json", f.String())
-
-		err = f.Set("text")
-		require.NoError(t, err)
-		assert.Equal(t, "text", f.String())
+		f := newFormatValue(formatText, formatJSON, formatJUnit)
+		for _, v := range []string{"json", "junit", "text"} {
+			require.NoError(t, f.Set(v))
+			assert.Equal(t, v, f.String())
+		}
 	})
 
 	t.Run("invalid value", func(t *testing.T) {
 		t.Parallel()
-		err := f.Set("invalid")
-		require.Error(t, err)
-		assert.EqualError(t, err, "must be 'text' or 'json'")
+		f := newFormatValue(formatText, formatJSON)
+		require.EqualError(t, f.Set("junit"), "must be one of text, json")
+		assert.Equal(t, "text", f.String())
 	})
 }
 

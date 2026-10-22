@@ -20,6 +20,14 @@ stdout '"missingDocuments": true'
 ! exec jsm validate shop_note_1_0_0 -c --strict
 stdout '! no pass or fail documents'
 
+# JUnit has no warnings: they go to the suite's system-out, or, with --strict, are failing test cases
+exec jsm validate shop_note_1_0_0 -o junit
+stdout '<testsuite name="shop_note_1_0_0.schema.json" tests="0" failures="0">'
+stdout '<system-out>WARN no pass documents'
+! exec jsm validate shop_note_1_0_0 -o junit --strict
+stdout '<testsuite name="shop_note_1_0_0.schema.json" tests="2" failures="2">'
+stdout '<testcase name="warning: no fail documents"'
+
 # A well-tested version has no warning, and --verbose shows its coverage: the enum value and the
 # property which no pass document uses, and the keywords which reject each fail document
 exec jsm validate shop_order_1_0_0 -c -v --strict
