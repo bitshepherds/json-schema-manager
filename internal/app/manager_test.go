@@ -212,9 +212,9 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		assert.ErrorAs(t, vErr, new(*schema.NoSchemaTargetsError))
 	})
 
-	t.Run("missing test directories", func(t *testing.T) {
+	t.Run("missing test directories are a warning", func(t *testing.T) {
 		t.Parallel()
-		// Create a schema and registry but delete the pass/fail folders
+		// Create a schema and registry without the pass/fail folders, as git leaves them when they were empty
 		regDir := t.TempDir()
 		cfg := `
 environments:
@@ -233,11 +233,16 @@ environments:
 		require.NoError(t, os.MkdirAll(tHomeDir, 0o755))
 		require.NoError(t, os.WriteFile(s2.Path(schema.FilePath), []byte(`{}`), 0o600))
 
-		mgr2 := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, nil, io.Discard)
+		var out bytes.Buffer
+		mgr2 := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, nil, &out)
 		vErr := mgr2.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &tKey},
 			false, "text", false, false, schema.TestScopeLocal, false, false)
-		require.Error(t, vErr)
-		require.ErrorContains(t, vErr, "pass directory missing")
+		require.NoError(t, vErr)
+		assert.Contains(t, out.String(), "no pass or fail documents")
+
+		vErr = mgr2.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &tKey},
+			false, "text", false, false, schema.TestScopeLocal, false, true)
+		require.ErrorIs(t, vErr, ErrTestsFailed, "--strict fails on the warning")
 	})
 
 	t.Run("failed tests return ErrTestsFailed after writing the report", func(t *testing.T) {
@@ -1623,12 +1628,14 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 		t.Parallel()
 		r := setupTestRegistry(t)
 		s := schema.New("domain_family_1_0_0", r)
-		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
+		passDir := filepath.Join(s.Path(schema.HomeDir), string(schema.TestDocTypePass))
+		require.NoError(t, os.MkdirAll(passDir, 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{}`), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(passDir, "broken.json"), []byte(`{`), 0o600))
 		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, io.Discard)
 
 		err := mgr.BuildDist(context.Background(), "prod", true, false, false)
-		require.ErrorContains(t, err, "pass directory missing")
+		require.ErrorContains(t, err, "is not valid JSON")
 	})
 
 	t.Run("report write error", func(t *testing.T) {

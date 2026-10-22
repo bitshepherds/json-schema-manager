@@ -130,6 +130,8 @@ This command will create the following JSON schema, with empty `pass` and `fail`
 
 Any missing directories will be created on the fly.
 
+Git does not keep empty directories, so until you add test documents, the `pass` and `fail` directories are missing from other clones of the repository. `jsm validate` treats a missing directory like an empty one, and warns that the schema has no pass or fail documents.
+
 The schema's **key** is its filename without `.schema.json`, e.g. `customer-success_entity_b2c-customer_1_0_0`. Most commands identify a schema by its key, its file path, or its canonical ID.
 
 ### Creating a new version of an existing schema

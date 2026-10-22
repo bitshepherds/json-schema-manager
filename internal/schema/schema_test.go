@@ -1273,14 +1273,14 @@ environments:
 			wantFiles: []string{"a_test", "b_test", "c_test"},
 		},
 		{
-			name:     "Err when test directory does not exist",
+			name:     "No documents when the test directory does not exist",
 			testType: TestDocTypePass,
 			setupFunc: func(t *testing.T, homeDir string) {
 				t.Helper()
-				// Create home directory but not the pass directory
+				// Create home directory but not the pass directory, as git leaves it when it was empty
 				require.NoError(t, os.MkdirAll(homeDir, 0o755))
 			},
-			wantErrContains: "pass directory missing",
+			wantFiles: []string{},
 		},
 		{
 			name:     "Err when test directory is not readable",

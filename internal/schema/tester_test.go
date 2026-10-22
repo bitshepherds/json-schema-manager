@@ -313,10 +313,8 @@ func TestTester_testSchema_Errs(t *testing.T) {
 		})
 		tr := NewTester(r)
 
-		s, _ := r.GetSchemaByKey(k)
-		// Restore valid schema but trigger an error in getSpecsForSchema by removing the home directory.
-		require.NoError(t, os.WriteFile(s.Path(FilePath), []byte(`{"type": "object"}`), 0o600))
-		_ = os.RemoveAll(s.Path(HomeDir))
+		// Trigger an error in getSpecsForSchema with a pass document which is not JSON
+		createTestDocs(t, r, k, TestDocTypePass, map[string]string{"bad.json": `{`})
 		_, err := tr.testSchema(context.Background(), k)
 		require.Error(t, err)
 	})
@@ -592,7 +590,7 @@ func TestTester_getSpecsForSchema_ScopedErrs(t *testing.T) {
 		s, _ := r.GetSchemaByKey(k)
 		tr := NewTester(r)
 		tr.SetScope(TestScopeFail)
-		// Don't create 'fail' directory
+		createTestDocs(t, r, k, TestDocTypeFail, map[string]string{"bad.json": `{`})
 		_, err := tr.getSpecsForSchema(s)
 		require.Error(t, err)
 	})
@@ -628,12 +626,12 @@ func TestTester_getSpecsForSchema_ScopedErrs(t *testing.T) {
 		tr := NewTester(r)
 		tr.SetScope(TestScopeConsumerBreaking)
 
-		// Create a future version but DON'T create the pass directory.
+		// Create a future version with a pass document which is not JSON
 		kFuture := Key("domain_family_1_2_0")
 		createSchemaFiles(t, r, schemaMap{
 			kFuture: `{"type": "object"}`,
 		})
-		// Note: we intentionally do NOT create the pass directory for kFuture
+		createTestDocs(t, r, kFuture, TestDocTypePass, map[string]string{"bad.json": `{`})
 
 		_, err := tr.getSpecsForSchema(s)
 		require.Error(t, err)
