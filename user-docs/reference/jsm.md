@@ -12,7 +12,7 @@ changes in data contracts will not break existing services.
 
 Exit codes:
   0  success: every test and check passed
-  1  a test or check failed (validate, build-dist, check-changes)
+  1  a test or check failed (validate, build-dist, check-changes, check-consumer)
   2  jsm could not run (usage, configuration, schema or git error)
 
 
@@ -33,6 +33,7 @@ jsm [flags]
 
 * [jsm build-dist](jsm_build-dist.md)	 - Build a distribution directory of rendered schemas
 * [jsm check-changes](jsm_check-changes.md)	 - Check for schema changes against the latest deployment anchor for the given environment
+* [jsm check-consumer](jsm_check-consumer.md)	 - Check the schema versions a consuming service validates against
 * [jsm create-registry](jsm_create-registry.md)	 - Create a new JSON schema registry
 * [jsm create-schema](jsm_create-schema.md)	 - Create a new JSON schema
 * [jsm create-schema-version](jsm_create-schema-version.md)	 - Create the next major, minor, or patch version of the given schema family

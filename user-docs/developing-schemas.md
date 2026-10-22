@@ -10,6 +10,7 @@
   - [Creating a new version of an existing schema](#creating-a-new-version-of-an-existing-schema)
   - [Testing schemas](#testing-schemas)
   - [Rendering and building schemas](#rendering-and-building-schemas)
+  - [Checking a consumer's schema versions](#checking-a-consumers-schema-versions)
 - [Exit codes](#exit-codes)
 - [Running JSM in CI](#running-jsm-in-ci)
   - [Git history in CI](#git-history-in-ci)
@@ -240,6 +241,24 @@ Add `--collapse` to `render-schema` or `build-dist` to inline the other JSM sche
 
 JSM does not publish the `dist` directory: copy it to wherever your schemas are served from, at the URL roots in the configuration file.
 
+### Checking a consumer's schema versions
+
+A service which consumes documents validates them against particular schema versions. List them in a consumer manifest, `jsm-consumer.yml` by default, by key or canonical URL:
+
+```yaml
+schemas:
+  - shop_order_1_0_0
+  - https://json-schemas.myorg.io/customer_1_2_0.schema.json
+```
+
+Then check them against the registry, in the consumer's CI with the registry checked out, or in the registry's CI for each consumer:
+
+```bash
+jsm check-consumer path/to/jsm-consumer.yml
+```
+
+For each listed version, the check fails if the version is not in the registry, or if a later version with the same major version has a `pass` document which the listed version rejects: a provider sending that document would break the consumer. It warns if the family has a newer major version, so you can plan to move the consumer to it while providers send both. `--strict` makes the warnings fail, and `--output json` gives the result as JSON.
+
 ## Exit codes
 
 Every `jsm` command exits with one of these codes, so CI can gate on it without parsing the output:
@@ -247,7 +266,7 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 | Code | Meaning |
 |------|---------|
 | `0`  | The command succeeded, and every test and check passed. |
-| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), or `check-changes` found a deployed schema modified. The report says which. |
+| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), `check-changes` found a deployed schema modified, or `check-consumer` found a listed version missing or broken by a later one. With `--strict`, a warning also exits `1`. The report says which. |
 | `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
 
 ## Running JSM in CI

@@ -50,7 +50,7 @@ changes in data contracts will not break existing services.
 
 Exit codes:
   0  success: every test and check passed
-  1  a test or check failed (validate, build-dist, check-changes)
+  1  a test or check failed (validate, build-dist, check-changes, check-consumer)
   2  jsm could not run (usage, configuration, schema or git error)
 `
 
@@ -151,6 +151,7 @@ func NewRootCmd(
 	rootCmd.AddCommand(NewTagDeploymentCmd(lazy))
 	rootCmd.AddCommand(NewBuildDistCmd(lazy))
 	rootCmd.AddCommand(NewDiffCmd(lazy))
+	rootCmd.AddCommand(NewCheckConsumerCmd(lazy))
 
 	return rootCmd
 }
