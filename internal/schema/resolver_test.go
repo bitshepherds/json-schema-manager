@@ -49,6 +49,13 @@ func TestTargetResolver(t *testing.T) {
 			wantKey: "explicit_key_1_0_0",
 		},
 		{
+			name: "explicit key with slashes",
+			setup: func(ar *TargetResolver) {
+				ar.SetKey("explicit/key/1/0/0")
+			},
+			wantKey: "explicit_key_1_0_0",
+		},
+		{
 			name: "explicit ID",
 			setup: func(ar *TargetResolver) {
 				ar.SetID("https://example.com/explicit_id_1_0_0.schema.json")

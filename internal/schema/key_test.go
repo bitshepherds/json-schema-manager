@@ -212,3 +212,18 @@ func TestKey_InScope(t *testing.T) {
 		})
 	}
 }
+
+func TestParseKey(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range []string{"domain_sub_family_1_2_3", "domain/sub/family/1/2/3"} {
+		k, err := ParseKey(s)
+		require.NoError(t, err)
+		assert.Equal(t, Key("domain_sub_family_1_2_3"), k)
+	}
+
+	for _, s := range []string{"domain/family/1/0", "domain/fam_ily/1/0/0", "domain_family/1/0/0", ""} {
+		_, err := ParseKey(s)
+		require.Error(t, err, s)
+	}
+}

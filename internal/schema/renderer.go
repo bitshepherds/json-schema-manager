@@ -70,11 +70,10 @@ func (r *Renderer) ID() (ID, error) {
 
 // JSM is a template function which returns the canonical ID of the referenced schema.
 func (r *Renderer) JSM(arg string) (ID, error) {
-	c, err := NewCoreFromString(arg, KeySeparator)
+	key, err := ParseKey(arg)
 	if err != nil {
 		return "", &JSMArgInvalidKeyError{Arg: arg}
 	}
-	key := c.Key()
 
 	s, err := r.s.registry.GetSchemaByKey(key)
 	if err != nil {
