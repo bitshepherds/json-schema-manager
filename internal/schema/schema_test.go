@@ -1863,3 +1863,15 @@ func TestTestDocuments_InvalidJSONFile(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorAs(t, err, new(InvalidTestDocumentError))
 }
+
+func TestNewSchemaContent_IndentsWithSpaces(t *testing.T) {
+	t.Parallel()
+
+	content := NewSchemaContent(validator.Draft7)
+	assert.NotContains(t, content, "\t")
+	assert.Contains(
+		t,
+		content,
+		"{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"$id\": \"{{ ID }}\",\n",
+	)
+}

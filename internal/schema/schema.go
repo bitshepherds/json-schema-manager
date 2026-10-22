@@ -77,10 +77,10 @@ const SchemaSuffix = ".schema.json"
 // NewSchemaContent returns initial content for a new schema file.
 func NewSchemaContent(draft validator.Draft) string {
 	return `{
-	"$schema": "` + string(draft) + `",
-	"$id": "{{ ID }}",
-	"type": "object",
-	"properties": {}
+  "$schema": "` + string(draft) + `",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": {}
 }
 `
 }
