@@ -546,3 +546,40 @@ func TestInvalidSchemaFilenameError_Error(t *testing.T) {
 	errFilename := &InvalidSchemaFilenameError{Path: "/path/to/invalid.schema.json"}
 	assert.EqualError(t, errFilename, "schema file /path/to/invalid.schema.json has an invalid filename structure")
 }
+
+func TestSearcher_Schemas_MisplacedSchema(t *testing.T) {
+	t.Parallel()
+
+	for name, rel := range map[string][]string{
+		"in another family's directory":         {"domain", "other", "1", "0", "0"},
+		"in a directory which is not a version": {"domain", "family", "v2"},
+		"above its version directory":           {"domain", "family"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r := setupTestRegistry(t)
+			dir := filepath.Join(append([]string{r.rootDirectory}, rel...)...)
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			path := filepath.Join(dir, "domain_family_1_0_0.schema.json")
+			require.NoError(t, os.WriteFile(path, []byte("{}"), 0o600))
+
+			searcher, err := NewSearcher(r, "")
+			require.NoError(t, err)
+			var errs []error
+			for res := range searcher.Schemas(context.Background()) {
+				if res.Err != nil {
+					errs = append(errs, res.Err)
+				}
+			}
+			require.Len(t, errs, 1)
+			var target *MisplacedSchemaError
+			require.ErrorAs(t, errs[0], &target)
+			assert.Equal(t, path, target.Path)
+			assert.Equal(t, filepath.Join(r.rootDirectory, "domain", "family", "1", "0", "0"), target.BelongsIn)
+			assert.Contains(t, errs[0].Error(), "is in the wrong directory: its name says it belongs in")
+
+			_, err = r.KeyFromSchemaPath(path)
+			require.ErrorAs(t, err, &target, "a path given on the command line is checked too")
+		})
+	}
+}

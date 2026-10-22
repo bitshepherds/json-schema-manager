@@ -1,4 +1,5 @@
-# A schema's $id must be {{ ID }}, external $refs are refused with a clear error, and assertFormat
+# A schema's $id must be {{ ID }}, a schema must be where its name says, external $refs are
+# refused with a clear error, and assertFormat
 # makes format reject invalid values under 2020-12 (#55)
 
 exec git init -q
@@ -9,6 +10,12 @@ env JSM_REGISTRY_ROOT_DIR=ids
 stderr 'misc_hard-id_1_0_0.schema.json sets \$id to https://elsewhere.example.com/x.json: set "\$id": "\{\{ ID \}\}"'
 exec jsm validate misc_good-id_1_0_0 -c
 stdout 'Test summary: 2 passed, 0 failed'
+
+# A schema in a directory other than the one its name says it belongs in stops validate all,
+# naming both, rather than being tested under the wrong key (#22)
+env JSM_REGISTRY_ROOT_DIR=placed
+! exec jsm validate all -c
+stderr 'misc_order_1_0_0.schema.json is in the wrong directory: its name says it belongs in .*misc/order/1/0/0'
 
 # An external $ref is refused, naming the URL
 env JSM_REGISTRY_ROOT_DIR=external
@@ -50,6 +57,14 @@ environments:
 {}
 -- ids/misc/good-id/1/0/0/fail/b.json --
 []
+-- placed/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- placed/misc/item/1/0/0/misc_order_1_0_0.schema.json --
+{"$schema": "http://json-schema.org/draft-07/schema#", "$id": "{{ ID }}", "type": "object"}
 -- external/json-schema-manager-config.yml --
 environments:
   production:
