@@ -185,6 +185,8 @@ e.g.
 "$ref": "{{ JSM `customer_b2c-customer_2_0_0` }}"
 ```
 
+The key can also be written with `/` separators, which is easier to type and read: `{{ JSM `customer/b2c-customer/2/0/0` }}` refers to the same schema. So can a key given to `-k` (`--key`), and a JSM command's target.
+
 To refer to a part of the same schema, set `$ref` in the usual way defined in the JSON Schema specification, e.g. `"$ref": "#/$defs/money"`.
 
 A registry is closed: every schema it uses is in the registry, and tested there. So JSM does not fetch schemas from the network, and a `$ref` to any other URL, such as `https://geojson.org/schema/Point.json`, fails with an error naming the URL. To use an external schema, copy it into the registry as a schema family of its own, and refer to it with `{{ JSM ... }}`.

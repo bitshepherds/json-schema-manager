@@ -30,6 +30,20 @@ func NewKey(s string) (Key, error) {
 	return Key(s), nil
 }
 
+// ParseKey creates a Key from a string written with either separator: `domain_family_1_0_0`, or
+// `domain/family/1/0/0`, which is easier to type and read. Domains and family names cannot contain
+// either separator, so the two forms cannot be confused.
+func ParseKey(s string) (Key, error) {
+	if !strings.Contains(s, "/") {
+		return NewKey(s)
+	}
+	c, err := NewCoreFromString(s, '/')
+	if err != nil {
+		return "", err
+	}
+	return c.Key(), nil
+}
+
 // Domain returns the domain components of the key.
 func (k Key) Domain() []string {
 	parts := strings.Split(string(k), KeySeparatorString)

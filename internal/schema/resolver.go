@@ -74,10 +74,11 @@ func (a *TargetResolver) Resolve() (ResolvedTarget, error) {
 
 func (a *TargetResolver) resolveExplicit() (ResolvedTarget, bool, error) {
 	if a.explicitKey != nil {
-		if _, err := NewKey(string(*a.explicitKey)); err != nil {
+		k, err := ParseKey(string(*a.explicitKey))
+		if err != nil {
 			return ResolvedTarget{}, true, err
 		}
-		return ResolvedTarget{Key: a.explicitKey}, true, nil
+		return ResolvedTarget{Key: &k}, true, nil
 	}
 	if a.explicitID != nil {
 		id := *a.explicitID
