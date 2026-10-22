@@ -1,4 +1,4 @@
-.PHONY: all build run clean test test-race test-cover test-race-coverage cover-html lint fmt snapshot release-check setup setup-ci setup-coverage setup-refresh
+.PHONY: all build run clean test test-race test-cover test-race-coverage cover-html lint fmt docs snapshot release-check setup setup-ci setup-coverage setup-refresh
 
 all: build
 
@@ -51,6 +51,10 @@ lint:
 # Format code with gofumpt
 fmt:
 	@go run scripts/fmt/main.go
+
+# Regenerate the command reference in user-docs/reference from the CLI
+docs:
+	@go run scripts/docs/main.go
 
 # Run GoReleaser configuration check
 release-check:

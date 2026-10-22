@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -293,4 +295,28 @@ func TestEnvConfig(t *testing.T) {
 		assert.Equal(t, Env("invalid-env"), target.Env)
 		assert.EqualError(t, err, "json-schema-manager-config.yml does not define environment 'invalid-env'")
 	})
+}
+
+func TestDefaultConfigContentListsSupportedVersions(t *testing.T) {
+	t.Parallel()
+
+	compiler := validator.NewSanthoshCompiler()
+	listed := regexp.MustCompile(`(?m)^# - (\S+)`).FindAllStringSubmatch(DefaultConfigContent, -1)
+
+	drafts := make([]validator.Draft, 0, len(listed))
+	for _, m := range listed {
+		draft := validator.Draft(m[1])
+		drafts = append(drafts, draft)
+
+		// Pasting the listed value into the config must give a valid config
+		content := strings.Replace(DefaultConfigContent,
+			`defaultJsonSchemaVersion: "http://json-schema.org/draft-07/schema#"`,
+			`defaultJsonSchemaVersion: "`+m[1]+`"`, 1)
+		cfg, err := Parse([]byte(content))
+		require.NoError(t, err)
+		require.NoError(t, cfg.Validate(compiler), "listed version %s", draft)
+		assert.Equal(t, draft, cfg.DefaultJSONSchemaVersion)
+	}
+
+	assert.ElementsMatch(t, compiler.SupportedSchemaVersions(), drafts)
 }

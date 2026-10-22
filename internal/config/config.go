@@ -29,8 +29,8 @@ const DefaultConfigContent = `# Public Schema Registry Configuration
 # - http://json-schema.org/draft-04/schema#
 # - http://json-schema.org/draft-06/schema#
 # - http://json-schema.org/draft-07/schema# (Default)
-# - http://json-schema.org/draft/2019-09/schema
-# - http://json-schema.org/draft/2020-12/schema
+# - https://json-schema.org/draft/2019-09/schema
+# - https://json-schema.org/draft/2020-12/schema
 defaultJsonSchemaVersion: "http://json-schema.org/draft-07/schema#"
 
 # ENVIRONMENT CONFIGURATION

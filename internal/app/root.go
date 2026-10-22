@@ -50,7 +50,7 @@ changes in data contracts will not break existing services.
 
 Exit codes:
   0  success: every test and check passed
-  1  a test or check failed (validate, check-changes)
+  1  a test or check failed (validate, build-dist, check-changes)
   2  jsm could not run (usage, configuration, schema or git error)
 `
 
@@ -127,7 +127,8 @@ func NewRootCmd(
 	}
 
 	// Global flags
-	rootCmd.PersistentFlags().StringVarP(&registryPath, "registry", "r", "", "path to registry (overrides env/config)")
+	rootCmd.PersistentFlags().StringVarP(&registryPath, "registry", "r", "",
+		"path to the registry root directory (default: $"+schema.RootDirEnvVar+", or else the current directory)")
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 
 	rootCmd.PersistentFlags().BoolVarP(&noColour, "nocolour", "c", false, "Disable colour in output")
