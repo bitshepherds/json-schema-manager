@@ -174,14 +174,6 @@ func TestErrors(t *testing.T) {
 			contains: []string{"test document /test.json is not valid JSON"},
 		},
 		{
-			name: "TestDirMissingConfigError",
-			err: &TestDirMissingConfigError{
-				Path: "/path/to/pass",
-				Type: TestDocTypePass,
-			},
-			contains: []string{"pass directory missing: /path/to/pass"},
-		},
-		{
 			name:     "InvalidTargetArgumentError",
 			err:      &InvalidTargetArgumentError{Arg: "invalid"},
 			contains: []string{"Invalid schema target: invalid"},

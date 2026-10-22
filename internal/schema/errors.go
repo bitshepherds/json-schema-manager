@@ -261,16 +261,6 @@ func (e InvalidTestDocumentError) Error() string {
 	return fmt.Sprintf("test document %s is not valid JSON", e.Path)
 }
 
-// TestDirMissingConfigError is returned when a test directory is missing.
-type TestDirMissingConfigError struct {
-	Path string
-	Type TestDocType
-}
-
-func (e *TestDirMissingConfigError) Error() string {
-	return fmt.Sprintf("%s directory missing: %s", e.Type, e.Path)
-}
-
 // InvalidTestDocumentDirectoryError is returned when a test document is not in a 'pass' or 'fail' directory.
 type InvalidTestDocumentDirectoryError struct {
 	Path string

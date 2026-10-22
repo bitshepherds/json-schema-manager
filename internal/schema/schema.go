@@ -384,6 +384,8 @@ func (s *Schema) ClearComputed() {
 
 // TestDocuments returns the absolute paths of the passing or failing test documents
 // for the version of the schema family represented by s, in filename alphabetical order.
+// A missing test directory has no documents: git does not keep empty directories, so a
+// directory created empty by create-schema is missing from a fresh clone.
 func (s *Schema) TestDocuments(tt TestDocType) ([]TestInfo, error) {
 	homeDir := s.Path(HomeDir)
 
@@ -400,10 +402,7 @@ func (s *Schema) TestDocuments(tt TestDocType) ([]TestInfo, error) {
 
 	// Identify files ending in .json
 	entries, err := os.ReadDir(docDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, &TestDirMissingConfigError{Path: docDir, Type: tt}
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 

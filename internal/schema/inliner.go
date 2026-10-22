@@ -3,7 +3,6 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -222,10 +221,6 @@ func (inl *Inliner) Verify(s *Schema, original validator.Validator, collapsed []
 
 	for _, tt := range []TestDocType{TestDocTypePass, TestDocTypeFail} {
 		docs, dErr := s.TestDocuments(tt)
-		var missing *TestDirMissingConfigError
-		if errors.As(dErr, &missing) {
-			continue
-		}
 		if dErr != nil {
 			return dErr
 		}

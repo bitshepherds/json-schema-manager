@@ -20,6 +20,16 @@ stdout '"missingDocuments": true'
 ! exec jsm validate shop_note_1_0_0 -c --strict
 stdout '! no pass or fail documents'
 
+# Git does not keep empty directories, so in a fresh clone they are missing: that is the same
+# warning, not an error (#89)
+rm reg/shop/note/1/0/0/pass reg/shop/note/1/0/0/fail
+exec jsm validate shop_note_1_0_0 -c
+stdout '! no pass or fail documents'
+! stderr .
+! exec jsm validate shop_note_1_0_0 -c --strict
+stdout '! no pass or fail documents'
+mkdir reg/shop/note/1/0/0/pass reg/shop/note/1/0/0/fail
+
 # JUnit has no warnings: they go to the suite's system-out, or, with --strict, are failing test cases
 exec jsm validate shop_note_1_0_0 -o junit
 stdout '<testsuite name="shop_note_1_0_0.schema.json" tests="0" failures="0">'
