@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/internal/coverage"
+	"github.com/bitshepherds/json-schema-manager/internal/fsh"
 	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 	"github.com/bitshepherds/json-schema-manager/internal/validator"
 )
@@ -207,5 +210,68 @@ func TestTester_findUnexercisedChanges_Errors(t *testing.T) {
 		_, err := NewTester(r).TestSingleSchema(context.Background(), "d_f_1_0_1")
 		require.Error(t, err)
 		require.Error(t, NewTester(r).testFoundSchema(context.Background(), "d_f_1_0_1"))
+	})
+}
+
+func TestTester_Summary(t *testing.T) {
+	t.Parallel()
+
+	const schemaJSON = `{"properties": {"status": {"enum": ["paid", "refunded"]}}, "anyOf": [{"required": ["status"]}]}`
+
+	t.Run("with the real validator", func(t *testing.T) {
+		t.Parallel()
+		regDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(regDir, config.JsmRegistryConfigFile),
+			[]byte(testConfigData), 0o600))
+		r, err := NewRegistry(regDir, validator.NewSanthoshCompiler(), fsh.NewPathResolver(), fsh.NewEnvProvider())
+		require.NoError(t, err)
+		createSchemaFiles(t, r, schemaMap{"shop_order_1_0_0": schemaJSON})
+		makeTestDirs(t, r, "shop_order_1_0_0")
+		writePassDoc(t, r, "shop_order_1_0_0", "paid.json", `{"status": "paid"}`)
+		s, err := r.GetSchemaByKey("shop_order_1_0_0")
+		require.NoError(t, err)
+		failPath := filepath.Join(s.Path(HomeDir), "fail", "lost.json")
+		require.NoError(t, os.WriteFile(failPath, []byte(`{"status": "lost"}`), 0o600))
+
+		report, err := NewTester(r).TestSingleSchema(context.Background(), "shop_order_1_0_0")
+		require.NoError(t, err)
+		summary := report.Summaries["shop_order_1_0_0"]
+		require.NotNil(t, summary)
+		assert.Equal(t, 1, summary.PassDocs)
+		assert.Equal(t, 1, summary.FailDocs)
+		assert.False(t, summary.MissingDocuments())
+		assert.Equal(t, []coverage.Point{
+			{Location: "/", Kind: coverage.Property, Detail: "status", Covered: true},
+			{Location: "/status", Kind: coverage.EnumValue, Detail: `"paid"`, Covered: true},
+			{Location: "/status", Kind: coverage.EnumValue, Detail: `"refunded"`, Covered: false},
+			{Location: "/", Kind: coverage.Branch, Detail: "anyOf/0", Covered: true},
+		}, summary.Coverage)
+		assert.Equal(t, 3, summary.Covered())
+		assert.Equal(t, map[string][]string{failPath: {"#/properties/status/enum"}}, summary.FailKeywords)
+		assert.Equal(t, 0, report.MissingDocuments())
+	})
+
+	t.Run("subschemas which do not compile are left out", func(t *testing.T) {
+		t.Parallel()
+		r := setupTestRegistry(t)
+		mc, ok := r.compiler.(*mockCompiler)
+		require.True(t, ok)
+		mc.CompileFunc = func(id string) (validator.Validator, error) {
+			if strings.Contains(id, "#") {
+				return nil, errors.New("compile error")
+			}
+			return &mockValidator{}, nil
+		}
+		createSchemaFiles(t, r, schemaMap{"shop_order_1_0_0": schemaJSON})
+		makeTestDirs(t, r, "shop_order_1_0_0")
+		writePassDoc(t, r, "shop_order_1_0_0", "paid.json", `{"status": "paid"}`)
+
+		report, err := NewTester(r).TestSingleSchema(context.Background(), "shop_order_1_0_0")
+		require.NoError(t, err)
+		summary := report.Summaries["shop_order_1_0_0"]
+		require.NotNil(t, summary)
+		assert.Len(t, summary.Coverage, 3, "the anyOf subschema is left out")
+		assert.True(t, summary.MissingDocuments(), "there is no fail document")
+		assert.Equal(t, 1, report.MissingDocuments())
 	})
 }

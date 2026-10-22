@@ -18,7 +18,7 @@ import (
 )
 
 // ErrTestsFailed is returned by ValidateSchema, after the report is written, when any test failed,
-// or when asked to fail on unexercised changes and there are some.
+// or when strict and the report has warnings.
 // The report already describes the failures, so Run does not print it again.
 var ErrTestsFailed = errors.New("one or more tests failed")
 
@@ -26,7 +26,7 @@ var ErrTestsFailed = errors.New("one or more tests failed")
 type Manager interface {
 	ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool, format string,
 		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-		failUnexercised bool) error
+		strict bool) error
 	WatchValidation(ctx context.Context, target schema.ResolvedTarget, verbose bool, format string,
 		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
 		readyChan chan<- struct{}) error
@@ -70,10 +70,10 @@ func (l *LazyManager) check() Manager {
 // ValidateSchema implements the Manager interface.
 func (l *LazyManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
 	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	failUnexercised bool,
+	strict bool,
 ) error {
 	return l.check().ValidateSchema(ctx, target, verbose, format, useColour, continueOnError, testScope,
-		skipCompatible, failUnexercised)
+		skipCompatible, strict)
 }
 
 // WatchValidation implements the Manager interface.
@@ -189,11 +189,11 @@ func (m *CLIManager) CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (s
 // ValidateSchema runs tests on the target schema(s).
 func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
 	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	failUnexercised bool,
+	strict bool,
 ) error {
 	m.logger.Debug("validating schema", "target", target, "verbose", verbose, "format", format,
 		"useColour", useColour, "continueOnError", continueOnError, "skipCompatible", skipCompatible,
-		"failUnexercised", failUnexercised)
+		"strict", strict)
 
 	m.tester.SetStopOnFirstError(!continueOnError)
 	m.tester.SetScope(testScope)
@@ -227,7 +227,8 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 		return wErr
 	}
 
-	if len(tr.FailedTests) > 0 || failUnexercised && len(tr.UnexercisedChanges) > 0 {
+	warned := len(tr.UnexercisedChanges) > 0 || tr.MissingDocuments() > 0
+	if len(tr.FailedTests) > 0 || strict && warned {
 		return ErrTestsFailed
 	}
 

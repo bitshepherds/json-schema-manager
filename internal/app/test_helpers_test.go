@@ -32,10 +32,10 @@ func (m *MockManager) Registry() *schema.Registry {
 
 func (m *MockManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
 	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	failUnexercised bool,
+	strict bool,
 ) error {
 	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible,
-		failUnexercised)
+		strict)
 	return args.Error(0)
 }
 

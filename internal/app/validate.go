@@ -13,7 +13,7 @@ func NewValidateCmd(m Manager) *cobra.Command {
 	var verbose bool
 	var continueOnError bool
 	var skipCompatible bool
-	var failUnexercised bool
+	var strict bool
 	var keyStr string
 	var idStr string
 	var scopeStr string
@@ -33,8 +33,15 @@ Use --skip-compatible to leave this check out.
 That check is only as strong as the pass documents, so validate also compares each schema with the
 version before it, and warns about each structural change which may break consumers of that version
 and which none of the schema's pass documents uses: for example, an enum value added with no
-document using it. Add a pass document which uses the change, or use --fail-unexercised to fail
-on these warnings. 'jsm diff' lists every structural change between two versions.
+document using it. Add a pass document which uses the change. 'jsm diff' lists every structural
+change between two versions.
+
+It also warns about each schema with no pass document, or no fail document. With --verbose, the
+report shows how much of each schema its pass documents reach (its properties, enum values, types,
+anyOf and oneOf subschemas, and the paths through each if), and which keywords reject each fail
+document. The JSON report always includes these.
+
+Use --strict to fail on any warning.
 `,
 		Args: cobra.MaximumNArgs(1),
 		Example: `
@@ -77,9 +84,9 @@ ALL SCHEMAS
 		))
 	cmd.Flags().BoolVar(&skipCompatible, "skip-compatible", false,
 		"Skip checking each schema's pass documents against earlier versions in its major family")
-	cmd.Flags().BoolVar(&failUnexercised, "fail-unexercised", false,
-		"Fail when a schema has a change which may break consumers of the version before it, "+
-			"and none of its pass documents uses it")
+	cmd.Flags().BoolVar(&strict, "strict", false,
+		"Fail on warnings: a schema with no pass or no fail document, or with a change which may "+
+			"break consumers of the version before it and which none of its pass documents uses")
 	var watch bool
 	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "Watch for changes and rerun tests")
 
@@ -119,7 +126,7 @@ ALL SCHEMAS
 		}
 
 		return m.ValidateSchema(cmd.Context(), target, verbose, string(outputVal),
-			useColour, continueOnError, testScope, skipCompatible, failUnexercised)
+			useColour, continueOnError, testScope, skipCompatible, strict)
 	}
 
 	return cmd

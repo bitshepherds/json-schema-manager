@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bitshepherds/json-schema-manager/internal/coverage"
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
 	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 )
@@ -38,8 +39,36 @@ func newJSONSpec(s *schema.Spec) jsonSpec {
 }
 
 type jsonSchemaResults struct {
-	Passed []jsonSpec `json:"passed"`
-	Failed []jsonSpec `json:"failed"`
+	Passed  []jsonSpec   `json:"passed"`
+	Failed  []jsonSpec   `json:"failed"`
+	Summary *jsonSummary `json:"summary,omitempty"` // set for each schema tested against its own documents
+}
+
+// jsonSummary describes how well a schema's test documents cover it.
+type jsonSummary struct {
+	PassDocuments    int                 `json:"passDocuments"`
+	FailDocuments    int                 `json:"failDocuments"`
+	MissingDocuments bool                `json:"missingDocuments"` // no pass document, or no fail document
+	Covered          int                 `json:"covered"`
+	Total            int                 `json:"total"`
+	Points           []coverage.Point    `json:"points"`
+	FailKeywords     map[string][]string `json:"failKeywords"` // fail document path: the keywords which reject it
+}
+
+func newJSONSummary(s *schema.Summary) *jsonSummary {
+	points := s.Coverage
+	if points == nil {
+		points = []coverage.Point{}
+	}
+	return &jsonSummary{
+		PassDocuments:    s.PassDocs,
+		FailDocuments:    s.FailDocs,
+		MissingDocuments: s.MissingDocuments(),
+		Covered:          s.Covered(),
+		Total:            len(s.Coverage),
+		Points:           points,
+		FailKeywords:     s.FailKeywords,
+	}
 }
 
 // jsonUnexercisedChange is a change which no pass document of the schema uses.
@@ -60,6 +89,7 @@ type jsonOutput struct {
 		TotalPassed      int `json:"totalPassed"`
 		TotalFailed      int `json:"totalFailed"`
 		TotalUnexercised int `json:"totalUnexercised"`
+		TotalMissingDocs int `json:"totalMissingDocuments"`
 	} `json:"stats"`
 	Results            map[schema.Key]jsonSchemaResults `json:"results"`
 	UnexercisedChanges []jsonUnexercisedChange          `json:"unexercisedChanges"`
@@ -94,6 +124,13 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 		out.Results[k] = res
 		out.Stats.TotalFailed += len(specs)
 	}
+
+	for k, s := range r.Summaries {
+		res := out.Results[k]
+		res.Summary = newJSONSummary(s)
+		out.Results[k] = res
+	}
+	out.Stats.TotalMissingDocs = r.MissingDocuments()
 
 	out.UnexercisedChanges = unexercisedChanges(r)
 	out.Stats.TotalUnexercised = len(out.UnexercisedChanges)

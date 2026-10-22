@@ -514,15 +514,3 @@ func TestUsedByUnknown(t *testing.T) {
 	assert.True(t, changes[0].UsedBy(parse(t, `{"a": 1}`)), "any value at the location uses the change")
 	assert.False(t, changes[0].UsedBy(parse(t, `{"b": 1}`)))
 }
-
-func TestNumber(t *testing.T) {
-	t.Parallel()
-
-	n, ok := number(json.Number("1.5"))
-	assert.True(t, ok)
-	assert.InDelta(t, 1.5, n, 0)
-	_, ok = number(json.Number("x"))
-	assert.False(t, ok)
-	assert.True(t, matchesType(json.Number("2"), []string{"integer"}))
-	assert.False(t, matchesType(1, []string{"unknown"}))
-}

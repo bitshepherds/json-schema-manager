@@ -10,7 +10,7 @@ exec jsm validate shop_order_1_1_0 -c
 stdout 'Unexercised changes: no pass document uses these'
 stdout '\[WARN\] shop_order_1_1_0.schema.json since shop_order_1_0_0:'
 stdout '! /status: enum adds "refunded" \(widens\)'
-stdout 'Test summary: 2 passed, 0 failed, 1 unexercised change'
+stdout 'Test summary: 3 passed, 0 failed, 1 unexercised change$'
 
 # The same for every schema, and in the JSON report
 exec jsm validate all -c -C
@@ -22,8 +22,8 @@ stdout '"earlier": "shop_order_1_0_0"'
 stdout '"location": "/status"'
 stdout '"effect": "widens"'
 
-# --fail-unexercised makes the warning fail the run
-! exec jsm validate shop_order_1_1_0 -c --fail-unexercised
+# --strict makes the warning fail the run
+! exec jsm validate shop_order_1_1_0 -c --strict
 stdout '1 unexercised change'
 
 # --skip-compatible leaves it out with the compatibility check
@@ -51,7 +51,7 @@ exec jsm diff shop_order_1_0_0 shop_order_1_1_0
 stdout 'enum adds "refunded" \(used by pass/refunded.json\)'
 ! exec jsm validate shop_order_1_1_0 -c
 ! stdout 'unexercised change'
-stdout 'Test summary: 3 passed, 1 failed'
+stdout 'Test summary: 4 passed, 1 failed$'
 
 -- refunded.json --
 {"status": "refunded", "total": 3}
@@ -74,7 +74,8 @@ environments:
 }
 -- reg/shop/order/1/0/0/pass/paid.json --
 {"status": "paid", "total": 3}
--- reg/shop/order/1/0/0/fail/.keep --
+-- reg/shop/order/1/0/0/fail/unknown-status.json --
+{"status": "lost"}
 -- reg/shop/order/1/1/0/shop_order_1_1_0.schema.json --
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -89,4 +90,5 @@ environments:
 }
 -- reg/shop/order/1/1/0/pass/paid.json --
 {"status": "paid", "total": 3}
--- reg/shop/order/1/1/0/fail/.keep --
+-- reg/shop/order/1/1/0/fail/unknown-status.json --
+{"status": "lost", "total": 3}

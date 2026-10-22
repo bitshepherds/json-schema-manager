@@ -9,8 +9,8 @@ package structdiff
 import (
 	"reflect"
 	"slices"
-	"strconv"
-	"strings"
+
+	"github.com/bitshepherds/json-schema-manager/internal/jsonptr"
 )
 
 // Effect says how a change affects the documents a schema accepts.
@@ -34,7 +34,7 @@ type Change struct {
 	Effect   Effect
 	Detail   string // what changed, e.g. `adds "refunded"`
 
-	path []segment
+	path []jsonptr.Segment
 	// uses reports whether a value at the location uses the change, so the older schema rejects it.
 	// It is nil when structdiff cannot tell, and then any value at the location uses the change.
 	uses func(v any) bool
@@ -59,37 +59,11 @@ func (c *Change) String() string {
 // use a change, such as an anyOf alternative added, any value at the change's location does: a
 // compatibility check of the document then checks that value against the older version.
 func (c *Change) UsedBy(doc any) bool {
-	values := valuesAt(doc, c.path)
+	values := jsonptr.ValuesAt(doc, c.path)
 	if c.uses == nil {
 		return len(values) > 0
 	}
 	return slices.ContainsFunc(values, c.uses)
-}
-
-// segment is one step of a location in a document: a property name, an array index, or any.
-type segment struct {
-	name  string
-	index bool // name is an array index
-	any   bool
-}
-
-var anySegment = segment{any: true}
-
-// location renders path as a JSON Pointer, with * for any item or property.
-func location(path []segment) string {
-	if len(path) == 0 {
-		return "/"
-	}
-	var b strings.Builder
-	for _, s := range path {
-		b.WriteString("/")
-		if s.any {
-			b.WriteString("*")
-			continue
-		}
-		b.WriteString(strings.NewReplacer("~", "~0", "/", "~1").Replace(s.name))
-	}
-	return b.String()
 }
 
 // Compare lists the structural changes from older to newer, which are unmarshalled JSON Schemas.
@@ -110,9 +84,9 @@ type comparer struct {
 	changes          []Change
 }
 
-func (c *comparer) add(path []segment, keyword string, effect Effect, detail string, uses func(any) bool) {
+func (c *comparer) add(path []jsonptr.Segment, keyword string, effect Effect, detail string, uses func(any) bool) {
 	c.changes = append(c.changes, Change{
-		Location: location(path),
+		Location: jsonptr.Format(path),
 		Keyword:  keyword,
 		Effect:   effect,
 		Detail:   detail,
@@ -122,9 +96,9 @@ func (c *comparer) add(path []segment, keyword string, effect Effect, detail str
 }
 
 // node compares the subschemas o and n, which apply at path.
-func (c *comparer) node(path []segment, o, n any) {
-	o, oRef := resolve(c.oldRoot, o)
-	n, nRef := resolve(c.newRoot, n)
+func (c *comparer) node(path []jsonptr.Segment, o, n any) {
+	o, oRef := jsonptr.FollowRefs(c.oldRoot, o)
+	n, nRef := jsonptr.FollowRefs(c.newRoot, n)
 	if oRef != "" || nRef != "" {
 		pair := [2]string{oRef, nRef}
 		if c.seen[pair] {
@@ -149,7 +123,7 @@ func (c *comparer) node(path []segment, o, n any) {
 // wholeSchema compares subschemas o and n where either is a boolean schema. An absent subschema
 // counts as true. When o is false, the function usesOldFalse reports whether a value uses the
 // change; if it is nil, any value does.
-func (c *comparer) wholeSchema(path []segment, keyword string, o, n any, usesOldFalse func(any) bool) {
+func (c *comparer) wholeSchema(path []jsonptr.Segment, keyword string, o, n any, usesOldFalse func(any) bool) {
 	if reflect.DeepEqual(o, n) {
 		return
 	}
@@ -166,63 +140,6 @@ func (c *comparer) wholeSchema(path []segment, keyword string, o, n any, usesOld
 	default:
 		c.add(path, keyword, Widens, "removes every constraint", nil)
 	}
-}
-
-// maxRefHops limits how many local $refs resolve follows from one subschema to the next.
-const maxRefHops = 32
-
-// resolve follows local $refs from node to the subschema in root they lead to, and returns it
-// with the last $ref followed. It returns node unchanged, and an empty $ref, when node has no
-// local $ref which resolves. Keywords beside a $ref are not compared.
-func resolve(root, node any) (target any, ref string) {
-	target = node
-	for range maxRefHops {
-		m, ok := target.(map[string]any)
-		if !ok {
-			break
-		}
-		r, ok := m["$ref"].(string)
-		if !ok || !isLocalRef(r) {
-			break
-		}
-		next, ok := pointer(root, strings.TrimPrefix(r, "#"))
-		if !ok {
-			break
-		}
-		target, ref = next, r
-	}
-	return target, ref
-}
-
-// pointer finds the value at the JSON Pointer p in doc.
-func pointer(doc any, p string) (any, bool) {
-	if p == "" {
-		return doc, true
-	}
-	if !strings.HasPrefix(p, "/") {
-		return nil, false // a named anchor, which structdiff does not follow
-	}
-	cur := doc
-	for _, tok := range strings.Split(p[1:], "/") {
-		tok = strings.NewReplacer("~1", "/", "~0", "~").Replace(tok)
-		switch v := cur.(type) {
-		case map[string]any:
-			next, ok := v[tok]
-			if !ok {
-				return nil, false
-			}
-			cur = next
-		case []any:
-			i, err := strconv.Atoi(tok)
-			if err != nil || i < 0 || i >= len(v) {
-				return nil, false
-			}
-			cur = v[i]
-		default:
-			return nil, false
-		}
-	}
-	return cur, true
 }
 
 // handledKeywords are compared by keywords and subschemas.
@@ -243,7 +160,7 @@ var ignoredKeywords = []string{
 
 // otherKeywords reports a change to any keyword which structdiff does not otherwise compare.
 // Adding one usually adds a constraint, and removing one removes it.
-func (c *comparer) otherKeywords(path []segment, om, nm map[string]any) {
+func (c *comparer) otherKeywords(path []jsonptr.Segment, om, nm map[string]any) {
 	for _, k := range unionKeys(om, nm) {
 		if slices.Contains(handledKeywords, k) || slices.Contains(ignoredKeywords, k) {
 			continue
@@ -251,7 +168,7 @@ func (c *comparer) otherKeywords(path []segment, om, nm map[string]any) {
 		ov, oHas := om[k]
 		nv, nHas := nm[k]
 		switch {
-		case k == "$ref" && (isLocalRef(ov) || isLocalRef(nv)):
+		case k == "$ref" && (jsonptr.IsLocalRef(ov) || jsonptr.IsLocalRef(nv)):
 			continue // compared by following it
 		case !oHas:
 			c.add(path, k, Narrows, "adds "+k, nil)
@@ -261,11 +178,6 @@ func (c *comparer) otherKeywords(path []segment, om, nm map[string]any) {
 			c.add(path, k, Alters, "changes "+k, nil)
 		}
 	}
-}
-
-func isLocalRef(v any) bool {
-	s, ok := v.(string)
-	return ok && strings.HasPrefix(s, "#")
 }
 
 // unionKeys returns the keys of a and b, sorted.

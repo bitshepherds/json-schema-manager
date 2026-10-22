@@ -1,16 +1,14 @@
 package structdiff
 
 import (
-	"encoding/json"
-	"math"
 	"regexp"
-	"slices"
-	"strconv"
 	"unicode/utf8"
+
+	"github.com/bitshepherds/json-schema-manager/internal/jsonptr"
 )
 
 // subschemas compares the subschemas of om and nm, which apply at path.
-func (c *comparer) subschemas(path []segment, om, nm map[string]any) {
+func (c *comparer) subschemas(path []jsonptr.Segment, om, nm map[string]any) {
 	c.properties(path, om, nm)
 	c.additionalProperties(path, om, nm)
 	c.items(path, "items", om["items"], nm["items"])
@@ -22,7 +20,7 @@ func (c *comparer) subschemas(path []segment, om, nm map[string]any) {
 
 // properties compares each property's subschema. A property which only one version declares is
 // compared with the subschema the other version applies to it, such as its additionalProperties.
-func (c *comparer) properties(path []segment, om, nm map[string]any) {
+func (c *comparer) properties(path []jsonptr.Segment, om, nm map[string]any) {
 	op, _ := om["properties"].(map[string]any)
 	np, _ := nm["properties"].(map[string]any)
 	for _, name := range unionKeys(op, np) {
@@ -34,7 +32,7 @@ func (c *comparer) properties(path []segment, om, nm map[string]any) {
 		if !nHas {
 			nv = undeclared(nm, name)
 		}
-		c.node(append(path, segment{name: name}), ov, nv)
+		c.node(append(path, jsonptr.Property(name)), ov, nv)
 	}
 }
 
@@ -52,7 +50,7 @@ func undeclared(m map[string]any, name string) any {
 	return true
 }
 
-func (c *comparer) additionalProperties(path []segment, om, nm map[string]any) {
+func (c *comparer) additionalProperties(path []jsonptr.Segment, om, nm map[string]any) {
 	oa, oHas := om["additionalProperties"]
 	na, nHas := nm["additionalProperties"]
 	if !oHas {
@@ -64,7 +62,7 @@ func (c *comparer) additionalProperties(path []segment, om, nm map[string]any) {
 	_, oIsMap := oa.(map[string]any)
 	_, nIsMap := na.(map[string]any)
 	if oIsMap && nIsMap {
-		c.node(append(path, anySegment), oa, na)
+		c.node(append(path, jsonptr.AnySegment), oa, na)
 		return
 	}
 	c.wholeSchema(path, "additionalProperties", oa, na, func(v any) bool { return hasUndeclared(v, om) })
@@ -99,7 +97,7 @@ func matchesAnyPattern(patterns map[string]any, name string) bool {
 }
 
 // items compares array item subschemas: a single subschema for every item, or one per position.
-func (c *comparer) items(path []segment, keyword string, o, n any) {
+func (c *comparer) items(path []jsonptr.Segment, keyword string, o, n any) {
 	oa, oIsArr := o.([]any)
 	na, nIsArr := n.([]any)
 	switch {
@@ -113,10 +111,10 @@ func (c *comparer) items(path []segment, keyword string, o, n any) {
 		if n == nil {
 			n = true
 		}
-		c.node(append(path, anySegment), o, n)
+		c.node(append(path, jsonptr.AnySegment), o, n)
 	case oIsArr && nIsArr:
 		for i := range max(len(oa), len(na)) {
-			c.node(append(path, segment{name: strconv.Itoa(i), index: true}), at(oa, i), at(na, i))
+			c.node(append(path, jsonptr.Item(i)), at(oa, i), at(na, i))
 		}
 	default:
 		c.add(path, keyword, Alters, "changes between one subschema for every item and one per position", nil)
@@ -133,7 +131,7 @@ func at(schemas []any, i int) any {
 
 // combinator compares the subschemas of allOf, anyOf or oneOf position by position. The effect of
 // adding a subschema is added: it Narrows an allOf, and Widens an anyOf or oneOf.
-func (c *comparer) combinator(path []segment, keyword string, om, nm map[string]any, added Effect) {
+func (c *comparer) combinator(path []jsonptr.Segment, keyword string, om, nm map[string]any, added Effect) {
 	oa, _ := om[keyword].([]any)
 	na, _ := nm[keyword].([]any)
 	for i := range min(len(oa), len(na)) {
@@ -148,67 +146,6 @@ func (c *comparer) combinator(path []segment, keyword string, om, nm map[string]
 		c.add(path, keyword, added, "adds a subschema", nil)
 	case len(na) < len(oa):
 		c.add(path, keyword, removed, "removes a subschema", nil)
-	}
-}
-
-// valuesAt returns the values in doc at path.
-func valuesAt(doc any, path []segment) []any {
-	if len(path) == 0 {
-		return []any{doc}
-	}
-	var children []any
-	switch v := doc.(type) {
-	case map[string]any:
-		if path[0].any {
-			for _, name := range unionKeys(v, nil) {
-				children = append(children, v[name])
-			}
-		} else if child, ok := v[path[0].name]; ok && !path[0].index {
-			children = append(children, child)
-		}
-	case []any:
-		if path[0].any {
-			children = v
-		} else if i, err := strconv.Atoi(path[0].name); err == nil && path[0].index && i < len(v) {
-			children = append(children, v[i])
-		}
-	}
-	var out []any
-	for _, child := range children {
-		out = append(out, valuesAt(child, path[1:])...)
-	}
-	return out
-}
-
-// matchesType reports whether v is of any of the JSON Schema types.
-func matchesType(v any, types []string) bool {
-	return slices.ContainsFunc(types, func(t string) bool {
-		is, ok := isType[t]
-		return ok && is(v)
-	})
-}
-
-// isType reports whether a value is of each JSON Schema type.
-var isType = map[string]func(v any) bool{
-	"null":    func(v any) bool { return v == nil },
-	"boolean": func(v any) bool { _, ok := v.(bool); return ok },
-	"string":  func(v any) bool { _, ok := v.(string); return ok },
-	"object":  func(v any) bool { _, ok := v.(map[string]any); return ok },
-	"array":   func(v any) bool { _, ok := v.([]any); return ok },
-	"number":  func(v any) bool { _, ok := number(v); return ok },
-	"integer": func(v any) bool { n, ok := number(v); return ok && n == math.Trunc(n) },
-}
-
-// number returns v as a float64, if it is a JSON number.
-func number(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case json.Number:
-		f, err := n.Float64()
-		return f, err == nil
-	default:
-		return 0, false
 	}
 }
 

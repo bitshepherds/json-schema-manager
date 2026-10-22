@@ -7,6 +7,9 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/bitshepherds/json-schema-manager/internal/coverage"
+	"github.com/bitshepherds/json-schema-manager/internal/validator"
 )
 
 // ErrStopTesting is a sentinel error used to signal that further tests should be stopped and the report shown.
@@ -346,6 +349,10 @@ func (t *Tester) testSchema(ctx context.Context, key Key) (localFailed bool, err
 		return false, err
 	}
 
+	if t.scope == TestScopeLocal || t.scope == TestScopeAll {
+		t.summarise(s, ri, specs)
+	}
+
 	// execute tests
 	for _, spec := range specs {
 		if ce := ctx.Err(); ce != nil {
@@ -367,6 +374,49 @@ func (t *Tester) testSchema(ctx context.Context, key Key) (localFailed bool, err
 	}
 
 	return localFailed, nil
+}
+
+// summarise adds to the report how well the schema's own test documents, in specs, cover it: how
+// many there are, which points in the schema the pass documents reach, and which keywords reject
+// each fail document.
+func (t *Tester) summarise(s *Schema, ri RenderInfo, specs []Spec) {
+	var passDocs, failDocs []TestInfo
+	for i := range specs {
+		switch {
+		case specs[i].ForwardVersion != nil:
+			// a later version's document
+		case specs[i].TestDocType == TestDocTypePass:
+			passDocs = append(passDocs, specs[i].TestInfo)
+		default:
+			failDocs = append(failDocs, specs[i].TestInfo)
+		}
+	}
+
+	id := string(s.CanonicalID(t.registry.config.ProductionEnvConfig()))
+	validates := func(pointer string, v any) (bool, bool) {
+		sub, cErr := t.registry.compiler.Compile(id + "#" + pointer)
+		if cErr != nil {
+			return false, false
+		}
+		return sub.Validate(v) == nil, true
+	}
+	docs := make([]any, len(passDocs))
+	for i := range passDocs {
+		docs[i] = passDocs[i].Unmarshalled
+	}
+
+	summary := &Summary{
+		PassDocs:     len(passDocs),
+		FailDocs:     len(failDocs),
+		Coverage:     coverage.Measure(ri.Unmarshalled, docs, validates),
+		FailKeywords: make(map[string][]string),
+	}
+	for _, doc := range failDocs {
+		if keywords := validator.FailedKeywords(ri.Validator.Validate(doc.Unmarshalled), id); keywords != nil {
+			summary.FailKeywords[doc.Path] = keywords
+		}
+	}
+	t.report.AddSummary(s.Key(), summary)
 }
 
 // getSpecsForSchema identifies the tests to run for the given schema.
