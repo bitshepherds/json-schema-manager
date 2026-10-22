@@ -2,6 +2,23 @@
 
 Validate one or more JSON schemas
 
+### Synopsis
+
+
+Validate one or more JSON schemas against their test documents: each document in a schema's pass/
+directory must be accepted, and each in its fail/ directory rejected.
+
+Each schema's pass documents must also be accepted by every earlier version with the same major
+version, so that a provider moving to the schema does not break consumers still on an earlier one.
+Use --skip-compatible to leave this check out.
+
+That check is only as strong as the pass documents, so validate also compares each schema with the
+version before it, and warns about each structural change which may break consumers of that version
+and which none of the schema's pass documents uses: for example, an enum value added with no
+document using it. Add a pass document which uses the change, or use --fail-unexercised to fail
+on these warnings. 'jsm diff' lists every structural change between two versions.
+
+
 ```
 jsm validate [target] [flags]
 ```
@@ -34,6 +51,7 @@ ALL SCHEMAS
 
 ```
   -C, --continue-on-error     Continue testing even if a schema test fails (default is to stop on first error)
+      --fail-unexercised      Fail when a schema has a change which may break consumers of the version before it, and none of its pass documents uses it
   -h, --help                  help for validate
   -i, --id string             Validate a schema identified by its canonical ID
   -k, --key string            Validate a schema identified by its key

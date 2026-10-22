@@ -192,6 +192,21 @@ Each schema is tested against its own test documents: every document in its `pas
 
 `jsm validate` also checks compatibility: each version's `pass` documents must be accepted by every earlier version with the same major version. This catches a minor or patch version which would break consumers still using an earlier version. See [Compatibility runs one way](#compatibility-runs-one-way-providers-first). Use `--skip-compatible` to leave this check out while iterating.
 
+#### Unexercised changes
+
+The compatibility check is only as strong as the `pass` documents. If a minor version adds an enum value, and no `pass` document uses it, every document still passes the earlier version, and the check cannot see that consumers on the earlier version would reject the new value.
+
+So `jsm validate` also compares each version with the version before it, and warns about each structural change which may make that version reject documents the new one accepts, and which none of the new version's `pass` documents uses:
+
+```
+[WARN] shop_order_1_1_0.schema.json since shop_order_1_0_0:
+  ! /status: enum adds "refunded" (widens)
+```
+
+Add a `pass` document which uses the change. If the earlier version rejects it, the compatibility check fails, and the change needs a new major version. The warnings do not change the exit code, unless you add `--fail-unexercised`.
+
+`jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each. Changes which only narrow what a schema accepts, such as a property becoming required or a limit tightened, are safe for consumers on the earlier version, and are not warned about. The comparison is structural, and follows local `$ref`s; for a change where it cannot tell which values matter, such as an `anyOf` alternative added, any `pass` document with a value at that location counts as using it.
+
 By default, `jsm validate` stops at the first failing test. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
 
 ### Rendering and building schemas

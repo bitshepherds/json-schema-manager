@@ -1,0 +1,92 @@
+# validate warns about a structural change which may break consumers of the version before,
+# when no pass document uses it, and jsm diff lists every structural change (#45)
+
+exec git init -q
+env JSM_REGISTRY_ROOT_DIR=reg
+
+# 1.1.0 adds an enum value which no 1.1.0 pass document uses: the compatibility check passes,
+# and validate warns, exiting 0
+exec jsm validate shop_order_1_1_0 -c
+stdout 'Unexercised changes: no pass document uses these'
+stdout '\[WARN\] shop_order_1_1_0.schema.json since shop_order_1_0_0:'
+stdout '! /status: enum adds "refunded" \(widens\)'
+stdout 'Test summary: 2 passed, 0 failed, 1 unexercised change'
+
+# The same for every schema, and in the JSON report
+exec jsm validate all -c -C
+stdout '1 unexercised change'
+exec jsm validate all -o json -C
+stdout '"totalUnexercised": 1'
+stdout '"schema": "shop_order_1_1_0"'
+stdout '"earlier": "shop_order_1_0_0"'
+stdout '"location": "/status"'
+stdout '"effect": "widens"'
+
+# --fail-unexercised makes the warning fail the run
+! exec jsm validate shop_order_1_1_0 -c --fail-unexercised
+stdout '1 unexercised change'
+
+# --skip-compatible leaves it out with the compatibility check
+exec jsm validate shop_order_1_1_0 -c --skip-compatible
+! stdout 'unexercised change'
+
+# jsm diff lists the changes: the new enum value is unexercised, and requiring a property and
+# tightening a limit narrow the schema, which is safe for consumers of 1.0.0
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'Changes from shop_order_1_0_0 to shop_order_1_1_0:'
+stdout 'widens   /status: enum adds "refunded" \(no pass document uses it\)'
+stdout 'narrows  /: required requires "total"'
+stdout 'narrows  /note: maxLength tightens the limit from 100 to 50'
+
+exec jsm diff shop_order_1_0_0 shop_order_1_0_0
+stdout 'No structural changes from shop_order_1_0_0 to shop_order_1_0_0'
+
+! exec jsm diff shop_order_1_0_0 missing_thing_1_0_0
+stderr 'Error:'
+
+# Adding a pass document which uses the new value clears the warning, and the compatibility
+# check then fails, as 1.0.0 rejects it
+cp refunded.json reg/shop/order/1/1/0/pass/refunded.json
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'enum adds "refunded" \(used by pass/refunded.json\)'
+! exec jsm validate shop_order_1_1_0 -c
+! stdout 'unexercised change'
+stdout 'Test summary: 3 passed, 1 failed'
+
+-- refunded.json --
+{"status": "refunded", "total": 3}
+-- reg/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- reg/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": {
+    "status": { "enum": ["placed", "paid"] },
+    "total": { "type": "number" },
+    "note": { "type": "string", "maxLength": 100 }
+  }
+}
+-- reg/shop/order/1/0/0/pass/paid.json --
+{"status": "paid", "total": 3}
+-- reg/shop/order/1/0/0/fail/.keep --
+-- reg/shop/order/1/1/0/shop_order_1_1_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": {
+    "status": { "enum": ["placed", "paid", "refunded"] },
+    "total": { "type": "number" },
+    "note": { "type": "string", "maxLength": 50 }
+  },
+  "required": ["total"]
+}
+-- reg/shop/order/1/1/0/pass/paid.json --
+{"status": "paid", "total": 3}
+-- reg/shop/order/1/1/0/fail/.keep --

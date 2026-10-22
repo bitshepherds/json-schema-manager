@@ -36,6 +36,7 @@ jsm [flags]
 * [jsm create-registry](jsm_create-registry.md)	 - Create a new JSON schema registry
 * [jsm create-schema](jsm_create-schema.md)	 - Create a new JSON schema
 * [jsm create-schema-version](jsm_create-schema-version.md)	 - Create the next major, minor, or patch version of the given schema family
+* [jsm diff](jsm_diff.md)	 - List the structural changes from one schema version to another
 * [jsm render-schema](jsm_render-schema.md)	 - Output the rendered version of a schema
 * [jsm tag-deployment](jsm_tag-deployment.md)	 - Record a successful deployment by creating a JSM deployment tag
 * [jsm validate](jsm_validate.md)	 - Validate one or more JSON schemas

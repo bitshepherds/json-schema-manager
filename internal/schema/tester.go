@@ -99,6 +99,9 @@ func (t *Tester) TestSingleSchema(ctx context.Context, k Key) (*TestReport, erro
 		if err := t.testSchemaCompatibleWithEarlierVersions(ctx, k); err != nil && !errors.Is(err, ErrStopTesting) {
 			return nil, err
 		}
+		if err := t.findUnexercisedChanges(k); err != nil {
+			return nil, err
+		}
 	}
 
 	return t.report, nil
@@ -273,11 +276,50 @@ func (t *Tester) testFoundSchema(ctx context.Context, k Key) error {
 		return err
 	}
 
-	if t.skipCompatible || t.scope == TestScopeConsumerBreaking || t.scope == TestScopeAll {
+	if t.skipCompatible {
+		return nil
+	}
+
+	if uErr := t.findUnexercisedChanges(k); uErr != nil {
+		return uErr
+	}
+
+	if t.scope == TestScopeConsumerBreaking || t.scope == TestScopeAll {
 		return nil
 	}
 
 	return t.testSchemaCompatibleWithEarlierVersions(ctx, k)
+}
+
+// findUnexercisedChanges compares the schema with the version before it in its major family, and
+// adds to the report each structural change which may make that version reject documents the
+// schema accepts, and which none of the schema's pass documents uses.
+func (t *Tester) findUnexercisedChanges(k Key) error {
+	s, err := t.registry.GetSchemaByKey(k)
+	if err != nil {
+		return err
+	}
+	earlierKeys, err := s.MajorFamilyEarlierSchemas()
+	if err != nil || len(earlierKeys) == 0 {
+		return err
+	}
+	// The earlier versions are in version order, so the last is the one before s
+	earlierKey := earlierKeys[len(earlierKeys)-1]
+	earlier, err := t.registry.GetSchemaByKey(earlierKey)
+	if err != nil {
+		return err
+	}
+
+	changes, err := Diff(earlier, s)
+	if err != nil {
+		return err
+	}
+	for _, sc := range changes {
+		if sc.Change.MayBreak() && len(sc.UsedBy) == 0 {
+			t.report.AddUnexercisedChange(k, &UnexercisedChange{Earlier: earlierKey, Change: sc.Change})
+		}
+	}
+	return nil
 }
 
 // testSchema identifies the specs to run for the given schema, and executes them.
