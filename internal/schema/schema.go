@@ -495,6 +495,31 @@ func (s *Schema) addMinorFamilyFutureSchemas(minorVersion uint64, minorDir strin
 	return keys, nil
 }
 
+// NewestInFamily returns the key of the newest version in the schema's family, across every major
+// version, which may be the schema itself.
+func (s *Schema) NewestInFamily() (Key, error) {
+	dir := s.Path(FamilyDir)
+	var version [3]uint64
+	for i := range version {
+		versions, err := s.registry.pathResolver.GetUintSubdirectories(dir)
+		if err != nil {
+			return "", err
+		}
+		if len(versions) == 0 {
+			return "", &NotFoundError{Path: dir}
+		}
+		version[i] = slices.Max(versions)
+		dir = filepath.Join(dir, strconv.FormatUint(version[i], 10))
+	}
+
+	parts := strings.Split(string(s.Key()), KeySeparatorString)
+	lp := len(parts)
+	for i, v := range version {
+		parts[lp-3+i] = strconv.FormatUint(v, 10)
+	}
+	return Key(strings.Join(parts, KeySeparatorString)), nil
+}
+
 // MajorFamilyEarlierSchemas identifies schemas which:
 // a) Belong to the same major version in the same family
 // b) Have a version which is earlier than this schema's version.

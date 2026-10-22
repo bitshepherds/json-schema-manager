@@ -76,6 +76,13 @@ func (m *MockManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, err
 	return res, args.Error(1)
 }
 
+func (m *MockManager) CheckConsumer(
+	ctx context.Context, manifestPath, format string, useColour, strict bool,
+) error {
+	args := m.Called(ctx, manifestPath, format, useColour, strict)
+	return args.Error(0)
+}
+
 func (m *MockManager) CheckChanges(ctx context.Context, envName config.Env) error {
 	args := m.Called(ctx, envName)
 	return args.Error(0)

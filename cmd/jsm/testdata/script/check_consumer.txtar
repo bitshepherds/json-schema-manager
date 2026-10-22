@@ -1,0 +1,98 @@
+# check-consumer checks the schema versions a consumer pins, listed in its manifest, against the
+# registry (#52)
+
+exec git init -q
+env JSM_REGISTRY_ROOT_DIR=reg
+
+# The pinned version exists, and has no later version yet
+exec jsm check-consumer -c
+stdout 'JSM CONSUMER CHECK: jsm-consumer.yml'
+stdout '\[PASS\] shop_order_1_0_0'
+stdout 'Consumer check summary: 1 passed, 0 failed, 0 warnings'
+
+# A compatible 1.1.0, given by canonical URL in another manifest, still passes
+mkdir reg/shop/order/1/1/0/pass reg/shop/order/1/1/0/fail
+cp v110.json reg/shop/order/1/1/0/shop_order_1_1_0.schema.json
+cp paid.json reg/shop/order/1/1/0/pass/paid.json
+cp lost.json reg/shop/order/1/1/0/fail/lost.json
+exec jsm check-consumer -c by-url.yml
+stdout '\[PASS\] https://json-schemas.myorg.io/shop_order_1_0_0.schema.json'
+
+# A 1.1.0 pass document which 1.0.0 rejects fails the check, naming both versions
+cp refunded.json reg/shop/order/1/1/0/pass/refunded.json
+! exec jsm check-consumer -c
+stdout '\[FAIL\] shop_order_1_0_0'
+stdout 'shop_order_1_1_0 sends a document which shop_order_1_0_0 rejects: .*refunded.json'
+stdout 'Consumer check summary: 0 passed, 1 failed, 0 warnings'
+
+! exec jsm check-consumer -c -o json
+stdout '"status": "fail"'
+stdout '"later": "shop_order_1_1_0"'
+rm reg/shop/order/1/1/0/pass/refunded.json
+
+# A 2.0.0 gives a warning naming the new major, which --strict makes fail
+mkdir reg/shop/order/2/0/0/pass reg/shop/order/2/0/0/fail
+cp v200.json reg/shop/order/2/0/0/shop_order_2_0_0.schema.json
+exec jsm check-consumer -c
+stdout '\[WARN\] shop_order_1_0_0'
+stdout 'the family has a newer major version, shop_order_2_0_0: move to it before providers stop sending version 1'
+stdout 'Consumer check summary: 0 passed, 0 failed, 1 warning'
+! exec jsm check-consumer -c --strict
+exec jsm check-consumer -c -o json
+stdout '"newerMajor": "shop_order_2_0_0"'
+
+# A pinned version which does not exist, or an entry which is not a key or URL, fails
+! exec jsm check-consumer -c missing.yml
+stdout '\[FAIL\] shop_order_1_9_0'
+stdout 'not found in the registry'
+stdout '\[FAIL\] shop/order'
+stdout 'not a schema key or canonical URL'
+
+# A manifest which cannot be read is an error
+! exec jsm check-consumer -c nothing.yml
+stderr 'consumer manifest nothing.yml: cannot be read'
+
+-- jsm-consumer.yml --
+schemas:
+  - shop_order_1_0_0
+-- by-url.yml --
+schemas:
+  - https://json-schemas.myorg.io/shop_order_1_0_0.schema.json
+-- missing.yml --
+schemas:
+  - shop_order_1_9_0
+  - shop/order
+-- v110.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "properties": { "status": { "enum": ["placed", "paid", "refunded"] } }
+}
+-- v200.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "properties": { "state": { "type": "string" } }
+}
+-- paid.json --
+{"status": "paid"}
+-- refunded.json --
+{"status": "refunded"}
+-- lost.json --
+{"status": "lost"}
+-- reg/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- reg/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "properties": { "status": { "enum": ["placed", "paid"] } }
+}
+-- reg/shop/order/1/0/0/pass/paid.json --
+{"status": "paid"}
+-- reg/shop/order/1/0/0/fail/lost.json --
+{"status": "lost"}

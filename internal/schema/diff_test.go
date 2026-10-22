@@ -275,3 +275,27 @@ func TestTester_Summary(t *testing.T) {
 		assert.Equal(t, 1, report.MissingDocuments())
 	})
 }
+
+func TestSchema_NewestInFamily(t *testing.T) {
+	t.Parallel()
+
+	r := setupTestRegistry(t)
+	createSchemaFiles(t, r, schemaMap{
+		"shop_order_1_0_0": `{}`, "shop_order_1_2_0": `{}`, "shop_order_2_0_0": `{}`, "shop_order_2_0_3": `{}`,
+	})
+	s, err := r.GetSchemaByKey("shop_order_1_0_0")
+	require.NoError(t, err)
+	newest, err := s.NewestInFamily()
+	require.NoError(t, err)
+	assert.Equal(t, Key("shop_order_2_0_3"), newest)
+
+	// A major version directory with no versions in it
+	require.NoError(t, os.MkdirAll(filepath.Join(s.Path(FamilyDir), "3"), 0o755))
+	_, err = s.NewestInFamily()
+	require.ErrorAs(t, err, new(*NotFoundError))
+
+	// The family directory cannot be read
+	require.NoError(t, os.RemoveAll(s.Path(FamilyDir)))
+	_, err = s.NewestInFamily()
+	require.Error(t, err)
+}
