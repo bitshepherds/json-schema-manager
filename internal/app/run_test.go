@@ -86,16 +86,10 @@ environments:
 		env := &mockEnvProvider{values: map[string]string{
 			"JSM_REGISTRY_ROOT_DIR": "",
 		}}
-		// We'll pass tmpDir as a placeholder, but discovery should fail if it's not a registry
-		// Actually, PathResolver.Abs(".") in NewRegistry will return CWD.
-		// Since we want to avoid Chdir, we rely on the fact that JSM_REGISTRY_ROOT_DIR is empty
-		// and the current CWD (project root) is not where the config is if we are elsewhere.
-		// Wait, if we are in project root, it MIGHT find it.
-		// Let's use a mock env provider that returns nothing.
+		// The tests run in this package's directory, which is not a registry
 
 		err := Run(context.Background(), []string{"jsm", "validate", "some_schema_1_0_0"}, io.Discard, io.Discard, env)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "json-schema-manager-config.yml missing")
+		require.ErrorContains(t, err, "no registry found")
 	})
 
 	t.Run("run command execution error", func(t *testing.T) {

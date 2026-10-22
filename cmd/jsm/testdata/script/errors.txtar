@@ -9,6 +9,18 @@ cp config.yml registry/json-schema-manager-config.yml
 exec git add .
 exec git commit -m "init"
 
+# No registry given, and the current directory is not one: say how to set one up (#2)
+env JSM_REGISTRY_ROOT_DIR=
+! exec jsm validate all
+stderr 'no registry found: .* has no json-schema-manager-config.yml. Run jsm in a registry''s root directory'
+
+# A registry path which does not exist says where the path came from
+! exec jsm validate all -r missing
+stderr 'registry root .*missing, given by --registry, does not exist'
+env JSM_REGISTRY_ROOT_DIR=missing
+! exec jsm validate all
+stderr 'registry root .*missing, given by \$JSM_REGISTRY_ROOT_DIR, does not exist'
+
 env JSM_REGISTRY_ROOT_DIR=registry
 
 # Error: Invalid environment

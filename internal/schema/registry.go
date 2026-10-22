@@ -44,6 +44,10 @@ func NewRegistry(
 	}
 
 	cfg, err := config.New(rd, compiler)
+	var missing *config.MissingConfigError
+	if errors.As(err, &missing) && rootDirectory == "" && envProvider.Get(RootDirEnvVar) == "" {
+		return nil, &NoRegistryError{Dir: rd}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -65,14 +69,16 @@ func NewRegistry(
 // If rootDirectory is empty, it will attempt to find the root directory from
 // the environment variable JSM_REGISTRY_ROOT_DIR.
 func initRootDirectory(rd string, pathResolver fsh.PathResolver, envProvider fsh.EnvProvider) (string, error) {
+	source := "--registry"
 	if rd == "" {
 		rd = envProvider.Get(RootDirEnvVar)
+		source = "$" + RootDirEnvVar
 	}
 
 	// If we get here, we have at least a string which *may* be a candidate.
 	rdc, err := pathResolver.CanonicalPath(rd)
 	if err != nil {
-		return "", &RegistryInitError{Path: rd, Err: err}
+		return "", &RegistryInitError{Path: rd, Source: source, Err: err}
 	}
 	rd = rdc
 
