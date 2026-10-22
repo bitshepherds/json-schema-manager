@@ -8,10 +8,12 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/bitshepherds/json-schema-manager/internal/jsonptr"
 )
 
 // keywords compares the assertion keywords of the subschemas om and nm, which apply at path.
-func (c *comparer) keywords(path []segment, om, nm map[string]any) {
+func (c *comparer) keywords(path []jsonptr.Segment, om, nm map[string]any) {
 	c.types(path, om, nm)
 	c.enum(path, om, nm)
 	c.constant(path, om, nm)
@@ -23,19 +25,25 @@ func (c *comparer) keywords(path []segment, om, nm map[string]any) {
 	c.required(path, om, nm)
 }
 
-func (c *comparer) types(path []segment, om, nm map[string]any) {
+func (c *comparer) types(path []jsonptr.Segment, om, nm map[string]any) {
 	ot, oHas := typeSet(om)
 	nt, nHas := typeSet(nm)
 	switch {
 	case !oHas && !nHas:
 	case !nHas:
-		c.add(path, "type", Widens, "no longer restricts the type", func(v any) bool { return !matchesType(v, ot) })
+		c.add(
+			path,
+			"type",
+			Widens,
+			"no longer restricts the type",
+			func(v any) bool { return !jsonptr.MatchesType(v, ot) },
+		)
 	case !oHas:
 		c.add(path, "type", Narrows, "restricts the type to "+quoteAll(nt), nil)
 	default:
 		if added := uncovered(nt, ot); len(added) > 0 {
 			c.add(path, "type", Widens, "allows "+quoteAll(added), func(v any) bool {
-				return matchesType(v, added) && !matchesType(v, ot)
+				return jsonptr.MatchesType(v, added) && !jsonptr.MatchesType(v, ot)
 			})
 		}
 		if removed := uncovered(ot, nt); len(removed) > 0 {
@@ -73,7 +81,7 @@ func uncovered(a, b []string) []string {
 	return out
 }
 
-func (c *comparer) enum(path []segment, om, nm map[string]any) {
+func (c *comparer) enum(path []jsonptr.Segment, om, nm map[string]any) {
 	ov, oHas := om["enum"].([]any)
 	nv, nHas := nm["enum"].([]any)
 	switch {
@@ -107,7 +115,7 @@ func containsValue(values []any, v any) bool {
 	return slices.ContainsFunc(values, func(e any) bool { return reflect.DeepEqual(e, v) })
 }
 
-func (c *comparer) constant(path []segment, om, nm map[string]any) {
+func (c *comparer) constant(path []jsonptr.Segment, om, nm map[string]any) {
 	ov, oHas := om["const"]
 	nv, nHas := nm["const"]
 	switch {
@@ -143,10 +151,10 @@ var bounds = []bound{
 	{keyword: "minItems", measure: arrayLength},
 	{keyword: "maxProperties", upper: true, measure: objectSize},
 	{keyword: "minProperties", measure: objectSize},
-	{keyword: "maximum", upper: true, measure: number},
-	{keyword: "minimum", measure: number},
-	{keyword: "exclusiveMaximum", upper: true, exclusive: true, measure: number},
-	{keyword: "exclusiveMinimum", exclusive: true, measure: number},
+	{keyword: "maximum", upper: true, measure: jsonptr.Number},
+	{keyword: "minimum", measure: jsonptr.Number},
+	{keyword: "exclusiveMaximum", upper: true, exclusive: true, measure: jsonptr.Number},
+	{keyword: "exclusiveMinimum", exclusive: true, measure: jsonptr.Number},
 }
 
 // outside reports whether the measure m is outside the limit set by b.
@@ -163,14 +171,14 @@ func (b bound) outside(m, limit float64) bool {
 	}
 }
 
-func (c *comparer) bound(path []segment, b bound, om, nm map[string]any) {
+func (c *comparer) bound(path []jsonptr.Segment, b bound, om, nm map[string]any) {
 	ov, oHas := om[b.keyword]
 	nv, nHas := nm[b.keyword]
 	if !oHas && !nHas || reflect.DeepEqual(ov, nv) {
 		return
 	}
-	ol, oNum := number(ov)
-	nl, nNum := number(nv)
+	ol, oNum := jsonptr.Number(ov)
+	nl, nNum := jsonptr.Number(nv)
 	if oHas && !oNum || nHas && !nNum {
 		// e.g. draft-04's boolean exclusiveMaximum
 		c.add(path, b.keyword, Alters, "changes "+b.keyword, nil)
@@ -192,7 +200,7 @@ func (c *comparer) bound(path []segment, b bound, om, nm map[string]any) {
 	}
 }
 
-func (c *comparer) pattern(path []segment, om, nm map[string]any) {
+func (c *comparer) pattern(path []jsonptr.Segment, om, nm map[string]any) {
 	op, oHas := om["pattern"].(string)
 	np, nHas := nm["pattern"].(string)
 	if !oHas && !nHas || op == np {
@@ -215,14 +223,14 @@ func (c *comparer) pattern(path []segment, om, nm map[string]any) {
 	}
 }
 
-func (c *comparer) multipleOf(path []segment, om, nm map[string]any) {
-	ov, oHas := number(om["multipleOf"])
-	nv, nHas := number(nm["multipleOf"])
+func (c *comparer) multipleOf(path []jsonptr.Segment, om, nm map[string]any) {
+	ov, oHas := jsonptr.Number(om["multipleOf"])
+	nv, nHas := jsonptr.Number(nm["multipleOf"])
 	if !oHas && !nHas || ov == nv {
 		return
 	}
 	rejectedByOld := func(v any) bool {
-		n, ok := number(v)
+		n, ok := jsonptr.Number(v)
 		return ok && !isMultiple(n, ov)
 	}
 	switch {
@@ -243,7 +251,7 @@ func isMultiple(v, m float64) bool {
 	return math.Abs(q-math.Round(q)) < 1e-9
 }
 
-func (c *comparer) required(path []segment, om, nm map[string]any) {
+func (c *comparer) required(path []jsonptr.Segment, om, nm map[string]any) {
 	or := stringsIn(om["required"])
 	nr := stringsIn(nm["required"])
 	for _, name := range or {

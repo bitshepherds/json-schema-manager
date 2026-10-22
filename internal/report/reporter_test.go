@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitshepherds/json-schema-manager/internal/coverage"
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
 	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 )
@@ -241,4 +242,43 @@ func TestReporters_UnexercisedChanges(t *testing.T) {
 	js.Reset()
 	require.NoError(t, (&JSONReporter{}).Write(&js, schema.NewTestReport()))
 	assert.Contains(t, js.String(), `"unexercisedChanges": []`)
+}
+
+func TestReporters_Summaries(t *testing.T) {
+	t.Parallel()
+
+	r := schema.NewTestReport()
+	r.AddSummary("d_a_1_0_0", &schema.Summary{PassDocs: 0, FailDocs: 2})
+	r.AddSummary("d_b_1_0_0", &schema.Summary{PassDocs: 1, FailDocs: 0})
+	r.AddSummary("d_c_1_0_0", &schema.Summary{
+		PassDocs: 1,
+		FailDocs: 1,
+		Coverage: []coverage.Point{
+			{Location: "/", Kind: coverage.Property, Detail: "a", Covered: true},
+			{Location: "/a", Kind: coverage.EnumValue, Detail: `"x"`},
+		},
+		FailKeywords: map[string][]string{"fail/b.json": {"#/required", "#/type"}},
+	})
+
+	var text bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&text, r))
+	out := text.String()
+	assert.Contains(t, out, "[WARN] d_a_1_0_0.schema.json (pass: 0, fail: 0)\n  ! no pass documents\n")
+	assert.Contains(t, out, "[WARN] d_b_1_0_0.schema.json (pass: 0, fail: 0)\n  ! no fail documents\n")
+	assert.Contains(t, out, "[PASS] d_c_1_0_0.schema.json (pass: 0, fail: 0)\n")
+	assert.NotContains(t, out, "coverage:", "coverage is only shown when verbose")
+	assert.Contains(t, out, "Test summary: 0 passed, 0 failed, 2 schemas without pass or fail documents")
+
+	text.Reset()
+	require.NoError(t, (&TextReporter{Verbose: true}).Write(&text, r))
+	assert.Contains(t, text.String(), "  coverage: 1 of 2 points reached by pass documents\n"+
+		"    - /a: enum \"x\"\n  fail/b.json is rejected by #/required, #/type\n")
+
+	var js bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&js, r))
+	out = js.String()
+	assert.Contains(t, out, `"totalMissingDocuments": 2`)
+	assert.Contains(t, out, `"points": []`, "a schema with no points has an empty list")
+	assert.Contains(t, out, `"covered": 1`)
+	assert.Contains(t, out, `"fail/b.json": [`)
 }

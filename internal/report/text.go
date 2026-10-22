@@ -3,8 +3,8 @@ package report
 import (
 	"fmt"
 	"io"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
@@ -49,23 +49,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	_, _ = fmt.Fprintf(w, "%s %s\n", tr.cs(colGrey, "Duration:"), tr.cs(colWhite, r.EndTime.Sub(r.StartTime).String()))
 	_, _ = fmt.Fprintf(w, "%s\n", divider)
 
-	// Collect all keys to ensure sorted output
-	keysMap := make(map[schema.Key]bool)
-	for k := range r.PassedTests {
-		keysMap[k] = true
-	}
-	for k := range r.FailedTests {
-		keysMap[k] = true
-	}
-
-	keys := make([]schema.Key, 0, len(keysMap))
-	for k := range keysMap {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
-
+	keys := reportKeys(r)
 	totalPassed := 0
 	totalFailed := 0
 
@@ -76,12 +60,17 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		totalPassed += len(passed)
 		totalFailed += len(failed)
 
+		summary := r.Summaries[k]
 		statusText := "PASS"
 		statusCol := colGreen
-		if len(failed) > 0 {
+		switch {
+		case len(failed) > 0:
 			statusText = "FAIL"
 			statusCol = colRed
 			keyCol = colRed
+		case summary != nil && summary.MissingDocuments():
+			statusText = "WARN"
+			statusCol = colYellow
 		}
 
 		status := tr.cs(statusCol, "["+statusText+"]")
@@ -116,6 +105,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 				_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
 			}
 		}
+		tr.writeSummary(w, summary)
 	}
 
 	totalUnexercised := tr.writeUnexercised(w, r, divider)
@@ -125,6 +115,9 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	summaryStats := fmt.Sprintf("%d passed, %d failed", totalPassed, totalFailed)
 	if totalUnexercised > 0 {
 		summaryStats += fmt.Sprintf(", %d unexercised %s", totalUnexercised, plural(totalUnexercised, "change"))
+	}
+	if missing := r.MissingDocuments(); missing > 0 {
+		summaryStats += fmt.Sprintf(", %d %s without pass or fail documents", missing, plural(missing, "schema"))
 	}
 	statsColor := colBoldGreen
 	if totalFailed > 0 {
@@ -136,6 +129,54 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	}
 	_, err = fmt.Fprintf(w, "%s\n", divider)
 	return err
+}
+
+// reportKeys returns the keys of every schema in the report, sorted.
+func reportKeys(r *schema.TestReport) []schema.Key {
+	keysMap := make(map[schema.Key]bool)
+	for k := range r.PassedTests {
+		keysMap[k] = true
+	}
+	for k := range r.FailedTests {
+		keysMap[k] = true
+	}
+	for k := range r.Summaries {
+		keysMap[k] = true
+	}
+	return slices.Sorted(maps.Keys(keysMap))
+}
+
+// writeSummary writes a warning if the schema has no pass or no fail documents and, when verbose,
+// how well its documents cover it.
+func (tr *TextReporter) writeSummary(w io.Writer, s *schema.Summary) {
+	if s == nil {
+		return
+	}
+	var missing []string
+	if s.PassDocs == 0 {
+		missing = append(missing, "pass")
+	}
+	if s.FailDocs == 0 {
+		missing = append(missing, "fail")
+	}
+	if len(missing) > 0 {
+		_, _ = fmt.Fprintf(w, "  %s no %s documents\n", tr.cs(colYellow, "!"), strings.Join(missing, " or "))
+	}
+	if !tr.Verbose {
+		return
+	}
+
+	_, _ = fmt.Fprintf(w, "  %s %d of %d points reached by pass documents\n",
+		tr.cs(colGrey, "coverage:"), s.Covered(), len(s.Coverage))
+	for _, p := range s.Coverage {
+		if !p.Covered {
+			_, _ = fmt.Fprintf(w, "    %s %s: %s %s\n", tr.cs(colYellow, "-"), p.Location, p.Kind, p.Detail)
+		}
+	}
+	for _, path := range slices.Sorted(maps.Keys(s.FailKeywords)) {
+		_, _ = fmt.Fprintf(w, "  %s %s\n", tr.cs(colGrey, path+" is rejected by"),
+			strings.Join(s.FailKeywords[path], ", "))
+	}
 }
 
 // writeUnexercised writes the changes which no pass document uses, and returns how many there are.

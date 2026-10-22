@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitshepherds/json-schema-manager/internal/coverage"
 	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 )
 
@@ -41,6 +42,33 @@ type TestReport struct {
 
 	// UnexercisedChanges lists, for each schema, the changes which none of its pass documents use.
 	UnexercisedChanges map[Key][]UnexercisedChange
+
+	// Summaries describe, for each schema tested against its own documents, how well they cover it.
+	Summaries map[Key]*Summary
+}
+
+// Summary describes how well a schema's test documents cover it.
+type Summary struct {
+	PassDocs     int
+	FailDocs     int
+	Coverage     []coverage.Point    // the points in the schema, and whether its pass documents reach each
+	FailKeywords map[string][]string // for each fail document's path, the keywords which reject it
+}
+
+// MissingDocuments reports whether the schema has no pass document, or no fail document.
+func (s *Summary) MissingDocuments() bool {
+	return s.PassDocs == 0 || s.FailDocs == 0
+}
+
+// Covered returns how many of the schema's coverage points its pass documents reach.
+func (s *Summary) Covered() int {
+	n := 0
+	for _, p := range s.Coverage {
+		if p.Covered {
+			n++
+		}
+	}
+	return n
 }
 
 // UnexercisedChange is a structural change in a schema since the version before it in its major
@@ -58,7 +86,26 @@ func NewTestReport() *TestReport {
 		FailedTests:        make(TestLog),
 		PassedTests:        make(TestLog),
 		UnexercisedChanges: make(map[Key][]UnexercisedChange),
+		Summaries:          make(map[Key]*Summary),
 	}
+}
+
+// AddSummary adds the summary of the schema with the given key's test documents.
+func (r *TestReport) AddSummary(key Key, s *Summary) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Summaries[key] = s
+}
+
+// MissingDocuments returns how many schemas have no pass document, or no fail document.
+func (r *TestReport) MissingDocuments() int {
+	n := 0
+	for _, s := range r.Summaries {
+		if s.MissingDocuments() {
+			n++
+		}
+	}
+	return n
 }
 
 // AddUnexercisedChange adds a change in the schema with the given key which no pass document uses.

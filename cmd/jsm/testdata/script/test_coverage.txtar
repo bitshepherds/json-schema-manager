@@ -1,0 +1,74 @@
+# validate lists every schema it tests, warns about one with no pass or no fail documents, and
+# reports how well each schema's documents cover it (#46)
+
+exec git init -q
+env JSM_REGISTRY_ROOT_DIR=reg
+
+# A version with empty pass/ and fail/ directories is listed, with a warning, and exits 0
+exec jsm validate shop_note_1_0_0 -c
+stdout '\[WARN\] shop_note_1_0_0.schema.json \(pass: 0, fail: 0\)'
+stdout '! no pass or fail documents'
+stdout 'Test summary: 0 passed, 0 failed, 1 schema without pass or fail documents$'
+
+exec jsm validate shop_note_1_0_0 -o json
+stdout '"totalMissingDocuments": 1'
+stdout '"shop_note_1_0_0": \{'
+stdout '"passDocuments": 0'
+stdout '"missingDocuments": true'
+
+# --strict makes the warning fail the run
+! exec jsm validate shop_note_1_0_0 -c --strict
+stdout '! no pass or fail documents'
+
+# A well-tested version has no warning, and --verbose shows its coverage: the enum value and the
+# property which no pass document uses, and the keywords which reject each fail document
+exec jsm validate shop_order_1_0_0 -c -v --strict
+stdout '\[PASS\] shop_order_1_0_0.schema.json \(pass: 3, fail: 0\)'
+! stdout 'no pass'
+stdout 'coverage: 3 of 5 points reached by pass documents'
+stdout '- /: property note'
+stdout '- /status: enum "refunded"'
+stdout 'fail/lost.json is rejected by #/properties/status/enum'
+
+exec jsm validate shop_order_1_0_0 -o json
+stdout '"covered": 3'
+stdout '"total": 5'
+stdout '"detail": "\\"refunded\\""'
+stdout '"#/properties/status/enum"'
+
+# Every schema in scope is listed
+exec jsm validate all -c -C
+stdout '\[PASS\] shop_order_1_0_0.schema.json'
+stdout '\[WARN\] shop_note_1_0_0.schema.json'
+stdout '1 schema without pass or fail documents'
+
+-- reg/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- reg/shop/note/1/0/0/shop_note_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "string"
+}
+-- reg/shop/note/1/0/0/pass/.keep --
+-- reg/shop/note/1/0/0/fail/.keep --
+-- reg/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": {
+    "status": { "enum": ["placed", "paid", "refunded"] },
+    "note": { "type": "string" }
+  }
+}
+-- reg/shop/order/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- reg/shop/order/1/0/0/pass/paid.json --
+{"status": "paid"}
+-- reg/shop/order/1/0/0/fail/lost.json --
+{"status": "lost"}

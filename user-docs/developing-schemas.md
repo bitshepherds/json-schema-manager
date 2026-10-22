@@ -203,9 +203,27 @@ So `jsm validate` also compares each version with the version before it, and war
   ! /status: enum adds "refunded" (widens)
 ```
 
-Add a `pass` document which uses the change. If the earlier version rejects it, the compatibility check fails, and the change needs a new major version. The warnings do not change the exit code, unless you add `--fail-unexercised`.
+Add a `pass` document which uses the change. If the earlier version rejects it, the compatibility check fails, and the change needs a new major version.
 
 `jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each. Changes which only narrow what a schema accepts, such as a property becoming required or a limit tightened, are safe for consumers on the earlier version, and are not warned about. The comparison is structural, and follows local `$ref`s; for a change where it cannot tell which values matter, such as an `anyOf` alternative added, any `pass` document with a value at that location counts as using it.
+
+#### Coverage
+
+Every schema `jsm validate` tests is listed in its report, and one with no `pass` document, or no `fail` document, is marked `[WARN]`.
+
+With `--verbose`, the report also shows how much of each schema its `pass` documents reach, and which keywords reject each `fail` document:
+
+```
+[PASS] shop_order_1_0_0.schema.json (pass: 3, fail: 0)
+  coverage: 3 of 5 points reached by pass documents
+    - /: property note
+    - /status: enum "refunded"
+  .../fail/lost.json is rejected by #/properties/status/enum
+```
+
+The points are the properties a schema declares, its enum values, the types of a `type` list, its `anyOf` and `oneOf` subschemas, and the two paths through each `if`. The JSON report (`--output json`) always includes this, under each schema's `summary`.
+
+The warnings, for unexercised changes and for missing documents, do not change the exit code unless you add `--strict`, which makes `jsm validate` exit `1` on any warning.
 
 By default, `jsm validate` stops at the first failing test. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
 
