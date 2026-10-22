@@ -44,7 +44,7 @@ jobs:
               uses: golang/govulncheck-action@v1
 
     models:
-        name: Generated Models
+        name: Generated Models and API Examples
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
@@ -59,3 +59,6 @@ jobs:
             # Node.js, which the generators need, is on the runner already
             - name: Check that the guide's generated models compile
               run: make check-models
+
+            - name: Check that the AsyncAPI and OpenAPI examples are valid
+              run: make check-apis
