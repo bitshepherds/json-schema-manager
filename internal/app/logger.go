@@ -157,9 +157,13 @@ func (c *consoleHandler) Handle(_ context.Context, record slog.Record) error {
 }
 
 func (c *consoleHandler) formatAttr(a slog.Attr) {
-	if a.Key == "error" || a.Key == "err" {
+	switch a.Key {
+	case "component":
+		// Which part of jsm logged the message is for the log file, not the console
+		return
+	case "error", "err":
 		_, _ = fmt.Fprintf(c.w, ": %v", a.Value)
-	} else {
+	default:
 		_, _ = fmt.Fprintf(c.w, " %s=%v", a.Key, a.Value)
 	}
 }

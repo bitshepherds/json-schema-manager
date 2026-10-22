@@ -2,6 +2,7 @@ package schema
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -80,20 +81,24 @@ func (w *Watcher) Watch(ctx context.Context, target ResolvedTarget, callback fun
 	defer func() { _ = watcher.Close() }()
 
 	targetPath := w.registry.RootDirectory()
+	what := "every schema"
 	if target.Scope != nil && *target.Scope != "" {
 		targetPath = filepath.Join(targetPath, filepath.FromSlash(string(*target.Scope)))
+		what = "the schemas in " + string(*target.Scope)
 	} else if target.Key != nil {
 		s, err := w.registry.GetSchemaByKey(*target.Key)
 		if err == nil {
 			targetPath = filepath.Dir(s.Path(FilePath))
 		}
+		what = string(*target.Key)
 	}
 
 	if err := w.addRecursive(watcher, targetPath); err != nil {
 		return err
 	}
 
-	w.logger.Info("Watching for changes", "target", targetPath)
+	w.logger.Info(fmt.Sprintf("Watching %s in the registry at %s, and testing them when they change. "+
+		"Press Ctrl+C to stop.", what, w.registry.RootDirectory()))
 	if w.Ready != nil {
 		close(w.Ready)
 	}
