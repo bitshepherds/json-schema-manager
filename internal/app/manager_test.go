@@ -1043,7 +1043,7 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 		}
 		m := NewCLIManager(logger, registry, nil, gitter, nil, &out)
 		require.NoError(t, m.CheckChanges(context.Background(), "prod"))
-		assert.Contains(t, out.String(), "No deployment to prod found: treating every schema as new")
+		assert.Contains(t, out.String(), "No deployment to prod found: treating every schema git tracks as new")
 		assert.Contains(t, out.String(), "fetch the jsm-deploy/prod/* tags")
 		assert.Contains(t, out.String(), "All changes are valid")
 	})
@@ -1456,6 +1456,40 @@ func TestCLIManager_BuildDist(t *testing.T) {
 
 		err := mgr.BuildDist(context.Background(), "prod", true, false, true)
 		require.NoError(t, err)
+	})
+
+	t.Run("names the schemas git does not track", func(t *testing.T) {
+		t.Parallel()
+		registry := setupTestRegistry(t)
+		root, err := filepath.EvalSymlinks(registry.RootDirectory())
+		require.NoError(t, err)
+		gitter := &MockGitter{
+			UntrackedFilesFunc: func(_ context.Context, _, suffix string) ([]string, error) {
+				assert.Equal(t, schema.SchemaSuffix, suffix)
+				return []string{filepath.Join(root, "d", "f", "1", "0", "0", "d_f_1_0_0.schema.json")}, nil
+			},
+		}
+		var out bytes.Buffer
+		mgr := NewCLIManager(logger, registry, nil, gitter, &MockDistBuilder{}, &out)
+
+		require.NoError(t, mgr.BuildDist(context.Background(), "prod", false, false, true))
+		assert.Contains(t, out.String(), "No schemas to build\nNot built, because git does not track them yet:\n"+
+			"  "+filepath.Join("d", "f", "1", "0", "0", "d_f_1_0_0.schema.json")+"\nCommit them")
+
+		out.Reset()
+		require.NoError(t, mgr.BuildDist(context.Background(), "prod", true, false, true))
+		assert.NotContains(t, out.String(), "Not built", "--all builds them")
+	})
+
+	t.Run("UntrackedFiles error", func(t *testing.T) {
+		t.Parallel()
+		gitter := &MockGitter{
+			UntrackedFilesFunc: func(_ context.Context, _, _ string) ([]string, error) {
+				return nil, fmt.Errorf("ls-files failed")
+			},
+		}
+		mgr := NewCLIManager(logger, setupTestRegistry(t), nil, gitter, &MockDistBuilder{}, io.Discard)
+		require.EqualError(t, mgr.BuildDist(context.Background(), "prod", false, false, true), "ls-files failed")
 	})
 
 	t.Run("BuildAll error", func(t *testing.T) {

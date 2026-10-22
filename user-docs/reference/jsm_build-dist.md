@@ -16,6 +16,9 @@ the last successful deployment to that environment. A mutation check is performe
 first to ensure that existing schemas haven't been modified in environments where 
 mutations are forbidden.
 
+It finds them with git, so it leaves out schemas which git does not track yet, and
+lists them: commit them to include them. In CI, every schema is committed.
+
 If the --all (-a) flag is used, all schemas in the registry are rendered and written 
 to the dist directory, skipping the mutation check.
 

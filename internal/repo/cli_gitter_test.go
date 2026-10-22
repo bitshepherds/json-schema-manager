@@ -586,3 +586,51 @@ func TestCLIGitter_ShowFile(t *testing.T) {
 		require.ErrorContains(t, err, "failed to find git root")
 	})
 }
+
+func TestCLIGitter_UntrackedFiles(t *testing.T) {
+	t.Parallel()
+
+	t.Run("lists untracked files with the suffix", func(t *testing.T) {
+		t.Parallel()
+		dir := setupTestRepo(t)
+		reg := filepath.Join(dir, "reg")
+		require.NoError(t, os.MkdirAll(filepath.Join(reg, "a"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(reg, "tracked.schema.json"), []byte("{}"), 0o600))
+		runGit(t, dir, "add", ".")
+		runGit(t, dir, "commit", "-q", "-m", "1")
+		require.NoError(t, os.WriteFile(filepath.Join(reg, "a", "new.schema.json"), []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(reg, "a", "notes.txt"), []byte(""), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(reg, "ignored.schema.json"), []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("ignored.schema.json\n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "outside.schema.json"), []byte("{}"), 0o600))
+
+		root, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), dir)
+		paths, err := g.UntrackedFiles(context.Background(), "reg", ".schema.json")
+		require.NoError(t, err)
+		assert.Equal(t, []string{filepath.Join(root, "reg", "a", "new.schema.json")}, paths)
+	})
+
+	t.Run("not a git repo", func(t *testing.T) {
+		t.Parallel()
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), t.TempDir())
+		_, err := g.UntrackedFiles(context.Background(), "/reg", ".schema.json")
+		require.ErrorContains(t, err, "failed to find git root")
+	})
+
+	t.Run("ls-files fails", func(t *testing.T) {
+		t.Parallel()
+		binDir := t.TempDir()
+		realGit, err := exec.LookPath("git")
+		require.NoError(t, err)
+		gitPath := filepath.Join(binDir, "git")
+		script := fmt.Sprintf("#!/bin/sh\nif [ \"$1\" = \"ls-files\" ]; then exit 1; fi\nexec %s \"$@\"\n", realGit)
+		require.NoError(t, os.WriteFile(gitPath, []byte(script), 0o755))
+
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), setupTestRepo(t))
+		g.SetGitBinary(gitPath)
+		_, err = g.UntrackedFiles(context.Background(), "/reg", ".schema.json")
+		require.ErrorContains(t, err, "git ls-files failed")
+	})
+}

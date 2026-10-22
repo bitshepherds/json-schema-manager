@@ -104,6 +104,14 @@ type MockGitter struct {
 	TagDeploymentFunc    func(ctx context.Context, env config.Env, push bool) (string, error)
 	GetSchemaChangesFunc func(ctx context.Context, anchor repo.Revision, sourceDir, suffix string) ([]repo.Change, error)
 	ShowFileFunc         func(ctx context.Context, rev repo.Revision, path string) ([]byte, error)
+	UntrackedFilesFunc   func(ctx context.Context, sourceDir, suffix string) ([]string, error)
+}
+
+func (m *MockGitter) UntrackedFiles(ctx context.Context, sourceDir, suffix string) ([]string, error) {
+	if m.UntrackedFilesFunc != nil {
+		return m.UntrackedFilesFunc(ctx, sourceDir, suffix)
+	}
+	return nil, nil
 }
 
 func (m *MockGitter) ShowFile(ctx context.Context, rev repo.Revision, path string) ([]byte, error) {

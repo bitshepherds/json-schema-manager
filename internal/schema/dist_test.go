@@ -40,6 +40,10 @@ func (m *mockGitter) TagDeploymentSuccess(ctx context.Context, env config.Env, _
 	return "jsm-deploy/prod/20260130-120000", nil
 }
 
+func (m *mockGitter) UntrackedFiles(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (m *mockGitter) ShowFile(_ context.Context, _ repo.Revision, _ string) ([]byte, error) {
 	return nil, nil
 }
