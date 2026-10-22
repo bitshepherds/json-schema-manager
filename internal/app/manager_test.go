@@ -158,7 +158,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			false, "text", false, false, schema.TestScopeLocal, false)
+			false, "text", false, false, schema.TestScopeLocal, false, false)
 		require.NoError(t, vErr)
 	})
 
@@ -167,7 +167,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			false, "json", false, false, schema.TestScopeLocal, false)
+			false, "json", false, false, schema.TestScopeLocal, false, false)
 		require.NoError(t, vErr)
 	})
 
@@ -176,7 +176,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			true, "text", false, false, schema.TestScopeLocal, false)
+			true, "text", false, false, schema.TestScopeLocal, false, false)
 		require.NoError(t, vErr)
 	})
 
@@ -187,7 +187,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		// Non-existent path
 		scope := schema.SearchScope("non/existent/path")
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Scope: &scope},
-			false, "text", false, false, schema.TestScopeLocal, false)
+			false, "text", false, false, schema.TestScopeLocal, false, false)
 		require.Error(t, vErr)
 	})
 
@@ -198,7 +198,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		// This will fail because the path is outside the registry root
 		tKey := schema.Key("outside_key_1_0_0")
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &tKey},
-			false, "text", false, false, schema.TestScopeLocal, false)
+			false, "text", false, false, schema.TestScopeLocal, false, false)
 		require.Error(t, vErr)
 	})
 
@@ -207,7 +207,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{},
-			false, "text", false, false, schema.TestScopeLocal, false)
+			false, "text", false, false, schema.TestScopeLocal, false, false)
 		require.Error(t, vErr)
 		assert.ErrorAs(t, vErr, new(*schema.NoSchemaTargetsError))
 	})
@@ -235,7 +235,7 @@ environments:
 
 		mgr2 := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, nil, io.Discard)
 		vErr := mgr2.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &tKey},
-			false, "text", false, false, schema.TestScopeLocal, false)
+			false, "text", false, false, schema.TestScopeLocal, false, false)
 		require.Error(t, vErr)
 		require.ErrorContains(t, vErr, "pass directory missing")
 	})
@@ -255,7 +255,7 @@ environments:
 			var out bytes.Buffer
 			mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &out)
 			vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &fKey},
-				false, format, false, true, schema.TestScopeLocal, false)
+				false, format, false, true, schema.TestScopeLocal, false, false)
 			require.ErrorIs(t, vErr, ErrTestsFailed, format)
 			assert.Contains(t, out.String(), "accepted.json", format)
 		}
@@ -265,7 +265,7 @@ environments:
 		t.Parallel()
 		mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &failingWriter{})
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			false, "text", false, false, schema.TestScopeLocal, false)
+			false, "text", false, false, schema.TestScopeLocal, false, false)
 		require.Error(t, vErr)
 		assert.NotErrorIs(t, vErr, ErrTestsFailed)
 	})
@@ -1683,8 +1683,9 @@ func TestLazyManager_Delegation(t *testing.T) {
 	ctx := context.Background()
 	key := schema.Key("test_1_0_0")
 	target := schema.ResolvedTarget{Key: &key}
-	mockMgr.On("ValidateSchema", ctx, target, false, "text", false, false, schema.TestScopeLocal, false).Return(nil)
-	err := lazy.ValidateSchema(ctx, target, false, "text", false, false, schema.TestScopeLocal, false)
+	mockMgr.On("ValidateSchema", ctx, target, false, "text", false, false, schema.TestScopeLocal, false, false).
+		Return(nil)
+	err := lazy.ValidateSchema(ctx, target, false, "text", false, false, schema.TestScopeLocal, false, false)
 	require.NoError(t, err)
 
 	// Test CreateSchema delegation

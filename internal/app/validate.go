@@ -13,6 +13,7 @@ func NewValidateCmd(m Manager) *cobra.Command {
 	var verbose bool
 	var continueOnError bool
 	var skipCompatible bool
+	var failUnexercised bool
 	var keyStr string
 	var idStr string
 	var scopeStr string
@@ -21,7 +22,21 @@ func NewValidateCmd(m Manager) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate [target]",
 		Short: "Validate one or more JSON schemas",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `
+Validate one or more JSON schemas against their test documents: each document in a schema's pass/
+directory must be accepted, and each in its fail/ directory rejected.
+
+Each schema's pass documents must also be accepted by every earlier version with the same major
+version, so that a provider moving to the schema does not break consumers still on an earlier one.
+Use --skip-compatible to leave this check out.
+
+That check is only as strong as the pass documents, so validate also compares each schema with the
+version before it, and warns about each structural change which may break consumers of that version
+and which none of the schema's pass documents uses: for example, an enum value added with no
+document using it. Add a pass document which uses the change, or use --fail-unexercised to fail
+on these warnings. 'jsm diff' lists every structural change between two versions.
+`,
+		Args: cobra.MaximumNArgs(1),
 		Example: `
 IDENTIFYING A SINGLE SCHEMA
 - By Key:
@@ -62,6 +77,9 @@ ALL SCHEMAS
 		))
 	cmd.Flags().BoolVar(&skipCompatible, "skip-compatible", false,
 		"Skip checking each schema's pass documents against earlier versions in its major family")
+	cmd.Flags().BoolVar(&failUnexercised, "fail-unexercised", false,
+		"Fail when a schema has a change which may break consumers of the version before it, "+
+			"and none of its pass documents uses it")
 	var watch bool
 	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "Watch for changes and rerun tests")
 
@@ -101,7 +119,7 @@ ALL SCHEMAS
 		}
 
 		return m.ValidateSchema(cmd.Context(), target, verbose, string(outputVal),
-			useColour, continueOnError, testScope, skipCompatible)
+			useColour, continueOnError, testScope, skipCompatible, failUnexercised)
 	}
 
 	return cmd

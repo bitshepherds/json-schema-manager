@@ -33,7 +33,7 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		path := "domain_family_1_0_0" // use a valid key
 		mgr.On("ValidateSchema", mock.Anything, mock.AnythingOfType("schema.ResolvedTarget"),
-			false, "text", true, false, schema.TestScopeLocal, false).Return(nil).Once()
+			false, "text", true, false, schema.TestScopeLocal, false, false).Return(nil).Once()
 
 		cmd.SetArgs([]string{path})
 		err := cmd.ExecuteContext(context.Background())
@@ -54,8 +54,9 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		scope := schema.SearchScope("")
 		target := schema.ResolvedTarget{Scope: &scope}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false).
-			Return(nil).Once()
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false, false).
+			Return(nil).
+			Once()
 		cmd.SetArgs([]string{"all"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)
@@ -75,8 +76,9 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		key := schema.Key("domain_family_1_0_0")
 		target := schema.ResolvedTarget{Key: &key}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false).
-			Return(nil).Once()
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false, false).
+			Return(nil).
+			Once()
 		cmd.SetArgs([]string{"--key", "domain_family_1_0_0"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)
@@ -88,8 +90,9 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		key := schema.Key("domain_family_1_0_0")
 		target := schema.ResolvedTarget{Key: &key}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false).
-			Return(nil).Once()
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false, false).
+			Return(nil).
+			Once()
 		cmd.SetArgs([]string{"--id", "https://example.com/domain_family_1_0_0.schema.json"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)
@@ -101,8 +104,9 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		scope := schema.SearchScope("test/scope")
 		target := schema.ResolvedTarget{Scope: &scope}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false).
-			Return(nil).Once()
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false, false).
+			Return(nil).
+			Once()
 		cmd.SetArgs([]string{"--search-scope", "test/scope"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)
@@ -114,8 +118,9 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		key := schema.Key("domain_family_1_0_0")
 		target := schema.ResolvedTarget{Key: &key}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false).
-			Return(nil).Once()
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, false, false).
+			Return(nil).
+			Once()
 		cmd.SetArgs([]string{"pos_arg", "--key", "domain_family_1_0_0"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)
@@ -143,7 +148,8 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		key := schema.Key("domain_family_1_0_0")
 		target := schema.ResolvedTarget{Key: &key}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeConsumerBreaking, false).
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeConsumerBreaking,
+			false, false).
 			Return(nil).
 			Once()
 		cmd.SetArgs([]string{"domain_family_1_0_0", "--test-scope", "consumer-breaking"})
@@ -166,7 +172,7 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		key := schema.Key("domain_family_1_0_0")
 		target := schema.ResolvedTarget{Key: &key}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, true).
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", true, false, schema.TestScopeLocal, true, false).
 			Return(nil).Once()
 		cmd.SetArgs([]string{"domain_family_1_0_0", "--skip-compatible"})
 		err := cmd.ExecuteContext(context.Background())
@@ -179,8 +185,9 @@ func TestValidateCmd(t *testing.T) {
 		mgr, cmd := setup()
 		key := schema.Key("domain_family_1_0_0")
 		target := schema.ResolvedTarget{Key: &key}
-		mgr.On("ValidateSchema", mock.Anything, target, false, "text", false, false, schema.TestScopeLocal, false).
-			Return(nil).Once()
+		mgr.On("ValidateSchema", mock.Anything, target, false, "text", false, false, schema.TestScopeLocal, false, false).
+			Return(nil).
+			Once()
 		cmd.SetArgs([]string{"domain_family_1_0_0", "--nocolour"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)

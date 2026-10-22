@@ -4,9 +4,11 @@ package report
 import (
 	"encoding/json"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 )
 
 // JSONReporter implements schema.Reporter for JSON output.
@@ -40,15 +42,27 @@ type jsonSchemaResults struct {
 	Failed []jsonSpec `json:"failed"`
 }
 
+// jsonUnexercisedChange is a change which no pass document of the schema uses.
+type jsonUnexercisedChange struct {
+	Schema   schema.Key        `json:"schema"`
+	Earlier  schema.Key        `json:"earlier"` // the version before the schema
+	Location string            `json:"location"`
+	Keyword  string            `json:"keyword,omitempty"`
+	Effect   structdiff.Effect `json:"effect"`
+	Detail   string            `json:"detail"`
+}
+
 type jsonOutput struct {
 	StartTime string `json:"startTime"`
 	EndTime   string `json:"endTime"`
 	Duration  string `json:"duration"`
 	Stats     struct {
-		TotalPassed int `json:"totalPassed"`
-		TotalFailed int `json:"totalFailed"`
+		TotalPassed      int `json:"totalPassed"`
+		TotalFailed      int `json:"totalFailed"`
+		TotalUnexercised int `json:"totalUnexercised"`
 	} `json:"stats"`
-	Results map[schema.Key]jsonSchemaResults `json:"results"`
+	Results            map[schema.Key]jsonSchemaResults `json:"results"`
+	UnexercisedChanges []jsonUnexercisedChange          `json:"unexercisedChanges"`
 }
 
 func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
@@ -81,6 +95,9 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 		out.Stats.TotalFailed += len(specs)
 	}
 
+	out.UnexercisedChanges = unexercisedChanges(r)
+	out.Stats.TotalUnexercised = len(out.UnexercisedChanges)
+
 	// Write empty result lists as [], not null
 	for k, res := range out.Results {
 		if res.Passed == nil {
@@ -95,4 +112,28 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
+}
+
+// unexercisedChanges lists the report's unexercised changes, ordered by schema.
+func unexercisedChanges(r *schema.TestReport) []jsonUnexercisedChange {
+	keys := make([]schema.Key, 0, len(r.UnexercisedChanges))
+	for k := range r.UnexercisedChanges {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	out := []jsonUnexercisedChange{}
+	for _, k := range keys {
+		for _, uc := range r.UnexercisedChanges[k] {
+			out = append(out, jsonUnexercisedChange{
+				Schema:   k,
+				Earlier:  uc.Earlier,
+				Location: uc.Change.Location,
+				Keyword:  uc.Change.Keyword,
+				Effect:   uc.Change.Effect,
+				Detail:   uc.Change.Detail,
+			})
+		}
+	}
+	return out
 }

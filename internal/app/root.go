@@ -150,6 +150,7 @@ func NewRootCmd(
 	rootCmd.AddCommand(NewCheckChangesCmd(lazy))
 	rootCmd.AddCommand(NewTagDeploymentCmd(lazy))
 	rootCmd.AddCommand(NewBuildDistCmd(lazy))
+	rootCmd.AddCommand(NewDiffCmd(lazy))
 
 	return rootCmd
 }

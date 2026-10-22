@@ -1,11 +1,12 @@
 package app
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,9 +17,18 @@ func TestReferenceIsUpToDate(t *testing.T) {
 	generated := t.TempDir()
 	require.NoError(t, WriteReference(generated))
 
-	committed := filepath.Join("..", "..", ReferenceDir)
-	assert.Equal(t, markdownFiles(t, generated), markdownFiles(t, committed),
-		"%s is out of date: run 'make docs' and commit the result", ReferenceDir)
+	want := markdownFiles(t, generated)
+	got := markdownFiles(t, filepath.Join("..", "..", ReferenceDir))
+	for _, name := range slices.Sorted(maps.Keys(want)) {
+		if got[name] != want[name] {
+			t.Errorf("%s/%s is out of date: run 'make docs' and commit the result", ReferenceDir, name)
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(got)) {
+		if _, ok := want[name]; !ok {
+			t.Errorf("%s/%s is for a command which no longer exists: run 'make docs'", ReferenceDir, name)
+		}
+	}
 }
 
 func TestWriteReferenceMissingDir(t *testing.T) {

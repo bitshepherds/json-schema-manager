@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 )
 
 func TestTextReporter(t *testing.T) {
@@ -210,4 +211,34 @@ func TestJSONReporter_CompatibilityDetail(t *testing.T) {
 	assert.NotNil(t, out.Results[earlier].Passed)
 	assert.NotNil(t, out.Results[later].Failed)
 	assert.NotContains(t, buf.String(), "null")
+}
+
+func TestReporters_UnexercisedChanges(t *testing.T) {
+	t.Parallel()
+
+	r := schema.NewTestReport()
+	r.AddUnexercisedChange("d_f_1_2_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_1_0",
+		Change:  structdiff.Change{Location: "/a", Effect: structdiff.Widens, Detail: "removes every constraint"},
+	})
+	r.AddUnexercisedChange("d_f_1_1_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_0_0",
+		Change:  structdiff.Change{Location: "/s", Keyword: "enum", Effect: structdiff.Widens, Detail: `adds "x"`},
+	})
+
+	var text bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&text, r))
+	out := text.String()
+	assert.Contains(t, out, "[WARN] d_f_1_1_0.schema.json since d_f_1_0_0:\n  ! /s: enum adds \"x\" (widens)\n"+
+		"[WARN] d_f_1_2_0.schema.json since d_f_1_1_0:\n  ! /a: removes every constraint (widens)\n")
+	assert.Contains(t, out, "Test summary: 0 passed, 0 failed, 2 unexercised changes")
+
+	var js bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&js, r))
+	assert.Contains(t, js.String(), `"totalUnexercised": 2`)
+	assert.Regexp(t, `(?s)"schema": "d_f_1_1_0".*"schema": "d_f_1_2_0"`, js.String())
+
+	js.Reset()
+	require.NoError(t, (&JSONReporter{}).Write(&js, schema.NewTestReport()))
+	assert.Contains(t, js.String(), `"unexercisedChanges": []`)
 }

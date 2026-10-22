@@ -17,14 +17,16 @@ import (
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
 )
 
-// ErrTestsFailed is returned by ValidateSchema, after the report is written, when any test failed.
+// ErrTestsFailed is returned by ValidateSchema, after the report is written, when any test failed,
+// or when asked to fail on unexercised changes and there are some.
 // The report already describes the failures, so Run does not print it again.
 var ErrTestsFailed = errors.New("one or more tests failed")
 
 // Manager defines the business logic for JSON schema operations.
 type Manager interface {
 	ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool, format string,
-		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool) error
+		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
+		failUnexercised bool) error
 	WatchValidation(ctx context.Context, target schema.ResolvedTarget, verbose bool, format string,
 		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
 		readyChan chan<- struct{}) error
@@ -32,6 +34,7 @@ type Manager interface {
 	CreateSchema(domainAndFamilyName string) (schema.Key, error)
 	CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (schema.Key, error)
 	RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env, collapse bool) ([]byte, error)
+	DiffSchemas(older, newer schema.Key) ([]schema.Change, error)
 	CheckChanges(ctx context.Context, envName config.Env) error
 	TagDeployment(ctx context.Context, envName config.Env, push bool) error
 	BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error
@@ -67,8 +70,10 @@ func (l *LazyManager) check() Manager {
 // ValidateSchema implements the Manager interface.
 func (l *LazyManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
 	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
+	failUnexercised bool,
 ) error {
-	return l.check().ValidateSchema(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible)
+	return l.check().ValidateSchema(ctx, target, verbose, format, useColour, continueOnError, testScope,
+		skipCompatible, failUnexercised)
 }
 
 // WatchValidation implements the Manager interface.
@@ -103,6 +108,11 @@ func (l *LazyManager) RenderSchema(
 	collapse bool,
 ) ([]byte, error) {
 	return l.check().RenderSchema(ctx, target, env, collapse)
+}
+
+// DiffSchemas implements the Manager interface.
+func (l *LazyManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, error) {
+	return l.check().DiffSchemas(older, newer)
 }
 
 // CheckChanges implements the Manager interface.
@@ -179,9 +189,11 @@ func (m *CLIManager) CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (s
 // ValidateSchema runs tests on the target schema(s).
 func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
 	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
+	failUnexercised bool,
 ) error {
 	m.logger.Debug("validating schema", "target", target, "verbose", verbose, "format", format,
-		"useColour", useColour, "continueOnError", continueOnError, "skipCompatible", skipCompatible)
+		"useColour", useColour, "continueOnError", continueOnError, "skipCompatible", skipCompatible,
+		"failUnexercised", failUnexercised)
 
 	m.tester.SetStopOnFirstError(!continueOnError)
 	m.tester.SetScope(testScope)
@@ -215,7 +227,7 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 		return wErr
 	}
 
-	if len(tr.FailedTests) > 0 {
+	if len(tr.FailedTests) > 0 || failUnexercised && len(tr.UnexercisedChanges) > 0 {
 		return ErrTestsFailed
 	}
 
@@ -360,6 +372,22 @@ func (m *CLIManager) RenderSchema(
 	}
 
 	return ri.Rendered, nil
+}
+
+// DiffSchemas lists the structural changes from the schema older to the schema newer, as rendered
+// for production.
+func (m *CLIManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, error) {
+	m.logger.Debug("comparing schemas", "older", older, "newer", newer)
+
+	os, err := m.registry.GetSchemaByKey(older)
+	if err != nil {
+		return nil, err
+	}
+	ns, err := m.registry.GetSchemaByKey(newer)
+	if err != nil {
+		return nil, err
+	}
+	return schema.Diff(os, ns)
 }
 
 // CheckChanges determines whether there are any changes to previously-deployed schemas for an environment which

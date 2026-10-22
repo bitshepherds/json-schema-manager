@@ -32,8 +32,10 @@ func (m *MockManager) Registry() *schema.Registry {
 
 func (m *MockManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
 	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
+	failUnexercised bool,
 ) error {
-	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible)
+	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible,
+		failUnexercised)
 	return args.Error(0)
 }
 
@@ -65,6 +67,12 @@ func (m *MockManager) RenderSchema(
 ) ([]byte, error) {
 	args := m.Called(ctx, target, env, collapse)
 	res, _ := args.Get(0).([]byte)
+	return res, args.Error(1)
+}
+
+func (m *MockManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, error) {
+	args := m.Called(older, newer)
+	res, _ := args.Get(0).([]schema.Change)
 	return res, args.Error(1)
 }
 

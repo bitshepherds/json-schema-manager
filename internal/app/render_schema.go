@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -10,8 +11,6 @@ import (
 )
 
 // NewRenderSchemaCmd returns a new cobra command for rendering a schema.
-//
-//nolint:gocognit // high complexity command setup
 func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
 	var keyStr string
 	var idStr string
@@ -34,31 +33,13 @@ func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
 				targetArg = args[0]
 			}
 
-			resolver := schema.NewTargetResolver(mgr.Registry(), targetArg)
-			if keyStr != "" {
-				resolver.SetKey(schema.Key(keyStr))
-			}
-			if idStr != "" {
-				resolver.SetID(idStr)
-			}
-
-			target, err := resolver.Resolve()
+			key, err := resolveOneSchema(cmd.Context(), mgr.Registry(), targetArg, keyStr, idStr)
 			if err != nil {
-				if targetArg == "" {
-					return &schema.NoTargetArgumentError{}
-				}
-				return &schema.InvalidTargetArgumentError{Arg: targetArg}
+				return err
 			}
 
-			if target.Key == nil {
-				resolvedKey, sErr := resolver.ResolveScopeToSingleKey(cmd.Context(), *target.Scope, targetArg)
-				if sErr != nil {
-					return sErr
-				}
-				target.Key = &resolvedKey
-			}
-
-			rendered, err := mgr.RenderSchema(cmd.Context(), target, config.Env(envStr), collapse)
+			rendered, err := mgr.RenderSchema(cmd.Context(), schema.ResolvedTarget{Key: &key}, config.Env(envStr),
+				collapse)
 			if err != nil {
 				return err
 			}
@@ -76,4 +57,28 @@ func NewRenderSchemaCmd(mgr Manager) *cobra.Command {
 			"does not compile or its test documents give different results")
 
 	return cmd
+}
+
+// resolveOneSchema resolves a target argument, or the key or ID given by a flag, to one schema.
+func resolveOneSchema(ctx context.Context, r *schema.Registry, targetArg, keyStr, idStr string) (schema.Key, error) {
+	resolver := schema.NewTargetResolver(r, targetArg)
+	if keyStr != "" {
+		resolver.SetKey(schema.Key(keyStr))
+	}
+	if idStr != "" {
+		resolver.SetID(idStr)
+	}
+
+	target, err := resolver.Resolve()
+	if err != nil {
+		if targetArg == "" {
+			return "", &schema.NoTargetArgumentError{}
+		}
+		return "", &schema.InvalidTargetArgumentError{Arg: targetArg}
+	}
+
+	if target.Key != nil {
+		return *target.Key, nil
+	}
+	return resolver.ResolveScopeToSingleKey(ctx, *target.Scope, targetArg)
 }

@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -18,6 +19,7 @@ type TextReporter struct {
 const (
 	colReset     = "\033[0m"
 	colRed       = "\033[31m"
+	colYellow    = "\033[33m"
 	colGreen     = "\033[32m"
 	colGrey      = "\033[90m"
 	colWhite     = "\033[37m"
@@ -116,9 +118,14 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		}
 	}
 
+	totalUnexercised := tr.writeUnexercised(w, r, divider)
+
 	_, _ = fmt.Fprintf(w, "%s\n", divider)
 	summaryLabel := tr.cs(colBoldWhite, "Test summary: ")
 	summaryStats := fmt.Sprintf("%d passed, %d failed", totalPassed, totalFailed)
+	if totalUnexercised > 0 {
+		summaryStats += fmt.Sprintf(", %d unexercised %s", totalUnexercised, plural(totalUnexercised, "change"))
+	}
 	statsColor := colBoldGreen
 	if totalFailed > 0 {
 		statsColor = colBoldRed
@@ -129,4 +136,41 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	}
 	_, err = fmt.Fprintf(w, "%s\n", divider)
 	return err
+}
+
+// writeUnexercised writes the changes which no pass document uses, and returns how many there are.
+func (tr *TextReporter) writeUnexercised(w io.Writer, r *schema.TestReport, divider string) int {
+	keys := make([]schema.Key, 0, len(r.UnexercisedChanges))
+	for k := range r.UnexercisedChanges {
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return 0
+	}
+	slices.Sort(keys)
+
+	_, _ = fmt.Fprintf(w, "%s\n", divider)
+	_, _ = fmt.Fprintln(w, tr.cs(colYellow, "Unexercised changes: no pass document uses these, so the compatibility "+
+		"check cannot tell whether they break consumers of the version before."))
+
+	total := 0
+	for _, k := range keys {
+		ucs := r.UnexercisedChanges[k]
+		total += len(ucs)
+		_, _ = fmt.Fprintf(w, "%s %s since %s:\n",
+			tr.cs(colYellow, "[WARN]"), tr.cs(colWhite, string(k)+schema.SchemaSuffix), ucs[0].Earlier)
+		for _, uc := range ucs {
+			_, _ = fmt.Fprintf(w, "  %s %s (%s)\n", tr.cs(colYellow, "!"), uc.Change.String(), uc.Change.Effect)
+		}
+	}
+	_, _ = fmt.Fprintln(w, "Add a pass document which uses each change. If the earlier version rejects it, "+
+		"the change breaks its consumers and needs a new major version.")
+	return total
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }
