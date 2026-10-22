@@ -314,8 +314,10 @@ environments:
 
 		// Wait for first worker to start
 		<-workerStarted
-		// Now the worker is blocked on proceedWorker.
-		// The loop should be blocked on sem <- because numWorkers=1.
+		// Now the worker is blocked on proceedWorker. Give the loop time to receive the next schema
+		// and block on sem <-, because numWorkers=1: cancelled before then, the searcher stops and
+		// the loop ends without waiting on sem.
+		time.Sleep(50 * time.Millisecond)
 
 		cancel()
 		close(proceedWorker)

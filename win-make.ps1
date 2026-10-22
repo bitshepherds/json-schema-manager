@@ -1,6 +1,6 @@
 param (
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("build", "run", "clean", "test", "test-race", "test-cover", "test-race-coverage", "cover-html", "lint", "fmt", "docs", "snapshot", "release-check", "setup")]
+    [ValidateSet("build", "run", "clean", "test", "test-race", "test-cover", "test-race-coverage", "cover-html", "lint", "fmt", "docs", "check-models", "snapshot", "release-check", "setup")]
     [string]$Target
 )
 
@@ -56,6 +56,9 @@ switch ($Target) {
     }
     "docs" {
         go run scripts/docs/main.go
+    }
+    "check-models" {
+        go run scripts/models/main.go
     }
     "snapshot" {
         go run scripts/snapshot/main.go
