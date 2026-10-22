@@ -16,6 +16,8 @@
 - [Creating a new Schema](#creating-a-new-schema)
 - [CI/CD Workflows](#cicd-workflows)
 
+Every command and flag is listed in the [command reference](./reference/jsm.md).
+
 
 ## Introduction
 A JSON Schema Registry is a directory under the management of the JSON Schema Manager (`jsm`), containing every version of every JSON schema your organisation uses, along with suites of test documents which are used by JSON Schema Manager to validate that the schemas work as intended. Place your schema registry in a git repository, and use the `jsm` command to manage the registry, run tests, and render production schemas for both private and public consumption.
@@ -30,6 +32,7 @@ A directory is a schema registry if it contains a file named `json-schema-manage
 
 E.g. 
 ```yaml
+defaultJsonSchemaVersion: "http://json-schema.org/draft-07/schema#"
 environments:
   dev:
     privateUrlRoot: "https://dev.json-schemas.internal.myorg.io/"
@@ -41,10 +44,12 @@ environments:
   prod:
     privateUrlRoot: "https://json-schemas.internal.myorg.io/"
     publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
 ```
 
 This file defines the following:
-- the environments that schemas can be published to
+- the JSON Schema version (`$schema`) of new schemas, `defaultJsonSchemaVersion`. The supported values are listed in the file `jsm create-registry` writes; the default is draft-07.
+- the environments that schemas can be published to, exactly one of which must be marked `isProduction: true`
 - the private URL root for each environment
 - the public URL root for each environment
 - whether schemas can be mutated in each environment. By default, schemas cannot be changed once published, but for specific development environments, this can be overriden with the `allowSchemaMutation` property.
@@ -84,7 +89,9 @@ JSON Schema Manager addresses this by forcing the creation of a **family** of ve
 
 - use a MAJOR version change to indicate a breaking change
 - use a MINOR version change when adding new features in a backward-compatible manner
-- use a PATCH version change when making non-breaking non-feature changes, such as relaxing a value constraint.
+- use a PATCH version change when making non-breaking non-feature changes, such as improving a description.
+
+A new minor or patch version must accept nothing that an earlier version of the same major would reject, since consumers on the earlier version still check against it. JSM tests this. See [Compatibility runs one way](./developing-schemas.md#compatibility-runs-one-way-providers-first).
 
 For example, consider a customer schema:
 
@@ -162,19 +169,19 @@ JSON Schema Manager will automatically set the `$id` property to the correct URL
 - the namespace, the schema family, the semantic version of the schema, 
 - the environment being published to, 
 - whether the schema is public or private (see [Visibility Control](#visibility-control) below), 
-- the settings in the [Registry Configuration File](#registry-configuration-file).
+- the settings in the [Registry Configuration File](#schema-registry-configuration-file).
 
 #### $ref
 
-If you are using `$ref` to reference another schema managed by JSON Schema Manager, use the following format with the **filename** of the schema you want to reference. This will automatically be converted into the correct URL on publication.
+If you are using `$ref` to reference another schema managed by JSON Schema Manager, use the following format with the **key** of the schema you want to reference: its filename without `.schema.json`. This will automatically be converted into the correct URL on publication.
 
 ```json
-"$ref": "{{ JSM `<schema filename>` }}"
+"$ref": "{{ JSM `<schema key>` }}"
 ```
 e.g.
 
 ```json
-"$ref": "{{ JSM `customer_b2c-customer_2-0-0.schema.json` }}"
+"$ref": "{{ JSM `customer_b2c-customer_2_0_0` }}"
 ```
 
 If referencing schema within the same file, or an external schema not managed by JSON Schema Manager, just set `$ref` in the usual way defined in the JSON Schema specification.
@@ -202,36 +209,29 @@ Configuration of the location of both private and public schemas is done in the 
 
 ## Creating a new Schema
 
-Use the `jsm` command to create a new schema.
+Use `jsm create-schema` to create the first version, 1.0.0, of a new schema family:
 
 ```bash
-jsm new-schema <destination directory path> [--dialect <dialect>] [--create-dirs]
+jsm create-schema "<domain path>/<family name>"
 ```
 e.g.
 
 ```bash
-
-jsm new-schema schemas/demo/domain-a/entity-a/1/2/3
-
-jsm new-schema schemas/demo/domain-a/domain-a-b/entity-a/1/2/3 --dialect draft-2020-12 --create-dirs
+jsm create-schema "logistics/data/shipment"
 ```
 
-The command will create a new schema file at the specified destination path. If you use the `--create-dirs` flag, it will create any missing parent directories.
+creates `logistics/data/shipment/1/0/0/logistics_data_shipment_1_0_0.schema.json`, with empty `pass` and `fail` directories beside it, creating any missing directories. The schema uses the `defaultJsonSchemaVersion` from the [configuration file](#schema-registry-configuration-file); change its `$schema` to use another supported version.
 
-The `--dialect` flag will specify the dialect of the schema to create. If not specified, it will default to `draft-07`, which is widely supported and reasonably expressive.
-
-Valid dialects are:
-- `draft-04`
-- `draft-06`
-- `draft-07` (default)
-- `draft-2019-09`
-- `draft-2020-12`
+To create later versions, use `jsm create-schema-version`. See [Developing Schemas](./developing-schemas.md#creating-a-new-version-of-an-existing-schema).
 
 ## CI/CD Workflows
 
-Use the `jsm` command to publish a schema in your schema registry repo as part of your CI/CD pipeline.
+A pipeline runs these commands, each failing with a non-zero [exit code](./developing-schemas.md#exit-codes) when something is wrong:
 
-Use `jsm publish --env <env name> --file <schema filename>`
+1. `jsm validate all` tests every schema, including that newer versions do not break consumers of earlier ones.
+2. `jsm check-changes <env>` fails if a schema already deployed to `<env>` was changed, unless the environment sets `allowSchemaMutation: true`.
+3. `jsm build-dist <env>` runs the same tests and checks, then renders the new and changed schemas into `dist/<env>/private` and `dist/<env>/public`.
+4. Publish the `dist/<env>` directories to the hosts at your URL roots. JSM leaves this step to you, since it depends on where your schemas are served.
+5. `jsm tag-deployment <env>` records the deployment as a git tag, which the next `check-changes` and `build-dist` compare against.
 
-Note that if publishing to an environment which is a production environment, `jsm` will test for the existence of an extant schema at the URL defined by the `$id` property of the schema. If the schema already exists, `jsm` will fail the publish and not allow the schema to be published.
-
+See [Running JSM in CI](./developing-schemas.md#running-jsm-in-ci) for a GitHub Actions example, and the git history these commands need.

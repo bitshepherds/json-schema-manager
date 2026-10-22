@@ -157,6 +157,7 @@ make test-race
 | `make test-cover`    | Runs tests with coverage report.                                                          |
 | `make cover-html`    | Opens test coverage report in browser.                                                    |
 | `make lint`          | Runs the linter.                                                                          |
+| `make docs`          | Regenerates the command reference in `user-docs/reference` after a command or flag change. |
 | `make snapshot`      | Runs a GoReleaser snapshot build to verify release configuration locally.                 |
 | `make release-check` | Validates the GoReleaser configuration file.                                              |
 | `make clean`         | Removes all build and distribution artifacts.                                             |
