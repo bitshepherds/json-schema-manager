@@ -27,6 +27,21 @@ exec jsm tag-deployment production --no-push
 exec jsm build-dist production
 stdout 'No schemas to build'
 
+# An incremental build leaves out a schema git doesn't track yet, and names it (#81)
+mkdir registry/domain/pet/1/0/0/pass registry/domain/pet/1/0/0/fail
+cp schema.json registry/domain/pet/1/0/0/domain_pet_1_0_0.schema.json
+exec jsm build-dist production
+stdout 'No schemas to build'
+stdout 'Not built, because git does not track them yet:\n  domain/pet/1/0/0/domain_pet_1_0_0.schema.json\nCommit them'
+! exists dist/production/private/domain_pet_1_0_0.schema.json
+
+# --all builds it, without the hint
+exec jsm build-dist production --all
+stdout 'Successfully built 2 schemas to'
+! stdout 'Not built'
+exists dist/production/private/domain_pet_1_0_0.schema.json
+rm registry/domain/pet dist/production/private/domain_pet_1_0_0.schema.json
+
 # Add another schema
 mkdir registry/domain/address/1/0/0/pass registry/domain/address/1/0/0/fail
 cp schema.json registry/domain/address/1/0/0/domain_address_1_0_0.schema.json

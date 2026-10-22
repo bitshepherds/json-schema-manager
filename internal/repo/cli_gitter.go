@@ -221,3 +221,33 @@ func (g *CLIGitter) ShowFile(ctx context.Context, rev Revision, path string) ([]
 	}
 	return out, nil
 }
+
+// UntrackedFiles returns the absolute paths of the files with the given suffix in sourceDir which
+// git does not track, and does not ignore. GetSchemaChanges does not see them.
+func (g *CLIGitter) UntrackedFiles(ctx context.Context, sourceDir, suffix string) ([]string, error) {
+	if !filepath.IsAbs(sourceDir) {
+		sourceDir = filepath.Join(g.repoRoot, sourceDir)
+	}
+	root, err := g.getGitRoot(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	//nolint:gosec // CMD arguments are internal
+	cmd := exec.CommandContext(ctx, g.gitBinary, "ls-files", "--others", "--exclude-standard", "--full-name",
+		"--", sourceDir)
+	cmd.Dir = g.repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files failed: %w", err)
+	}
+
+	var paths []string
+	for line := range strings.Lines(string(out)) {
+		path := strings.TrimSpace(line)
+		if strings.HasSuffix(path, suffix) {
+			paths = append(paths, filepath.Join(root, path))
+		}
+	}
+	return paths, nil
+}

@@ -444,7 +444,7 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 		return err
 	}
 	if anchor.IsEmptyTree() {
-		_, _ = fmt.Fprintf(m.reporterWriter, "No deployment to %s found: treating every schema as new. "+
+		_, _ = fmt.Fprintf(m.reporterWriter, "No deployment to %s found: treating every schema git tracks as new. "+
 			"If %s has been deployed, fetch the %s/%s/* tags.\n", envName, envName, repo.JSMDeployTagPrefix, envName)
 	}
 
@@ -597,23 +597,7 @@ func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, col
 		}
 		count, err = m.distBuilder.BuildAll(ctx, envName, collapse)
 	} else {
-		// Check for mutations first
-		if ccErr := m.CheckChanges(ctx, envName); ccErr != nil {
-			return ccErr
-		}
-
-		if !skipTests {
-			if tErr := m.testBeforeBuild(ctx); tErr != nil {
-				return tErr
-			}
-		}
-
-		anchor, anchorErr := m.gitter.GetLatestAnchor(ctx, envName)
-		if anchorErr != nil {
-			return anchorErr
-		}
-
-		count, err = m.distBuilder.BuildChanged(ctx, envName, anchor, collapse)
+		count, err = m.buildChanged(ctx, envName, collapse, skipTests)
 	}
 
 	if err != nil {
@@ -622,10 +606,62 @@ func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, col
 
 	if count == 0 {
 		_, _ = fmt.Fprintln(m.reporterWriter, "No schemas to build")
+	} else {
+		_, _ = fmt.Fprintf(m.reporterWriter, "📂 Successfully built %d schemas to distribution directory\n", count)
+	}
+
+	if all {
+		return nil
+	}
+	return m.reportUntrackedSchemas(ctx)
+}
+
+// buildChanged checks that no deployed schema has changed, runs the tests unless skipTests, then
+// builds the schemas changed since the last deployment, and returns how many it built.
+func (m *CLIManager) buildChanged(ctx context.Context, envName config.Env, collapse, skipTests bool) (int, error) {
+	if err := m.CheckChanges(ctx, envName); err != nil {
+		return 0, err
+	}
+
+	if !skipTests {
+		if err := m.testBeforeBuild(ctx); err != nil {
+			return 0, err
+		}
+	}
+
+	anchor, err := m.gitter.GetLatestAnchor(ctx, envName)
+	if err != nil {
+		return 0, err
+	}
+
+	return m.distBuilder.BuildChanged(ctx, envName, anchor, collapse)
+}
+
+// reportUntrackedSchemas lists the registry's schemas which git does not track. An incremental build
+// finds the schemas to build with git, so it leaves them out.
+func (m *CLIManager) reportUntrackedSchemas(ctx context.Context) error {
+	rootDir := m.registry.RootDirectory()
+	paths, err := m.gitter.UntrackedFiles(ctx, rootDir, schema.SchemaSuffix)
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
 		return nil
 	}
 
-	_, _ = fmt.Fprintf(m.reporterWriter, "📂 Successfully built %d schemas to distribution directory\n", count)
+	// git gives paths with symlinks resolved, so resolve the root too
+	if resolved, rErr := filepath.EvalSymlinks(rootDir); rErr == nil {
+		rootDir = resolved
+	}
+	_, _ = fmt.Fprintln(m.reporterWriter, "Not built, because git does not track them yet:")
+	for _, p := range paths {
+		if rel, rErr := filepath.Rel(rootDir, p); rErr == nil {
+			p = rel
+		}
+		_, _ = fmt.Fprintf(m.reporterWriter, "  %s\n", p)
+	}
+	_, _ = fmt.Fprintln(m.reporterWriter, "Commit them to include them, or use --all to build every schema "+
+		"in the registry.")
 	return nil
 }
 

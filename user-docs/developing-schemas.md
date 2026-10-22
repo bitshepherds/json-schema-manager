@@ -234,7 +234,7 @@ By default, `jsm validate` stops at the first failing test. Use `--continue-on-e
 Source schemas contain templates, such as `"$id": "{{ ID }}"`, which JSM fills in for a given environment. See [Special Properties](./registry.md#special-properties).
 
 - `jsm render-schema <schema> [--env <env>]` - prints the rendered schema for an environment (production by default).
-- `jsm build-dist <env>` - tests every schema, then writes the rendered schemas changed since the last deployment to `dist/<env>/private` and `dist/<env>/public`. Use `--all` to build every schema.
+- `jsm build-dist <env>` - tests every schema, then writes the rendered schemas changed since the last deployment to `dist/<env>/private` and `dist/<env>/public`. It finds the changes with git, so it leaves out, and lists, schemas which git does not track yet. Use `--all` to build every schema, for example when trying out schemas locally.
 - `jsm check-changes <env>` - fails if a deployed schema or its test documents were changed, in an environment which does not allow schema mutation.
 - `jsm tag-deployment <env>` - records a successful deployment with a git tag, which `check-changes` and `build-dist` compare against.
 

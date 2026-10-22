@@ -48,4 +48,8 @@ type Gitter interface {
 
 	// ShowFile returns the content of the file at path, as returned in a Change, at the given revision.
 	ShowFile(ctx context.Context, rev Revision, path string) ([]byte, error)
+
+	// UntrackedFiles returns the absolute paths of the files with the given suffix in sourceDir which
+	// git does not track, and does not ignore. GetSchemaChanges does not see them.
+	UntrackedFiles(ctx context.Context, sourceDir, suffix string) ([]string, error)
 }
