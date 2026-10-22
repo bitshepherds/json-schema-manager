@@ -375,3 +375,15 @@ func (e *CollapsedSchemaError) Error() string {
 func (e *CollapsedSchemaError) Unwrap() error {
 	return e.Wrapped
 }
+
+// HardCodedIDError is returned when a schema sets $id to anything but "{{ ID }}", which JSM renders
+// as the schema's canonical ID.
+type HardCodedIDError struct {
+	Path string
+	ID   any
+}
+
+func (e *HardCodedIDError) Error() string {
+	return fmt.Sprintf("%s sets $id to %v: set \"$id\": \"{{ ID }}\", so that JSM gives the schema its canonical ID",
+		e.Path, e.ID)
+}

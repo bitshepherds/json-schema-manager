@@ -104,7 +104,7 @@ environments:
 {"status": "lost"}
 -- schema.json --
 {
-  "$id": "https://example.com/schema.json",
+  "$id": "{{ ID }}",
   "type": "object",
   "properties": {
     "name": { "type": "string" }

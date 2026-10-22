@@ -52,6 +52,7 @@ Exit codes:
   0  success: every test and check passed
   1  a test or check failed (validate, build-dist, check-changes, check-consumer)
   2  jsm could not run (usage, configuration, schema or git error)
+  130, 143  jsm was stopped by SIGINT or SIGTERM before it finished
 `
 
 // NewRootCmd creates the root command and wires up dependencies.

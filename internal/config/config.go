@@ -33,6 +33,14 @@ const DefaultConfigContent = `# Public Schema Registry Configuration
 # - https://json-schema.org/draft/2020-12/schema
 defaultJsonSchemaVersion: "http://json-schema.org/draft-07/schema#"
 
+# FORMAT ASSERTION
+#
+# The format keyword, such as "format": "email", rejects invalid values under draft-07 and
+# earlier, but is only an annotation under 2019-09 and 2020-12. Set assertFormat to true to make
+# it reject invalid values under every version, so that moving a family to a newer version does
+# not weaken its validation.
+assertFormat: false
+
 # ENVIRONMENT CONFIGURATION
 #
 # This section defines properties relating to the publication of schemas to an environment.
@@ -73,6 +81,7 @@ type EnvConfig struct {
 type Config struct {
 	Environments             map[Env]*EnvConfig `yaml:"environments"`
 	DefaultJSONSchemaVersion validator.Draft    `yaml:"defaultJsonSchemaVersion"`
+	AssertFormat             bool               `yaml:"assertFormat"`
 	ProductionEnv            Env                // this is set for convenience when the environments are read in.
 }
 

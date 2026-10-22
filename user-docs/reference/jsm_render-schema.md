@@ -20,7 +20,7 @@ jsm render-schema [target] [flags]
 ### Options
 
 ```
-  -C, --collapse     Inline external $ref dependencies into the schema's $defs block, failing if the result does not compile or its test documents give different results
+      --collapse     Inline external $ref dependencies into the schema's $defs block, failing if the result does not compile or its test documents give different results
   -e, --env string   The environment to use for rendering (defaults to production)
   -h, --help         help for render-schema
   -i, --id string    Identify a target schema by its canonical ID

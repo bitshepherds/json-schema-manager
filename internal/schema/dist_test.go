@@ -702,7 +702,7 @@ environments:
 		schemaDir := filepath.Join(regDir, "domain", "test", "1", "0", "0")
 		require.NoError(t, os.MkdirAll(schemaDir, 0o755))
 		schemaFile := filepath.Join(schemaDir, "domain_test_1_0_0.schema.json")
-		idContent := []byte(`{"$id": "https://example.com/domain/test/1/0/0/domain_test_1_0_0.schema.json"}`)
+		idContent := []byte(`{"$id": "{{ ID }}"}`)
 		require.NoError(t, os.WriteFile(schemaFile, idContent, 0o600))
 
 		// Create a compiler that makes the private distDir read-only when called
