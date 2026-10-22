@@ -66,8 +66,8 @@ ALL SCHEMAS
 	}
 
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed test results")
-	outputVal := formatValue("text")
-	cmd.Flags().VarP(&outputVal, "output", "o", "Output format (text, json)")
+	outputVal := newFormatValue(formatText, formatJSON, formatJUnit)
+	cmd.Flags().VarP(outputVal, "output", "o", "Output format ("+outputVal.usage()+")")
 	cmd.Flags().BoolVarP(&continueOnError, "continue-on-error", "C", false,
 		"Continue testing even if a schema test fails (default is to stop on first error)")
 
@@ -121,11 +121,11 @@ ALL SCHEMAS
 		useColour := !noColour
 
 		if watch {
-			return m.WatchValidation(cmd.Context(), target, verbose, string(outputVal),
+			return m.WatchValidation(cmd.Context(), target, verbose, outputVal.String(),
 				useColour, continueOnError, testScope, skipCompatible, nil)
 		}
 
-		return m.ValidateSchema(cmd.Context(), target, verbose, string(outputVal),
+		return m.ValidateSchema(cmd.Context(), target, verbose, outputVal.String(),
 			useColour, continueOnError, testScope, skipCompatible, strict)
 	}
 

@@ -61,7 +61,7 @@ ALL SCHEMAS
   -h, --help                  help for validate
   -i, --id string             Validate a schema identified by its canonical ID
   -k, --key string            Validate a schema identified by its key
-  -o, --output <format>       Output format (text, json) (default text)
+  -o, --output <format>       Output format (text, json, junit) (default text)
   -s, --search-scope string   Validate all schemas identified by JSM Search Scope
       --skip-compatible       Skip checking each schema's pass documents against earlier versions in its major family
       --strict                Fail on warnings: a schema with no pass or no fail document, or with a change which may break consumers of the version before it and which none of its pass documents uses

@@ -1,4 +1,4 @@
-# validate exits 0 only when every test passes (#40)
+# validate exits 0 only when every test passes (#40), and -o junit writes a JUnit report
 
 # Every test passes: exit 0
 env JSM_REGISTRY_ROOT_DIR=ok
@@ -7,6 +7,10 @@ stdout 'Test summary: 2 passed, 0 failed'
 ! stderr 'Error:'
 exec jsm validate shop_order_1_0_0 -c -o json
 stdout '"totalFailed": 0'
+exec jsm validate shop_order_1_0_0 -c -o junit
+stdout '<testsuites name="jsm validate" tests="2" failures="0"'
+stdout '<testsuite name="shop_order_1_0_0.schema.json" tests="2" failures="0">'
+stdout '<testcase name=".*fail/lost.json" classname="shop_order_1_0_0.schema.json"></testcase>'
 
 # A fail/ document passes: non-zero exit, with the report and no extra error line
 env JSM_REGISTRY_ROOT_DIR=localfail
@@ -16,6 +20,10 @@ stdout 'Test summary: 1 passed, 1 failed'
 ! stderr 'Error:'
 ! exec jsm validate shop_order_1_0_0 -c -o json
 stdout '"totalFailed": 1'
+! stderr 'Error:'
+! exec jsm validate shop_order_1_0_0 -c -o junit
+stdout '<testsuites name="jsm validate" tests="2" failures="1"'
+stdout '<failure message="passed, when expected fail">'
 ! stderr 'Error:'
 
 # A newer version's pass/ document breaks an earlier version: non-zero exit

@@ -222,15 +222,7 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 		return err
 	}
 
-	var reporter schema.Reporter
-	switch format {
-	case "json":
-		reporter = &report.JSONReporter{}
-	default:
-		reporter = &report.TextReporter{Verbose: verbose, UseColour: useColour}
-	}
-
-	if wErr := reporter.Write(m.reporterWriter, tr); wErr != nil {
+	if wErr := newReporter(format, verbose, useColour, strict).Write(m.reporterWriter, tr); wErr != nil {
 		return wErr
 	}
 
@@ -240,6 +232,18 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 	}
 
 	return nil
+}
+
+// newReporter returns the reporter for the given output format.
+func newReporter(format string, verbose, useColour, strict bool) schema.Reporter {
+	switch format {
+	case formatJSON:
+		return &report.JSONReporter{}
+	case formatJUnit:
+		return &report.JUnitReporter{Strict: strict}
+	default:
+		return &report.TextReporter{Verbose: verbose, UseColour: useColour}
+	}
 }
 
 // WatchValidation watches for changes in the registry and triggers validation.
@@ -308,15 +312,7 @@ func (m *CLIManager) handleWatchEvent(ctx context.Context, event schema.WatchEve
 		return
 	}
 
-	var reporter schema.Reporter
-	switch format {
-	case "json":
-		reporter = &report.JSONReporter{}
-	default:
-		reporter = &report.TextReporter{Verbose: verbose, UseColour: useColour}
-	}
-
-	if rErr := reporter.Write(m.reporterWriter, tr); rErr != nil {
+	if rErr := newReporter(format, verbose, useColour, false).Write(m.reporterWriter, tr); rErr != nil {
 		m.logger.Error("Failed to write report", "error", rErr)
 	}
 }

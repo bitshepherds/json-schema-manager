@@ -3,7 +3,10 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -281,4 +284,80 @@ func TestReporters_Summaries(t *testing.T) {
 	assert.Contains(t, out, `"points": []`, "a schema with no points has an empty list")
 	assert.Contains(t, out, `"covered": 1`)
 	assert.Contains(t, out, `"fail/b.json": [`)
+}
+
+func TestJUnitReporter(t *testing.T) {
+	t.Parallel()
+
+	r := schema.NewTestReport()
+	r.StartTime = time.Time{}
+	r.EndTime = r.StartTime.Add(1500 * time.Millisecond)
+	k := schema.Key("d_f_1_1_0")
+	r.AddPassedTest(
+		k,
+		&schema.Spec{TestInfo: schema.TestInfo{Path: "pass/b.json"}, TestDocType: schema.TestDocTypePass},
+	)
+	r.AddFailedTest(k, &schema.Spec{
+		TestInfo:    schema.TestInfo{Path: "fail/a.json"},
+		TestDocType: schema.TestDocTypeFail,
+		Err:         fmt.Errorf("a <b> & c"),
+	})
+	r.AddSummary(k, &schema.Summary{PassDocs: 1, FailDocs: 1})
+	r.AddSummary("d_g_1_0_0", &schema.Summary{PassDocs: 1})
+	r.AddSummary("d_h_1_0_0", &schema.Summary{FailDocs: 1})
+	r.AddUnexercisedChange("d_f_1_2_0", &schema.UnexercisedChange{
+		Earlier: k,
+		Change:  structdiff.Change{Location: "/s", Keyword: "enum", Effect: structdiff.Widens, Detail: `adds "x"`},
+	})
+
+	var buf bytes.Buffer
+	require.NoError(t, (&JUnitReporter{}).Write(&buf, r))
+	out := buf.String()
+	assert.True(t, strings.HasPrefix(out, `<?xml version="1.0" encoding="UTF-8"?>`))
+	assert.Contains(t, out, `<testsuites name="jsm validate" tests="2" failures="1" time="1.500">`)
+	assert.Contains(t, out, `<testsuite name="d_f_1_1_0.schema.json" tests="2" failures="1">
+    <testcase name="fail/a.json" classname="d_f_1_1_0.schema.json">
+      <failure message="passed, when expected fail">a &lt;b&gt; &amp; c</failure>
+    </testcase>
+    <testcase name="pass/b.json" classname="d_f_1_1_0.schema.json"></testcase>`, "cases are sorted, and text escaped")
+	assert.Contains(t, out, `<testsuite name="d_f_1_2_0.schema.json" tests="0" failures="0">
+    <system-out>WARN unexercised change since d_f_1_1_0: /s: enum adds &#34;x&#34; (widens)&#xA;</system-out>`)
+	assert.Contains(t, out, `<system-out>WARN no fail documents&#xA;</system-out>`)
+	assert.Contains(t, out, `<system-out>WARN no pass documents&#xA;</system-out>`)
+	require.NoError(t, xml.Unmarshal(buf.Bytes(), new(junitTestSuites)), "the report is well-formed XML")
+
+	buf.Reset()
+	require.NoError(t, (&JUnitReporter{Strict: true}).Write(&buf, r))
+	out = buf.String()
+	assert.Contains(t, out, `<testsuites name="jsm validate" tests="5" failures="4"`)
+	assert.Contains(t, out, `<testcase name="warning: no fail documents" classname="d_g_1_0_0.schema.json">
+      <failure message="warning, and --strict is set">no fail documents</failure>`)
+	assert.NotContains(t, out, "system-out")
+}
+
+func TestJUnitReporter_WriteErrors(t *testing.T) {
+	t.Parallel()
+
+	// Fail the header, the report, and the final newline in turn
+	for _, limit := range []int{0, 50, 200} {
+		r := schema.NewTestReport()
+		var full bytes.Buffer
+		require.NoError(t, (&JUnitReporter{}).Write(&full, r))
+		if limit >= full.Len() {
+			limit = full.Len() - 1
+		}
+		err := (&JUnitReporter{}).Write(&limitWriter{n: limit}, r)
+		require.Error(t, err, "limit %d of %d", limit, full.Len())
+	}
+}
+
+// limitWriter accepts n bytes, then fails.
+type limitWriter struct{ n int }
+
+func (w *limitWriter) Write(p []byte) (int, error) {
+	if len(p) > w.n {
+		return 0, io.ErrShortWrite
+	}
+	w.n -= len(p)
+	return len(p), nil
 }

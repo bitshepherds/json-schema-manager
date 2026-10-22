@@ -13,6 +13,7 @@
   - [Checking a consumer's schema versions](#checking-a-consumers-schema-versions)
 - [Exit codes](#exit-codes)
 - [Running JSM in CI](#running-jsm-in-ci)
+  - [Test results in CI](#test-results-in-ci)
   - [Git history in CI](#git-history-in-ci)
 - [Why semantic versioning?](#why-semantic-versioning)
   - [Compatibility runs one way: providers first](#compatibility-runs-one-way-providers-first)
@@ -226,7 +227,7 @@ The points are the properties a schema declares, its enum values, the types of a
 
 The warnings, for unexercised changes and for missing documents, do not change the exit code unless you add `--strict`, which makes `jsm validate` exit `1` on any warning.
 
-By default, `jsm validate` stops at the first failing test. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
+By default, `jsm validate` stops at the first failing test. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, `--output junit` for a JUnit XML report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
 
 ### Rendering and building schemas
 
@@ -313,6 +314,21 @@ jobs:
 ```
 
 Pin `jsm` to a release version, rather than `@latest`, so a new release cannot change your pipeline unannounced.
+
+### Test results in CI
+
+Most CI systems can show JUnit XML test results, with each failing test on the pull request. `jsm validate all --continue-on-error --output junit > jsm-results.xml` writes one: each schema is a test suite, and each test document run against it a test case. It exits with the same code as the text report, so it still fails the job. JUnit has no warnings, so a schema's warnings are in its suite's `system-out`, or, with `--strict`, are failing test cases.
+
+In GitHub Actions, upload the file even when the step fails, then show it with a test reporter action of your choice:
+
+```yaml
+- run: jsm validate all --continue-on-error --output junit > jsm-results.xml
+- uses: actions/upload-artifact@v7
+  if: ${{ !cancelled() }}
+  with:
+    name: jsm-results
+    path: jsm-results.xml
+```
 
 ### Git history in CI
 

@@ -9,7 +9,7 @@ import (
 // NewCheckConsumerCmd returns a new cobra command for checking a consumer's schema versions.
 func NewCheckConsumerCmd(m Manager) *cobra.Command {
 	var strict bool
-	outputVal := formatValue("text")
+	outputVal := newFormatValue(formatText, formatJSON)
 
 	cmd := &cobra.Command{
 		Use:   "check-consumer [manifest]",
@@ -44,11 +44,11 @@ Use --strict to fail on warnings too.
 				manifest = args[0]
 			}
 			noColour, _ := cmd.Flags().GetBool("nocolour")
-			return m.CheckConsumer(cmd.Context(), manifest, string(outputVal), !noColour, strict)
+			return m.CheckConsumer(cmd.Context(), manifest, outputVal.String(), !noColour, strict)
 		},
 	}
 
-	cmd.Flags().VarP(&outputVal, "output", "o", "Output format (text, json)")
+	cmd.Flags().VarP(outputVal, "output", "o", "Output format ("+outputVal.usage()+")")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Fail if the family of a listed version has a newer major version")
 	return cmd
 }
