@@ -138,6 +138,8 @@ So the complete path for a schema with filename `logistics_data_shipment_1_2_3.s
 
 The filename of JSON Schemas within the registry **must** match the directory structure of the schema's path within the registry. JSON Schema Manager will enforce this rule. This ensures that a schema is easy to find, and that published schema URLs are guaranteed not to collide.
 
+A schema file in any other directory, such as another family's or one which is not a version, stops `jsm validate` and `jsm build-dist` with exit code `2`, naming the directory its filename says it belongs in.
+
 E.g. this is the path of a schema within a JSON Schema Manager Registry:
 
 ```

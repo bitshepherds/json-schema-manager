@@ -153,6 +153,9 @@ func (r *Registry) KeyFromSchemaPath(path string) (Key, error) {
 	if err != nil {
 		return "", err
 	}
+	if want := c.Path(HomeDir, r.rootDirectory); filepath.Dir(path) != want {
+		return "", &MisplacedSchemaError{Path: path, BelongsIn: want}
+	}
 	return c.Key(), nil
 }
 

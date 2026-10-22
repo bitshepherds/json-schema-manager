@@ -243,6 +243,17 @@ func (e *InvalidSchemaFilenameError) Error() string {
 	return fmt.Sprintf("schema file %s has an invalid filename structure", e.Path)
 }
 
+// MisplacedSchemaError is returned when a schema file is not in the directory its name says it belongs in.
+type MisplacedSchemaError struct {
+	Path      string
+	BelongsIn string // the directory the schema's name says it belongs in
+}
+
+func (e *MisplacedSchemaError) Error() string {
+	return fmt.Sprintf("schema file %s is in the wrong directory: its name says it belongs in %s. "+
+		"Move it there, or rename it to match its directory", e.Path, e.BelongsIn)
+}
+
 // FailTestPassedError is returned when a fail test document unexpectedly passes validation.
 type FailTestPassedError struct {
 	SchemaPath  string

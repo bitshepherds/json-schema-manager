@@ -132,6 +132,11 @@ func (s *Searcher) walkFunc(ctx context.Context, resC chan<- SearchResult) filep
 		if kErr != nil {
 			return &InvalidSchemaFilenameError{Path: path}
 		}
+		// A schema's name says where it belongs. One anywhere else would be tested, or
+		// looked for, under the wrong key.
+		if want := core.Path(HomeDir, s.registry.rootDirectory); filepath.Dir(path) != want {
+			return &MisplacedSchemaError{Path: path, BelongsIn: want}
+		}
 
 		select {
 		case <-ctx.Done():

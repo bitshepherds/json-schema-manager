@@ -440,77 +440,31 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		assert.ErrorAs(t, err, new(*schema.NoSchemaTargetsError))
 	})
 
-	t.Run("WatchValidation - filtered events", func(t *testing.T) {
+	t.Run("WatchValidation - events outside the target are ignored", func(t *testing.T) {
 		t.Parallel()
-		registry, key, s := setupWatchTest(t)
-
-		// Create a DIFFERENT schema BEFORE starting the watcher (so it's watched)
-		k2 := schema.Key("other_domain_otherfamily_1_0_0")
-		s2 := schema.New(k2, registry)
-		require.NoError(t, os.MkdirAll(s2.Path(schema.HomeDir), 0o755))
-		require.NoError(t, os.WriteFile(s2.Path(schema.FilePath), []byte("{}"), 0o600))
-
-		mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, io.Discard)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		done := make(chan error, 1)
-		readyChan := make(chan struct{}, 1)
-		go func() {
-			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
-		}()
-
-		<-readyChan
-
-		// Modify the schema inside the exact watched directory but with a mismatched key (should be filtered by Key)
-		require.NoError(t, os.WriteFile(
-			filepath.Join(s.Path(schema.HomeDir), "other_key_1_0_0.schema.json"),
-			[]byte(`{"type":"object"}`),
-			0o600,
-		))
-
-		time.Sleep(500 * time.Millisecond)
-		cancel()
-		<-done
-	})
-
-	t.Run("WatchValidation - scoped filtered events", func(t *testing.T) {
-		t.Parallel()
-		registry, _, _ := setupWatchTest(t)
-
-		// Create a schema in a DIFFERENT scope BEFORE starting the watcher (so it's watched)
-		k3 := schema.Key("other_domain_family_1_0_0")
-		s3 := schema.New(k3, registry)
-		require.NoError(t, os.MkdirAll(s3.Path(schema.HomeDir), 0o755))
-		require.NoError(t, os.WriteFile(s3.Path(schema.FilePath), []byte("{}"), 0o600))
-
-		mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, io.Discard)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		done := make(chan error, 1)
+		registry, key, _ := setupWatchTest(t)
+		var out bytes.Buffer
+		mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &out)
 		scope := schema.SearchScope("domain/family")
+
+		// The watcher only reports schemas in the directories it watches, so these are a guard
+		for _, target := range []schema.ResolvedTarget{{Key: &key}, {Scope: &scope}} {
+			mgr.handleWatchEvent(context.Background(), schema.WatchEvent{Key: "other_domain_family_1_0_0"},
+				target, false, "text", false, false, schema.TestScopeLocal, false)
+		}
+		assert.Empty(t, out.String())
+
+		// Watching a scope starts and stops cleanly
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
 		readyChan := make(chan struct{}, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Scope: &scope},
 				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
 		}()
-
 		<-readyChan
-
-		// Modify a schema physically inside the scope path but with a key that implies a different scope
-		require.NoError(t, os.WriteFile(
-			filepath.Join(registry.RootDirectory(), "domain", "family", "other_schema_1_0_0.schema.json"),
-			[]byte(`{"type":"object"}`),
-			0o600,
-		))
-
-		time.Sleep(200 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 
 	t.Run("WatchValidation - rerun conflict bug", func(t *testing.T) {
