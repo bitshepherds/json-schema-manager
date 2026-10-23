@@ -14,7 +14,7 @@ import (
 // The generators and compiler the guide uses, pinned so the check is repeatable.
 const (
 	json2ts    = "json-schema-to-typescript@15.0.4"
-	quicktype  = "quicktype@23.0.176"
+	quicktype  = "quicktype@23.3.25"
 	typescript = "typescript@5.6.3"
 )
 
