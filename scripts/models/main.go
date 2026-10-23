@@ -15,7 +15,7 @@ import (
 const (
 	json2ts    = "json-schema-to-typescript@15.0.4"
 	quicktype  = "quicktype@23.0.176"
-	typescript = "typescript@5.6.3"
+	typescript = "typescript@7.0.2"
 )
 
 // customer refers to two other schemas, so collapsing it inlines them.
