@@ -1,0 +1,50 @@
+# A registry at the root of its git repository works with every command except build-dist.
+# build-dist writes dist next to the registry root, which would be outside the repository.
+exec git init -q
+exec git config user.email test@example.com
+exec git config user.name test
+cp config.yml json-schema-manager-config.yml
+mkdir domain/family/1/0/0/pass domain/family/1/0/0/fail
+cp schema.json domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp pass.json domain/family/1/0/0/pass/a.json
+cp fail.json domain/family/1/0/0/fail/a.json
+exec git add .
+exec git commit -q -m first
+
+exec jsm validate all
+stdout '2 passed, 0 failed'
+
+exec jsm render-schema domain_family_1_0_0
+stdout '"type": "object"'
+
+exec jsm check-changes production
+stdout 'treating every schema'
+
+exec jsm tag-deployment production --no-push
+stdout 'jsm-deploy/production/'
+
+exec jsm check-changes production
+stdout 'All changes are valid'
+
+! exec jsm build-dist production --all
+stderr 'registry root cannot be the same as the git root'
+stderr 'move the registry into a subdirectory'
+! exists ../dist
+
+-- config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- schema.json --
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "required": ["name"]
+}
+-- pass.json --
+{"name": "a"}
+-- fail.json --
+{}

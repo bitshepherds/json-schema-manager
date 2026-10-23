@@ -5,7 +5,9 @@ Build a distribution directory of rendered schemas
 ### Synopsis
 
 
-Build rendered schemas for the specified environment and write them to [repo root]/dist/[env].
+Build rendered schemas for the specified environment and write them to dist/[env], next to
+the registry root. So the registry must be in a subdirectory of its git repository, which
+keeps dist inside the repository. Other commands work with the registry at the git root.
 
 Before building, it runs every schema's tests and compatibility check, as
 'jsm validate all' does. If any fail, it prints the report, builds nothing and exits

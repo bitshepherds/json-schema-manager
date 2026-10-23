@@ -69,8 +69,7 @@ func TestDistBuilder_BuildAll(t *testing.T) {
 		cfg, err := reg.Config()
 		require.NoError(t, err)
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		count, err := builder.BuildAll(context.Background(), "production", false)
 		require.NoError(t, err)
@@ -140,8 +139,7 @@ environments:
 		cfg, err := reg.Config()
 		require.NoError(t, err)
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		count, err := builder.BuildAll(context.Background(), "production", true)
 		require.NoError(t, err)
@@ -194,8 +192,7 @@ environments:
 		cfg, err := reg.Config()
 		require.NoError(t, err)
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		// Collapse should fail because B does not exist
 		_, err = builder.BuildAll(context.Background(), "production", true)
@@ -210,8 +207,7 @@ environments:
 		cfg, err := reg.Config()
 		require.NoError(t, err)
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
@@ -220,7 +216,7 @@ environments:
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
-	t.Run("init error - registry root equals git root", func(t *testing.T) {
+	t.Run("build error - registry root equals git root", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		// Init git in reg dir
@@ -235,9 +231,13 @@ environments:
 		cfg, _ := reg.Config()
 		gitter := &mockGitter{}
 
-		_, err = NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot be the same as the git root")
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
+		_, err = builder.BuildAll(context.Background(), "prod", false)
+		var rootErr *RegistryRootAtGitRootError
+		require.ErrorAs(t, err, &rootErr)
+		_, err = builder.BuildChanged(context.Background(), "prod", "HEAD", false)
+		require.ErrorAs(t, err, &rootErr)
+		assert.NoDirExists(t, filepath.Join(filepath.Dir(dir), "dist"), "nothing is written outside the repository")
 	})
 
 	t.Run("ensureDistDir error in BuildAll", func(t *testing.T) {
@@ -252,8 +252,7 @@ environments:
 		require.NoError(t, os.Chmod(parentDir, 0o555))
 		defer func() { _ = os.Chmod(parentDir, 0o755) }()
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		_, err = builder.BuildAll(context.Background(), "production", false)
 		require.Error(t, err)
@@ -266,8 +265,7 @@ environments:
 		cfg, err := reg.Config()
 		require.NoError(t, err)
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		// Delete the registry root to make NewSearcher fail
 		require.NoError(t, os.RemoveAll(reg.rootDirectory))
@@ -289,8 +287,7 @@ environments:
 			createSchemaFiles(t, reg, schemaMap{k: `{"type": "object"}`})
 		}
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 		builder.SetNumWorkers(1)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -343,8 +340,7 @@ environments:
 		require.NoError(t, os.MkdirAll(badDir, 0o000))
 		defer func() { _ = os.Chmod(badDir, 0o755) }()
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		_, err = builder.BuildAll(context.Background(), "production", false)
 		require.Error(t, err)
@@ -495,8 +491,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 				}, nil
 			},
 		}
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
 
 		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
@@ -521,8 +516,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 				return []repo.Change{}, nil
 			},
 		}
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
 
 		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
@@ -545,8 +539,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 				}, nil
 			},
 		}
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
 
 		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
@@ -565,8 +558,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 				return nil, errors.New("git failed")
 			},
 		}
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
 
 		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.Error(t, err)
@@ -589,8 +581,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 				}, nil
 			},
 		}
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
 
 		count, err := builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.NoError(t, err)
@@ -621,8 +612,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 				return changes, nil
 			},
 		}
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
 		builder.SetNumWorkers(1)
 
 		go func() {
@@ -650,8 +640,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 				}, nil
 			},
 		}
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, gitter, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
 		builder.SetNumWorkers(1)
 
 		compiler, ok := reg.compiler.(*mockCompiler)
@@ -677,8 +666,7 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		require.NoError(t, os.Chmod(parentDir, 0o555))
 		defer func() { _ = os.Chmod(parentDir, 0o755) }()
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 		_, err = builder.BuildChanged(context.Background(), "production", repo.Revision("HEAD"), false)
 		require.Error(t, err)
@@ -725,8 +713,7 @@ environments:
 		cfg, err := reg.Config()
 		require.NoError(t, err)
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 		builder.SetNumWorkers(1)
 
 		// Pre-create so we can Chmod it
@@ -752,8 +739,7 @@ environments:
 			require.NoError(t, os.WriteFile(filepath.Join(schemaDir, filename), []byte(`{"type": "object"}`), 0o600))
 		}
 
-		builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-		require.NoError(t, err)
+		builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 		builder.SetNumWorkers(1)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -768,7 +754,7 @@ environments:
 	})
 }
 
-func TestDistBuilder_ensureDistDir(t *testing.T) {
+func TestDistBuilder_prepareDistDir(t *testing.T) {
 	t.Parallel()
 
 	t.Run("creates directory", func(t *testing.T) {
@@ -778,7 +764,7 @@ func TestDistBuilder_ensureDistDir(t *testing.T) {
 		distDir := filepath.Join(regDir, "dist")
 		builder := &FSDistBuilder{distDir: distDir}
 
-		err := builder.ensureDistDir("production")
+		err := builder.prepareDistDir("production")
 		require.NoError(t, err)
 
 		// Verify subdirectories exist
@@ -805,7 +791,7 @@ func TestDistBuilder_ensureDistDir(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(otherDir, "keep.json"), []byte("{}"), 0o600))
 
 		builder := &FSDistBuilder{distDir: distDir}
-		err := builder.ensureDistDir("production")
+		err := builder.prepareDistDir("production")
 		require.NoError(t, err)
 
 		// Env subdirs should be empty
@@ -831,7 +817,7 @@ func TestDistBuilder_ensureDistDir(t *testing.T) {
 		// Under dist-file, we can't create anything
 		distDir := filepath.Join(baseFile, "sub")
 		builder := &FSDistBuilder{distDir: distDir}
-		err := builder.ensureDistDir("production")
+		err := builder.prepareDistDir("production")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create base dist directory")
 	})
@@ -850,7 +836,7 @@ func TestDistBuilder_ensureDistDir(t *testing.T) {
 		defer func() { _ = os.Chmod(distDir, 0o755) }()
 
 		builder := &FSDistBuilder{distDir: distDir}
-		err := builder.ensureDistDir(config.Env(envName))
+		err := builder.prepareDistDir(config.Env(envName))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to clean environment dist directory")
 	})
@@ -868,7 +854,7 @@ func TestDistBuilder_ensureDistDir(t *testing.T) {
 
 		builder := &FSDistBuilder{distDir: distDir}
 		// envDir DOES NOT EXIST, so RemoveAll succeeds, but MkdirAll fails
-		err := builder.ensureDistDir("production")
+		err := builder.prepareDistDir("production")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create environment dist subdirectory")
 	})
@@ -1023,8 +1009,7 @@ environments:
 	cfg, err := reg.Config()
 	require.NoError(t, err)
 
-	builder, err := NewFSDistBuilder(context.Background(), reg, cfg, &mockGitter{}, "dist")
-	require.NoError(t, err)
+	builder := NewFSDistBuilder(reg, cfg, &mockGitter{}, "dist")
 
 	count, err := builder.BuildAll(context.Background(), "production", false)
 	require.NoError(t, err)
