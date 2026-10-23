@@ -5,5 +5,5 @@
 "aqua:mvdan/gofumpt" = "0.12.0"
 "aqua:gotestyourself/gotestsum" = "1.13.0"
 "aqua:goreleaser/goreleaser" = "2.18.3"
-"aqua:evilmartians/lefthook" = "1.13.6"
+"aqua:evilmartians/lefthook" = "2.2.2"
 node = "24.22.1"
