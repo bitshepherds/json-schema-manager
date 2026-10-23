@@ -24,12 +24,21 @@ jobs:
                   go-version-file: go.mod
                   cache: true
 
+            # A hand-written summary for the release, if there is one, goes above the generated notes
+            - name: Find release header
+              id: header
+              run: |
+                  file=".github/release-notes/${GITHUB_REF_NAME}.md"
+                  if [ -f "$file" ]; then
+                      echo "args=--release-header=$file" >> "$GITHUB_OUTPUT"
+                  fi
+
             - name: Run GoReleaser
               uses: goreleaser/goreleaser-action@v7
               with:
                   distribution: goreleaser
                   version: "~> v2"
-                  args: release --clean
+                  args: release --clean ${{ steps.header.outputs.args }}
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

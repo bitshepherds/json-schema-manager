@@ -177,7 +177,7 @@ All commit messages **must** identify the domain being changed using a mandatory
 ### Release Note Policy
 
 To keep our user-facing release notes clean and relevant:
--   **Core Changes**: Use the **`(jsm)`** scope for all features and fixes to the JSON Schema Manager itself (e.g., `feat(jsm): add validate command`). **Only `(jsm)` scoped commits will appear in the official release notes.**
+-   **Core Changes**: Use the **`(jsm)`** scope for all features and fixes to the JSON Schema Manager itself (e.g., `feat(jsm): add validate command`), and for changes to the user docs (e.g., `docs(jsm): guide to collapsing schemas`). **Only `feat(jsm)`, `fix(jsm)` and `docs(jsm)` commits appear in the official release notes**, under Features, Bug Fixes and Documentation.
 -   **Other Changes**: Use descriptive scopes like **`(cicd)`**, **`(docs)`**, or **`(refactor)`** for improvements that should not appear in the user-facing changelog (e.g., `fix(cicd): update github token`).
 
 This ensures that our users only see product-relevant changes in the changelog.
@@ -191,7 +191,7 @@ Common types:
 - **chore**: Other changes that don't modify src or test files
 
 > [!IMPORTANT]
-> **Breaking Changes**: If a change breaks backwards compatibility, add a `!` after the type or scope to highlight it (e.g., `feat(jsm)!: remove deprecated flag`). This will be automatically flagged in the release notes.
+> **Breaking Changes**: If a change breaks backwards compatibility, add a `!` after the scope to highlight it (e.g., `feat(jsm)!: remove deprecated flag`). The release notes list it under Breaking Changes, first.
 > 
 > *Note for zsh users*: If you use `!` in a double-quoted string, you may get an "illegal modifier" error. Use **single quotes** for your commit message instead:
 > `git commit -m 'feat(jsm)!: breaking change description'`
@@ -212,15 +212,16 @@ Releases are automated using **GoReleaser**.
 
 1.  **Ensure all changes are committed and pushed** to the `main` branch.
 2.  **Decide on the new version** (e.g., `v1.2.3`) based on SemVer rules.
-3.  **Create a git tag**:
+3.  **Write the release header** (optional): a short summary in `.github/release-notes/v1.2.3.md`, named for the tag, goes above the generated notes. Use it for what users need to do when they upgrade, such as a behaviour change that can make CI fail. Merge it to `main` before tagging.
+4.  **Create a git tag**:
     ```bash
     git tag -a v1.2.3 -m "Release v1.2.3"
     ```
-4.  **Push the tag**:
+5.  **Push the tag**:
     ```bash
     git push origin v1.2.3
     ```
-5.  **Monitor the Release**: The GitHub Actions workflow will automatically pick up the tag, build the binaries, and create the release with artifacts. You can monitor the progress in the "Actions" tab of your repository.
+6.  **Monitor the Release**: The GitHub Actions workflow will automatically pick up the tag, build the binaries, and create the release with artifacts. You can monitor the progress in the "Actions" tab of your repository.
     - If you need to run it manually (not recommended for official releases), you can use `goreleaser release --clean` locally (requires a `GITHUB_TOKEN`).
 
 ### Cleaning Up Test Releases

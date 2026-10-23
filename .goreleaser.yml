@@ -40,16 +40,23 @@ snapshot:
 changelog:
   sort: asc
   use: git
+  # The regexps don't overlap, so a commit is listed once. A ! after the scope marks a breaking change.
   groups:
-    - title: "🚀 Features"
-      regexp: '^feat\(jsm\)!?:'
+    - title: "⚠️ Breaking Changes"
+      regexp: '^(feat|fix|docs)\(jsm\)!:'
       order: 0
-    - title: "🐛 Bug Fixes"
-      regexp: '^fix\(jsm\)!?:'
+    - title: "🚀 Features"
+      regexp: '^feat\(jsm\):'
       order: 1
+    - title: "🐛 Bug Fixes"
+      regexp: '^fix\(jsm\):'
+      order: 2
+    - title: "📖 Documentation"
+      regexp: '^docs\(jsm\):'
+      order: 3
   filters:
     include:
-      - '^(feat|fix)\(jsm\)!?:'
+      - '^(feat|fix|docs)\(jsm\)!?:'
 
 homebrew_casks:
   - name: jsm
