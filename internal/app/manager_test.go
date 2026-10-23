@@ -348,7 +348,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 
 	t.Run("triggered test doc event", func(t *testing.T) {
@@ -372,7 +372,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 
 	t.Run("WatchValidation JSON format", func(t *testing.T) {
@@ -401,7 +401,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		require.True(t, buf.waitForOutput(5*time.Second), "expected output to be written")
 
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 
 		// Verify JSON output was written (confirms JSON reporter branch was hit)
 		assert.Contains(t, buf.String(), "{")
@@ -427,7 +427,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 
 	t.Run("WatchValidation - no target", func(t *testing.T) {
@@ -517,7 +517,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 
 		// Assert that the bug is NOT present
 		assert.NotContains(t, logBuf.String(), "already exists")
@@ -1760,7 +1760,7 @@ func TestCLIManager_WatchValidation_ReporterError(t *testing.T) {
 	time.Sleep(500 * time.Millisecond) // Wait for debounce and callback
 
 	cancel()
-	<-done
+	require.ErrorIs(t, <-done, context.Canceled)
 }
 
 func TestCLIManager_WatchValidation_CallbackErrors(t *testing.T) {
@@ -1801,7 +1801,7 @@ func TestCLIManager_WatchValidation_CallbackErrors(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 }
 
@@ -1843,7 +1843,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 
 	t.Run("system error handling", func(t *testing.T) {
@@ -1879,7 +1879,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 
 	t.Run("reporter write error branch", func(t *testing.T) {
@@ -1902,7 +1902,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 }
 

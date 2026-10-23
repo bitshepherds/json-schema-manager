@@ -335,22 +335,9 @@ func (m *CLIManager) RenderSchema(
 		return nil, err
 	}
 
-	var envCfg *config.EnvConfig
-	if env == "" {
-		envCfg = cfg.ProductionEnvConfig()
-	} else {
-		var envErr error
-		envCfg, envErr = cfg.EnvConfig(env)
-		if envErr != nil {
-			// Introspect environments to provide a helpful error message
-			var validEnvs []string
-			for e := range cfg.Environments {
-				validEnvs = append(validEnvs, string(e))
-			}
-			slices.Sort(validEnvs)
-			return nil, fmt.Errorf("invalid environment: '%s'. Valid environments are: '%s'",
-				env, strings.Join(validEnvs, "', '"))
-		}
+	envCfg, err := renderEnvConfig(cfg, env)
+	if err != nil {
+		return nil, err
 	}
 
 	s, err := m.registry.GetSchemaByKey(*target.Key)
@@ -376,6 +363,26 @@ func (m *CLIManager) RenderSchema(
 	}
 
 	return ri.Rendered, nil
+}
+
+// renderEnvConfig returns the config of the environment to render for: the given one, or production if none
+// is given. An unknown environment's error lists the valid ones.
+func renderEnvConfig(cfg *config.Config, env config.Env) (*config.EnvConfig, error) {
+	if env == "" {
+		return cfg.ProductionEnvConfig(), nil
+	}
+
+	envCfg, err := cfg.EnvConfig(env)
+	if err != nil {
+		var validEnvs []string
+		for e := range cfg.Environments {
+			validEnvs = append(validEnvs, string(e))
+		}
+		slices.Sort(validEnvs)
+		return nil, fmt.Errorf("invalid environment: '%s'. Valid environments are: '%s'",
+			env, strings.Join(validEnvs, "', '"))
+	}
+	return envCfg, nil
 }
 
 // DiffSchemas lists the structural changes from the schema older to the schema newer, as rendered

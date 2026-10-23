@@ -213,7 +213,7 @@ type JSMArgNotFoundError struct {
 }
 
 func (e *JSMArgNotFoundError) Error() string {
-	return fmt.Sprintf("A $ref to a JSM schema ({{ JSM `%s` }}) could not be loaded. Error: %s", e.Key, e.Wrapped)
+	return fmt.Sprintf("A $ref to a JSM schema ({{ JSM %#q }}) could not be loaded. Error: %s", e.Key, e.Wrapped)
 }
 
 // NotFoundError is returned when a schema is not found.
@@ -231,7 +231,7 @@ type InvalidSearchScopeError struct {
 }
 
 func (e *InvalidSearchScopeError) Error() string {
-	return fmt.Sprintf("`%s` is not a valid JSM Search Scope. Valid Example: 'domain/family'", e.spec)
+	return fmt.Sprintf("%#q is not a valid JSM Search Scope. Valid Example: 'domain/family'", e.spec)
 }
 
 // InvalidSchemaFilenameError is returned when a schema file has an invalid filename structure.

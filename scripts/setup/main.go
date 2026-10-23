@@ -48,28 +48,30 @@ func main() {
 func getToolsForWorkflow(workflow string) map[string]string {
 	allTools := map[string]string{
 		"lefthook":      "github.com/evilmartians/lefthook@v1",
-		"golangci-lint": "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3",
+		"golangci-lint": "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0",
 		"goreleaser":    "github.com/goreleaser/goreleaser/v2@v2",
 		"staticcheck":   "honnef.co/go/tools/cmd/staticcheck@latest",
 		"gotestsum":     "gotest.tools/gotestsum@v1",
 		"gofumpt":       "mvdan.cc/gofumpt@latest",
 	}
 
+	coverageTools := []string{"gotestsum"}
+
+	var names []string
 	switch workflow {
 	case "ci":
-		return map[string]string{
-			"golangci-lint": allTools["golangci-lint"],
-			"staticcheck":   allTools["staticcheck"],
-			"gotestsum":     allTools["gotestsum"],
-			"gofumpt":       allTools["gofumpt"],
-		}
+		names = append([]string{"golangci-lint", "staticcheck", "gofumpt"}, coverageTools...)
 	case "coverage":
-		return map[string]string{
-			"gotestsum": allTools["gotestsum"],
-		}
+		names = coverageTools
 	default:
 		return allTools
 	}
+
+	tools := make(map[string]string, len(names))
+	for _, name := range names {
+		tools[name] = allTools[name]
+	}
+	return tools
 }
 
 func isToolInstalled(name string) bool {
