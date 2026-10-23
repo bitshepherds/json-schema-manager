@@ -13,9 +13,6 @@ import (
 	"github.com/bitshepherds/json-schema-manager/internal/validator"
 )
 
-// Version is the current version of jsm, set at build time.
-var Version = "dev"
-
 // CreateRegistryCmdName is the name of the command to create a new registry.
 const CreateRegistryCmdName = "create-registry"
 
@@ -69,7 +66,7 @@ func NewRootCmd(
 	rootCmd := &cobra.Command{
 		Use:           "jsm",
 		Short:         "A professional tool for managing JSON schemas",
-		Version:       Version,
+		Version:       buildVersion(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Long:          Banner + "\n" + LongDescription,

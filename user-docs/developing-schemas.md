@@ -318,7 +318,7 @@ jobs:
       - run: jsm tag-deployment prod
 ```
 
-Pin `jsm` to a release version, rather than `@latest`, so a new release cannot change your pipeline unannounced.
+Pin `jsm` to a release version, rather than `@latest`, so a new release cannot change your pipeline unannounced. `jsm --version` prints the version installed.
 
 ### Test results in CI
 
