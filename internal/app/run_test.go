@@ -116,7 +116,7 @@ environments:
 		require.Error(t, err)
 	})
 
-	t.Run("run distribution initialisation error", func(t *testing.T) {
+	t.Run("registry at git root: only build-dist fails", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
 		gitRoot := filepath.Join(tmpDir, "project")
@@ -134,9 +134,14 @@ environments:
 			"JSM_REGISTRY_ROOT_DIR": gitRoot,
 		}}
 
-		err := Run(context.Background(), []string{"jsm", "validate", "some_schema_1_0_0"}, io.Discard, io.Discard, env)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "registry root cannot be the same as the git root")
+		// Commands which don't build a distribution work
+		err := Run(context.Background(), []string{"jsm", "validate", "all"}, io.Discard, io.Discard, env)
+		require.NoError(t, err)
+
+		err = Run(context.Background(), []string{"jsm", "build-dist", "prod", "--all"}, io.Discard, io.Discard, env)
+		var rootErr *schema.RegistryRootAtGitRootError
+		require.ErrorAs(t, err, &rootErr)
+		assert.Equal(t, 2, ExitCode(err))
 	})
 
 	t.Run("run with nil env", func(t *testing.T) {

@@ -236,7 +236,7 @@ By default, `jsm validate` stops at the first failing test. Use `--continue-on-e
 Source schemas contain templates, such as `"$id": "{{ ID }}"`, which JSM fills in for a given environment. See [Special Properties](./registry.md#special-properties).
 
 - `jsm render-schema <schema> [--env <env>]` - prints the rendered schema for an environment (production by default).
-- `jsm build-dist <env>` - tests every schema, then writes the rendered schemas changed since the last deployment to `dist/<env>/private` and `dist/<env>/public`. It finds the changes with git, so it leaves out, and lists, schemas which git does not track yet. Use `--all` to build every schema, for example when trying out schemas locally.
+- `jsm build-dist <env>` - tests every schema, then writes the rendered schemas changed since the last deployment to `dist/<env>/private` and `dist/<env>/public`, next to the registry root. So the registry must be in a subdirectory of its git repository; every other command works with it at the git root. It finds the changes with git, so it leaves out, and lists, schemas which git does not track yet. Use `--all` to build every schema, for example when trying out schemas locally.
 - `jsm check-changes <env>` - fails if a deployed schema or its test documents were changed, in an environment which does not allow schema mutation.
 - `jsm tag-deployment <env>` - records a successful deployment with a git tag, which `check-changes` and `build-dist` compare against.
 
@@ -276,9 +276,12 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 
 ## Running JSM in CI
 
-Run every check on each pull request, and build, deploy and tag on the main branch. A GitHub Actions example, for a repository whose root is the registry root (otherwise, set `JSM_REGISTRY_ROOT_DIR`):
+Run every check on each pull request, and build, deploy and tag on the main branch. A GitHub Actions example, for a repository with its registry in `schemas/`:
 
 ```yaml
+env:
+  JSM_REGISTRY_ROOT_DIR: schemas # build-dist writes dist/ next to it, so it must be a subdirectory
+
 jobs:
   check:
     runs-on: ubuntu-latest

@@ -15,13 +15,15 @@ import (
 	"github.com/bitshepherds/json-schema-manager/internal/repo"
 )
 
-// RegistryRootAtGitRootError is returned when the registry root is the same as the git root.
+// RegistryRootAtGitRootError is returned when a distribution is built from a registry whose root is the
+// git root. The dist directory is written next to the registry root, which would be outside the repository.
 type RegistryRootAtGitRootError struct {
 	Path string
 }
 
 func (e *RegistryRootAtGitRootError) Error() string {
-	return fmt.Sprintf("registry root cannot be the same as the git root: %s", e.Path)
+	return fmt.Sprintf("registry root cannot be the same as the git root: %s. build-dist writes dist next to "+
+		"the registry root, which would be outside the repository: move the registry into a subdirectory", e.Path)
 }
 
 // DistBuilder is an interface for building schema distributions.
@@ -33,33 +35,24 @@ type DistBuilder interface {
 
 // FSDistBuilder builds distribution directories of rendered schemas on the filesystem.
 type FSDistBuilder struct {
-	registry   *Registry
-	config     *config.Config
-	gitter     repo.Gitter
-	distDir    string
-	numWorkers int
+	registry    *Registry
+	config      *config.Config
+	gitter      repo.Gitter
+	distDirName string
+	distDir     string // Found when a build starts, so that commands which don't build need no dist directory
+	numWorkers  int
 }
 
-// NewFSDistBuilder creates a new DistBuilder for the given registry and config.
-func NewFSDistBuilder(
-	ctx context.Context,
-	r *Registry,
-	cfg *config.Config,
-	g repo.Gitter,
-	distDirName string,
-) (DistBuilder, error) {
-	distDir, err := distDirectory(ctx, r.pathResolver, r.RootDirectory(), distDirName)
-	if err != nil {
-		return nil, err
-	}
-
+// NewFSDistBuilder creates a new DistBuilder for the given registry and config, which writes to a directory
+// called distDirName next to the registry root.
+func NewFSDistBuilder(r *Registry, cfg *config.Config, g repo.Gitter, distDirName string) DistBuilder {
 	return &FSDistBuilder{
-		registry:   r,
-		config:     cfg,
-		gitter:     g,
-		distDir:    distDir,
-		numWorkers: runtime.GOMAXPROCS(0),
-	}, nil
+		registry:    r,
+		config:      cfg,
+		gitter:      g,
+		distDirName: distDirName,
+		numWorkers:  runtime.GOMAXPROCS(0),
+	}
 }
 
 // SetNumWorkers controls the number of rendering workers.
@@ -69,7 +62,7 @@ func (b *FSDistBuilder) SetNumWorkers(n int) {
 
 // BuildAll renders all schemas in the registry in parallel for the given environment.
 func (b *FSDistBuilder) BuildAll(ctx context.Context, env config.Env, collapse bool) (int, error) {
-	if err := b.ensureDistDir(env); err != nil {
+	if err := b.ensureDistDir(ctx, env); err != nil {
 		return 0, err
 	}
 
@@ -146,7 +139,7 @@ func (b *FSDistBuilder) BuildChanged(
 	anchor repo.Revision,
 	collapse bool,
 ) (int, error) {
-	if err := b.ensureDistDir(env); err != nil {
+	if err := b.ensureDistDir(ctx, env); err != nil {
 		return 0, err
 	}
 
@@ -227,8 +220,18 @@ func (b *FSDistBuilder) renderAndWrite(ctx context.Context, env config.Env, k Ke
 	return nil
 }
 
-// ensureDistDir prepares the distribution directory for the given environment.
-func (b *FSDistBuilder) ensureDistDir(env config.Env) error {
+// ensureDistDir finds the distribution directory, and prepares it for the given environment.
+func (b *FSDistBuilder) ensureDistDir(ctx context.Context, env config.Env) error {
+	distDir, err := distDirectory(ctx, b.registry.pathResolver, b.registry.RootDirectory(), b.distDirName)
+	if err != nil {
+		return err
+	}
+	b.distDir = distDir
+	return b.prepareDistDir(env)
+}
+
+// prepareDistDir empties the distribution directory for the given environment, creating it if need be.
+func (b *FSDistBuilder) prepareDistDir(env config.Env) error {
 	// Ensure parent dist directory exists
 	if err := os.MkdirAll(b.distDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create base dist directory: %w", err)

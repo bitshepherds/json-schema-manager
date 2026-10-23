@@ -56,8 +56,6 @@ Exit codes:
 `
 
 // NewRootCmd creates the root command and wires up dependencies.
-//
-//nolint:gocognit // high complexity command setup
 func NewRootCmd(
 	lazy *LazyManager,
 	ll *slog.LevelVar,
@@ -111,10 +109,7 @@ func NewRootCmd(
 			cfg, _ := registry.Config()
 			// Run git in the registry's repository, wherever jsm is run from
 			gitter := repo.NewCLIGitter(cfg, pathResolver, registry.RootDirectory())
-			distBuilder, err := schema.NewFSDistBuilder(cmd.Context(), registry, cfg, gitter, "dist")
-			if err != nil {
-				return fmt.Errorf("failed to initialise distribution builder: %w", err)
-			}
+			distBuilder := schema.NewFSDistBuilder(registry, cfg, gitter, "dist")
 
 			// 3. Hydrate the Lazy Wrapper
 			realMgr := NewCLIManager(logger, registry, tester, gitter, distBuilder, stdout)
