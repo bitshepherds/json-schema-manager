@@ -1,4 +1,4 @@
-.PHONY: all build run clean test test-race test-cover test-race-coverage cover-html lint fmt docs check-models check-apis snapshot release-check setup setup-ci setup-coverage setup-refresh
+.PHONY: all build run clean test test-race test-cover test-race-coverage cover-html lint fmt docs check-models check-apis snapshot release-check setup
 
 all: build
 
@@ -68,18 +68,7 @@ check-apis:
 release-check:
 	@go run scripts/release_check/main.go
 
-# Setup development environment
+# Install the development tools at the versions in mise.toml, and the git hooks
 setup:
-	@go run scripts/setup/main.go
-
-# Setup for CI - skips lefthook installation
-setup-ci:
-	@go run scripts/setup/main.go --workflow ci
-
-# Setup for coverage workflow - minimal tools
-setup-coverage:
-	@go run scripts/setup/main.go --workflow coverage
-
-# Refresh development environment - force reinstall all tools to latest versions
-setup-refresh:
-	@go run scripts/setup/main.go --force
+	@mise install
+	@mise exec -- lefthook install

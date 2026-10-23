@@ -70,9 +70,12 @@ switch ($Target) {
         go run scripts/release_check/main.go
     }
     "setup" {
-        go run scripts/setup/main.go
+        mise install
+        if ($LASTEXITCODE -eq 0) {
+            mise exec -- lefthook install
+        }
     }
 }
-if ($Target -ne "setup" -and $LASTEXITCODE -ne 0) {
+if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

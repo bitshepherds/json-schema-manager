@@ -5,15 +5,6 @@
   ],
   "customManagers": [
     {
-      "description": "Go tools which make setup installs at a pinned version, such as golangci-lint",
-      "customType": "regex",
-      "managerFilePatterns": ["/^scripts/setup/main\\.go$/"],
-      "matchStrings": [
-        "\"(?<depName>github\\.com/golangci/golangci-lint/v2)/cmd/golangci-lint@(?<currentValue>v\\d+\\.\\d+\\.\\d+)\""
-      ],
-      "datasourceTemplate": "go"
-    },
-    {
       "description": "npm tools which the models and API example checks run with npx",
       "customType": "regex",
       "managerFilePatterns": ["/^scripts/(models|apis)/main\\.go$/"],
