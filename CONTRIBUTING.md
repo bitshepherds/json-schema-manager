@@ -29,26 +29,15 @@ Welcome! This document provides guidelines for developing and contributing to th
 
 ### Prerequisites
 
-- **Go**: Version 1.25 or higher is required.
+- **Go**: Version 1.21 or higher. `go.mod` names the version JSM is built with, and Go downloads that version itself when it needs to.
     - **macOS/Linux**: Follow instructions at [go.dev/doc/install](https://go.dev/doc/install).
     - **Windows**: Run `winget install -e --id GoLang.Go` or download from [go.dev/dl](https://go.dev/dl/).
     - **Note on Race Detection (Windows)**: The `test-race` command on Windows requires a C compiler (e.g., Mingw-w64). If not present, `win-make.ps1` will fallback to standard tests.
 
-- **GO bin configured**: To run tools like `lefthook` directly, ensure Go's binary directory is in your `PATH`.
-
-    > **Mac/linux users**: Run this command to automatically update your `~/.zshrc`:
-    > ```bash
-    > grep -q 'go env GOPATH' ~/.zshrc || echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.zshrc && source ~/.zshrc
-    > ```
-    >
-    > **Windows users**: The Go installer adds the compiler to your PATH, but you must also add your user's Go bin folder (usually `%USERPROFILE%\go\bin`) to run development tools.
-    > 
-    > You can run this PowerShell command to add it permanently for your user:
-    > ```powershell
-    > $goBin = Join-Path $Home "go\bin"
-    > [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$goBin", "User")
-    > ```
-    > *Note: You must restart VS Code/Terminal after running this.*
+- **mise**: Installs the other development tools (golangci-lint, gofumpt, gotestsum, goreleaser, lefthook and Node.js) at the versions in `mise.toml`, which CI uses too.
+    - Install it by following [mise.jdx.dev/getting-started](https://mise.jdx.dev/getting-started.html). On Windows, run `winget install jdx.mise`.
+    - [Activate it in your shell](https://mise.jdx.dev/getting-started.html#activate-mise), so the tools are on your `PATH` in this repository.
+    - Run `mise trust` in the repository once, so mise reads its `mise.toml`.
 
 - **Make**: Used for automating build and test tasks (macOS/Linux). Windows users can use the provided PowerShell script.
 
@@ -61,7 +50,7 @@ This project is cross-platform. To ensure a smooth experience for all contributo
 
 ### Getting Started
 
-Assuming you have the prerequisites in place, run `make setup` (macOS/Linux) or `.\win-make.ps1 setup` (Windows) to install development tools.
+Assuming you have the prerequisites in place, run `make setup` (macOS/Linux) or `.\win-make.ps1 setup` (Windows) to install the development tools and the git hooks. Run it again when `mise.toml` changes, for example after a Renovate update.
 
 ### Repository Structure
 
@@ -122,7 +111,7 @@ See [Build Commands](#build-commands) below, or just checkout the `Makefile` or 
 ### Development Workflow
 
 1.  **Clone the repository**.
-2.  **Set up development environment**: `make setup` (installs hooks and linters).
+2.  **Set up development environment**: `make setup` (installs the tools in `mise.toml` and the git hooks).
 3.  **Make changes**.
 4.  **Run tests**: `make test`
 4.  **Lint your code**: `make lint`
@@ -149,7 +138,7 @@ make test-race
 
 | Command              | Description                                                                               |
 | :------------------- | :---------------------------------------------------------------------------------------- |
-| `make setup`         | Installs development tools (lefthook, golangci-lint, goreleaser, staticcheck, gotestsum). |
+| `make setup`         | Installs the development tools in `mise.toml`, and the git hooks.                         |
 | `make build`         | Compiles the binary to `bin/jsm` with version injection.                                  |
 | `make run`           | Runs the application directly.                                                            |
 | `make test`          | Runs all unit tests with colorful output (via gotestsum).                                 |

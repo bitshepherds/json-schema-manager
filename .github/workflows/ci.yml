@@ -29,13 +29,15 @@ jobs:
                   go-version-file: go.mod
                   cache: true
 
-            - name: Install dependencies
-              run: |
-                  go version
-                  make setup-ci
+            # The tools in mise.toml, at the versions used locally
+            - name: Set up tools
+              uses: jdx/mise-action@v5
 
             - name: Run Linter
               run: make lint
+
+            - name: Check the GoReleaser configuration
+              run: make release-check
 
             - name: Run Tests and Check Coverage
               run: make test-race-coverage
@@ -56,7 +58,10 @@ jobs:
                   go-version-file: go.mod
                   cache: true
 
-            # Node.js, which the generators need, is on the runner already
+            # The tools in mise.toml, at the versions used locally
+            - name: Set up tools
+              uses: jdx/mise-action@v5
+
             - name: Check that the guide's generated models compile
               run: make check-models
 

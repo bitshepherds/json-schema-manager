@@ -21,10 +21,12 @@ jobs:
                   go-version-file: go.mod
                   cache: true
 
+            # The tools in mise.toml, at the versions used locally
+            - name: Set up tools
+              uses: jdx/mise-action@v5
+
             - name: Generate Badge
-              run: |
-                  make setup-coverage
-                  make test-badge
+              run: make test-badge
 
             - name: Update Wiki
               env:

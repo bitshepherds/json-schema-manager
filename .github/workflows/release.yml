@@ -33,12 +33,12 @@ jobs:
                       echo "args=--release-header=$file" >> "$GITHUB_OUTPUT"
                   fi
 
+            # The tools in mise.toml, at the versions used locally
+            - name: Set up tools
+              uses: jdx/mise-action@v5
+
             - name: Run GoReleaser
-              uses: goreleaser/goreleaser-action@v7
-              with:
-                  distribution: goreleaser
-                  version: "~> v2"
-                  args: release --clean ${{ steps.header.outputs.args }}
+              run: goreleaser release --clean ${{ steps.header.outputs.args }}
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
