@@ -111,6 +111,7 @@ linters:
           - gocognit
           - gosec
           - gocritic
+          - goconst
       - path: "scripts/(.+)"
         linters:
           - gosec

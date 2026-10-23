@@ -352,7 +352,7 @@ func TestWatcher(t *testing.T) {
 		})
 
 		cancel()
-		<-done
+		require.ErrorIs(t, <-done, context.Canceled)
 	})
 
 	t.Run("addRecursive - errors", func(t *testing.T) {
