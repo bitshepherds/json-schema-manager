@@ -14,7 +14,7 @@ import (
 
 // The validators, pinned so the check is repeatable.
 const (
-	asyncapi = "@asyncapi/cli@6.2.1"
+	asyncapi = "@asyncapi/cli@6.2.2"
 	redocly  = "@redocly/cli@2.70.0"
 )
 
