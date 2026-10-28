@@ -6,4 +6,4 @@
 "aqua:gotestyourself/gotestsum" = "1.13.0"
 "aqua:goreleaser/goreleaser" = "2.18.3"
 "aqua:evilmartians/lefthook" = "1.13.6"
-node = "24.22.1"
+node = "26.13.0"
