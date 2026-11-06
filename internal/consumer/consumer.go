@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -134,20 +132,12 @@ func checkEntry(ctx context.Context, r *schema.Registry, entry string) (SchemaRe
 	}
 
 	// Run the later versions' pass documents, in the same major family, against this version
-	tester := schema.NewTester(r)
-	tester.SetScope(schema.TestScopeConsumerBreaking)
-	tester.SetSkipCompatible(true)
-	tester.SetStopOnFirstError(false)
-	report, err := tester.TestSingleSchema(ctx, sr.Key)
+	rejections, err := schema.NewTester(r).LaterPassRejections(ctx, sr.Key)
 	if err != nil {
 		return sr, err
 	}
-	for _, spec := range report.FailedTests[sr.Key] {
-		sr.Rejections = append(sr.Rejections, Rejection{
-			Later: withVersion(sr.Key, spec.ForwardVersion),
-			Path:  spec.TestInfo.Path,
-			Err:   spec.Err,
-		})
+	for _, rejection := range rejections {
+		sr.Rejections = append(sr.Rejections, Rejection(rejection))
 	}
 
 	newest, err := s.NewestInFamily()
@@ -171,14 +161,4 @@ func pinnedSchema(r *schema.Registry, entry string) (key schema.Key, s *schema.S
 		return *target.Key, nil, "not found in the registry"
 	}
 	return *target.Key, s, ""
-}
-
-// withVersion returns the key of the version v in the family of k.
-func withVersion(k schema.Key, v *schema.SemVer) schema.Key {
-	parts := strings.Split(string(k), schema.KeySeparatorString)
-	lp := len(parts)
-	parts[lp-3] = strconv.FormatUint(v.Major(), 10)
-	parts[lp-2] = strconv.FormatUint(v.Minor(), 10)
-	parts[lp-1] = strconv.FormatUint(v.Patch(), 10)
-	return schema.Key(strings.Join(parts, schema.KeySeparatorString))
 }

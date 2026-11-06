@@ -166,7 +166,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			false, "text", false, false, schema.TestScopeLocal, false, false)
+			false, "text", false, false, false)
 		require.NoError(t, vErr)
 	})
 
@@ -175,7 +175,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			false, "json", false, false, schema.TestScopeLocal, false, false)
+			false, "json", false, false, false)
 		require.NoError(t, vErr)
 	})
 
@@ -184,7 +184,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			true, "text", false, false, schema.TestScopeLocal, false, false)
+			true, "text", false, false, false)
 		require.NoError(t, vErr)
 	})
 
@@ -195,7 +195,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		// Non-existent path
 		scope := schema.SearchScope("non/existent/path")
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Scope: &scope},
-			false, "text", false, false, schema.TestScopeLocal, false, false)
+			false, "text", false, false, false)
 		require.Error(t, vErr)
 	})
 
@@ -206,7 +206,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		// This will fail because the path is outside the registry root
 		tKey := schema.Key("outside_key_1_0_0")
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &tKey},
-			false, "text", false, false, schema.TestScopeLocal, false, false)
+			false, "text", false, false, false)
 		require.Error(t, vErr)
 	})
 
@@ -215,7 +215,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{},
-			false, "text", false, false, schema.TestScopeLocal, false, false)
+			false, "text", false, false, false)
 		require.Error(t, vErr)
 		assert.ErrorAs(t, vErr, new(*schema.NoSchemaTargetsError))
 	})
@@ -245,12 +245,12 @@ environments:
 		var out bytes.Buffer
 		mgr2 := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, nil, &out)
 		vErr := mgr2.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &tKey},
-			false, "text", false, false, schema.TestScopeLocal, false, false)
+			false, "text", false, false, false)
 		require.NoError(t, vErr)
 		assert.Contains(t, out.String(), "no pass or fail documents")
 
 		vErr = mgr2.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &tKey},
-			false, "text", false, false, schema.TestScopeLocal, false, true)
+			false, "text", false, false, true)
 		require.ErrorIs(t, vErr, ErrTestsFailed, "--strict fails on the warning")
 	})
 
@@ -270,7 +270,7 @@ environments:
 			var out bytes.Buffer
 			mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &out)
 			vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &fKey},
-				false, format, false, true, schema.TestScopeLocal, false, false)
+				false, format, false, true, false)
 			require.ErrorIs(t, vErr, ErrTestsFailed, format)
 			assert.Contains(t, out.String(), "accepted.json", format)
 		}
@@ -280,7 +280,7 @@ environments:
 		t.Parallel()
 		mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &failingWriter{})
 		vErr := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{Key: &key},
-			false, "text", false, false, schema.TestScopeLocal, false, false)
+			false, "text", false, false, false)
 		require.Error(t, vErr)
 		assert.NotErrorIs(t, vErr, ErrTestsFailed)
 	})
@@ -314,7 +314,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -333,7 +333,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		registry := setupTestRegistry(t)
 		mgr := NewCLIManager(logger, registry, nil, nil, nil, io.Discard)
 		err := mgr.WatchValidation(context.Background(), schema.ResolvedTarget{},
-			false, "text", false, false, schema.TestScopeLocal, false, nil)
+			false, "text", false, false, false, nil)
 		require.Error(t, err)
 		assert.ErrorAs(t, err, new(*schema.NoSchemaTargetsError))
 	})
@@ -350,7 +350,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -375,7 +375,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -400,7 +400,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		readyChan := make(chan struct{}, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "json", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "json", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -432,7 +432,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		readyChan := make(chan struct{}, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -449,7 +449,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		registry := setupTestRegistry(t)
 		mgr := NewCLIManager(logger, registry, nil, nil, nil, io.Discard)
 		err := mgr.WatchValidation(context.Background(), schema.ResolvedTarget{},
-			false, "text", false, false, schema.TestScopeLocal, false, nil)
+			false, "text", false, false, false, nil)
 		require.Error(t, err)
 		assert.ErrorAs(t, err, new(*schema.NoSchemaTargetsError))
 	})
@@ -464,7 +464,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		// The watcher only reports schemas in the directories it watches, so these are a guard
 		for _, target := range []schema.ResolvedTarget{{Key: &key}, {Scope: &scope}} {
 			mgr.handleWatchEvent(context.Background(), schema.WatchEvent{Key: "other_domain_family_1_0_0"},
-				target, false, "text", false, false, schema.TestScopeLocal, false)
+				target, false, "text", false, false, false)
 		}
 		assert.Empty(t, out.String())
 
@@ -474,7 +474,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		readyChan := make(chan struct{}, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Scope: &scope},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 		<-readyChan
 		cancel()
@@ -517,7 +517,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		readyChan := make(chan struct{}, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -551,7 +551,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		readyChan := make(chan struct{}, 1)
 		go func() {
 			_ = mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -1424,7 +1424,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false, true)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, true, false)
 		require.NoError(t, err)
 	})
 
@@ -1439,7 +1439,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true, false)
 		require.NoError(t, err)
 	})
 
@@ -1453,7 +1453,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false, true)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, true, false)
 		require.NoError(t, err)
 	})
 
@@ -1471,12 +1471,12 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		var out bytes.Buffer
 		mgr := NewCLIManager(logger, registry, nil, gitter, &MockDistBuilder{}, &out)
 
-		require.NoError(t, mgr.BuildDist(context.Background(), "prod", false, false, true))
+		require.NoError(t, mgr.BuildDist(context.Background(), "prod", false, false, true, false))
 		assert.Contains(t, out.String(), "No schemas to build\nNot built, because git does not track them yet:\n"+
 			"  "+filepath.Join("d", "f", "1", "0", "0", "d_f_1_0_0.schema.json")+"\nCommit them")
 
 		out.Reset()
-		require.NoError(t, mgr.BuildDist(context.Background(), "prod", true, false, true))
+		require.NoError(t, mgr.BuildDist(context.Background(), "prod", true, false, true, false))
 		assert.NotContains(t, out.String(), "Not built", "--all builds them")
 	})
 
@@ -1488,7 +1488,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 			},
 		}
 		mgr := NewCLIManager(logger, setupTestRegistry(t), nil, gitter, &MockDistBuilder{}, io.Discard)
-		require.EqualError(t, mgr.BuildDist(context.Background(), "prod", false, false, true), "ls-files failed")
+		require.EqualError(t, mgr.BuildDist(context.Background(), "prod", false, false, true, false), "ls-files failed")
 	})
 
 	t.Run("BuildAll error", func(t *testing.T) {
@@ -1501,7 +1501,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false, true)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, true, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build failed")
 	})
@@ -1517,7 +1517,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, mockGitter, nil, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot modify deployed schemas")
 	})
@@ -1537,7 +1537,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, mockGitter, nil, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "git anchor failed")
 	})
@@ -1552,7 +1552,7 @@ func TestCLIManager_BuildDist(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, registry, nil, &MockGitter{}, mockBuilder, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", false, false, true)
+		err := mgr.BuildDist(context.Background(), "prod", false, false, true, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build changed failed")
 	})
@@ -1595,7 +1595,7 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 			var out bytes.Buffer
 			mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, &out)
 
-			err := mgr.BuildDist(context.Background(), "prod", all, false, false)
+			err := mgr.BuildDist(context.Background(), "prod", all, false, false, false)
 			require.ErrorIs(t, err, ErrTestsFailed)
 			assert.Contains(t, out.String(), "bad.json")
 			assert.Contains(t, out.String(), "Not building: fix the failing tests, or use --skip-tests")
@@ -1615,7 +1615,7 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 		}
 		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, builder, io.Discard)
 
-		require.NoError(t, mgr.BuildDist(context.Background(), "prod", true, false, false))
+		require.NoError(t, mgr.BuildDist(context.Background(), "prod", true, false, false, false))
 		assert.True(t, built)
 	})
 
@@ -1630,7 +1630,7 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(passDir, "broken.json"), []byte(`{`), 0o600))
 		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, io.Discard)
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false, false)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, false, false)
 		require.ErrorContains(t, err, "is not valid JSON")
 	})
 
@@ -1640,7 +1640,7 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 		writeBuildDistSchema(t, r, true)
 		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, &failingWriter{})
 
-		err := mgr.BuildDist(context.Background(), "prod", true, false, false)
+		err := mgr.BuildDist(context.Background(), "prod", true, false, false, false)
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrTestsFailed)
 	})
@@ -1652,7 +1652,7 @@ func TestNewBuildDistCmd(t *testing.T) {
 		t.Parallel()
 		mockMgr := &MockManager{}
 		cmd := NewBuildDistCmd(mockMgr)
-		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, false).Return(nil)
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, false, false).Return(nil)
 		cmd.SetArgs([]string{"prod"})
 		err := cmd.Execute()
 		require.NoError(t, err)
@@ -1663,7 +1663,7 @@ func TestNewBuildDistCmd(t *testing.T) {
 		t.Parallel()
 		mockMgr := &MockManager{}
 		cmd := NewBuildDistCmd(mockMgr)
-		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, false).
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, false, false).
 			Return(errors.New("build failed"))
 		cmd.SetArgs([]string{"prod"})
 		err := cmd.Execute()
@@ -1676,7 +1676,7 @@ func TestNewBuildDistCmd(t *testing.T) {
 		t.Parallel()
 		mockMgr := &MockManager{}
 		cmd := NewBuildDistCmd(mockMgr)
-		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, true).Return(nil)
+		mockMgr.On("BuildDist", mock.Anything, config.Env("prod"), false, false, true, false).Return(nil)
 		cmd.SetArgs([]string{"prod", "--skip-tests"})
 		require.NoError(t, cmd.Execute())
 		mockMgr.AssertExpectations(t)
@@ -1720,9 +1720,9 @@ func TestLazyManager_Delegation(t *testing.T) {
 	ctx := context.Background()
 	key := schema.Key("test_1_0_0")
 	target := schema.ResolvedTarget{Key: &key}
-	mockMgr.On("ValidateSchema", ctx, target, false, "text", false, false, schema.TestScopeLocal, false, false).
+	mockMgr.On("ValidateSchema", ctx, target, false, "text", false, false, false).
 		Return(nil)
-	err := lazy.ValidateSchema(ctx, target, false, "text", false, false, schema.TestScopeLocal, false, false)
+	err := lazy.ValidateSchema(ctx, target, false, "text", false, false, false)
 	require.NoError(t, err)
 
 	// Test CreateSchema delegation
@@ -1761,14 +1761,14 @@ func TestLazyManager_Delegation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test BuildDist delegation
-	mockMgr.On("BuildDist", ctx, config.Env("prod"), false, false, false).Return(nil)
-	err = lazy.BuildDist(ctx, config.Env("prod"), false, false, false)
+	mockMgr.On("BuildDist", ctx, config.Env("prod"), false, false, false, false).Return(nil)
+	err = lazy.BuildDist(ctx, config.Env("prod"), false, false, false, false)
 	require.NoError(t, err)
 
 	// Test WatchValidation delegation
 	mockMgr.On("WatchValidation", ctx, target, false, "text", false, false,
-		schema.TestScopeLocal, false, (chan<- struct{})(nil)).Return(nil)
-	err = lazy.WatchValidation(ctx, target, false, "text", false, false, schema.TestScopeLocal, false, nil)
+		false, (chan<- struct{})(nil)).Return(nil)
+	err = lazy.WatchValidation(ctx, target, false, "text", false, false, false, nil)
 	require.NoError(t, err)
 
 	mockMgr.AssertExpectations(t)
@@ -1793,7 +1793,7 @@ func TestCLIManager_WatchValidation_ReporterError(t *testing.T) {
 	readyChan := make(chan struct{}, 1)
 	go func() {
 		done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-			false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+			false, "text", false, false, false, readyChan)
 	}()
 
 	<-readyChan
@@ -1836,7 +1836,7 @@ func TestCLIManager_WatchValidation_CallbackErrors(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -1880,7 +1880,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -1921,7 +1921,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &k},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan
@@ -1945,7 +1945,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- mgr.WatchValidation(ctx, schema.ResolvedTarget{Key: &key},
-				false, "text", false, false, schema.TestScopeLocal, false, readyChan)
+				false, "text", false, false, false, readyChan)
 		}()
 
 		<-readyChan

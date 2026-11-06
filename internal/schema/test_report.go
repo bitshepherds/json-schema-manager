@@ -108,6 +108,12 @@ func (r *TestReport) MissingDocuments() int {
 	return n
 }
 
+// HasWarnings reports whether the report has anything --strict fails on: a schema with no pass or no
+// fail document, or a change which no pass document uses.
+func (r *TestReport) HasWarnings() bool {
+	return len(r.UnexercisedChanges) > 0 || r.MissingDocuments() > 0
+}
+
 // AddUnexercisedChange adds a change in the schema with the given key which no pass document uses.
 func (r *TestReport) AddUnexercisedChange(key Key, uc *UnexercisedChange) {
 	r.mu.Lock()

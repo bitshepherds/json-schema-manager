@@ -66,7 +66,7 @@ exec git config user.name test
 mv $WORK/shop registry
 env JSM_REGISTRY_ROOT_DIR=registry
 ! exec jsm build-dist production --all
-stdout 'refunded.json \(failed - future version 1.1.0 introduced a breaking change!\)'
+stdout 'refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
 stdout 'Not building: fix the failing tests, or use --skip-tests'
 ! stdout 'Successfully built'
 ! exists dist
@@ -75,7 +75,7 @@ stdout 'Not building: fix the failing tests, or use --skip-tests'
 exec git add .
 exec git commit -q -m schemas
 ! exec jsm build-dist production
-stdout 'introduced a breaking change'
+stdout 'no-loosening broken'
 ! exists dist
 
 # --skip-tests builds anyway

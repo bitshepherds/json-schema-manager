@@ -8,11 +8,21 @@ Validate one or more JSON schemas
 Validate one or more JSON schemas against their test documents: each document in a schema's pass/
 directory must be accepted, and each in its fail/ directory rejected.
 
-Each schema's pass documents must also be accepted by every earlier version with the same major
-version, so that a provider moving to the schema does not break consumers still on an earlier one.
-Use --skip-compatible to leave this check out.
+The family's declaration, family.yml, then decides which documents run across versions, between each
+schema and every earlier and later version with the same major version:
 
-That check is only as strong as the pass documents, so validate also compares each schema with the
+  who can be ahead  what runs across versions
+  writer            later pass documents on earlier versions, earlier fail documents on later versions
+  reader            earlier pass documents on later versions, later fail documents on earlier versions
+  either            all four
+  neither           none, and so too when the reader picks its schema from the document
+
+The same pairs run however a schema is selected, so validating an earlier version also runs its pairs
+with later versions. A failure appears under the later version, since that's what changed, and says
+which rule broke, the two versions, the document, and what that means for the family's scenario. See
+user-docs/scenarios.md.
+
+These checks are only as strong as the documents, so validate also compares each schema with the
 version before it, and warns about each structural change which may break consumers of that version
 and which none of the schema's pass documents uses: for example, an enum value added with no
 document using it. Add a pass document which uses the change. 'jsm diff' lists every structural
@@ -63,9 +73,7 @@ ALL SCHEMAS
   -k, --key string            Validate a schema identified by its key
   -o, --output <format>       Output format (text, json, junit) (default text)
   -s, --search-scope string   Validate all schemas identified by JSM Search Scope
-      --skip-compatible       Skip checking each schema's pass documents against earlier versions in its major family
       --strict                Fail on warnings: a schema with no pass or no fail document, or with a change which may break consumers of the version before it and which none of its pass documents uses
-  -t, --test-scope string     Test Docs Selection (local, pass-only, fail-only, consumer-breaking, all) (default "local")
   -v, --verbose               Show detailed test results
   -w, --watch                 Watch for changes and rerun tests
 ```

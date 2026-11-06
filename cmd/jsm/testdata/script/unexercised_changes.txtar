@@ -10,7 +10,7 @@ exec jsm validate shop_order_1_1_0 -c
 stdout 'Unexercised changes: no pass document uses these'
 stdout '\[WARN\] shop_order_1_1_0.schema.json since shop_order_1_0_0:'
 stdout '! /status: enum adds "refunded" \(widens\)'
-stdout 'Test summary: 3 passed, 0 failed, 1 unexercised change$'
+stdout 'Test summary: 4 passed, 0 failed, 1 unexercised change$'
 
 # The same for every schema, and in the JSON report
 exec jsm validate all -c -C
@@ -21,10 +21,6 @@ stdout '"schema": "shop_order_1_1_0"'
 stdout '"earlier": "shop_order_1_0_0"'
 stdout '"location": "/status"'
 stdout '"effect": "widens"'
-
-# --skip-compatible leaves it out with the compatibility check
-exec jsm validate shop_order_1_1_0 -c --skip-compatible
-! stdout 'unexercised change'
 
 # jsm diff lists the changes: the new enum value is unexercised, and requiring a property and
 # tightening a limit narrow the schema, which is safe for consumers of 1.0.0

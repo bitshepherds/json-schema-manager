@@ -16,24 +16,28 @@ import (
 type JSONReporter struct{}
 
 type jsonSpec struct {
-	Path           string     `json:"path"`
-	TestDocType    string     `json:"type"`
-	ValidatedBy    schema.Key `json:"validatedBy,omitempty"`    // the schema the document was tested against
-	ForwardVersion string     `json:"forwardVersion,omitempty"` // set if the document came from a later version
-	Error          string     `json:"error,omitempty"`
+	Path         string      `json:"path"`
+	TestDocType  string      `json:"type"`
+	ValidatedBy  schema.Key  `json:"validatedBy,omitempty"`  // the schema the document was tested against
+	Rule         schema.Rule `json:"rule,omitempty"`         // what the run proves
+	DocumentFrom schema.Key  `json:"documentFrom,omitempty"` // the version the document belongs to
+	Earlier      schema.Key  `json:"earlier,omitempty"`      // for a run across versions, the earlier version
+	Later        schema.Key  `json:"later,omitempty"`        // for a run across versions, the later version
+	Error        string      `json:"error,omitempty"`
 }
 
 // newJSONSpec returns the JSON form of s, without its error.
 func newJSONSpec(s *schema.Spec) jsonSpec {
 	js := jsonSpec{
-		Path:        s.TestInfo.Path,
-		TestDocType: string(s.TestDocType),
+		Path:         s.TestInfo.Path,
+		TestDocType:  string(s.TestDocType),
+		Rule:         s.Rule,
+		DocumentFrom: s.DocumentFrom,
+		Earlier:      s.Earlier,
+		Later:        s.Later,
 	}
 	if s.Schema != nil {
 		js.ValidatedBy = s.Schema.Key()
-	}
-	if s.ForwardVersion != nil {
-		js.ForwardVersion = s.ForwardVersion.String('.')
 	}
 	return js
 }

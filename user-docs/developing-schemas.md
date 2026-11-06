@@ -200,11 +200,11 @@ Since the new version is a copy of the one you give, you will usually give the n
 
 Each schema is tested against its own test documents: every document in its `pass` directory must be accepted, and every document in its `fail` directory must be rejected.
 
-`jsm validate` also checks compatibility: each version's `pass` documents must be accepted by every earlier version with the same major version. This catches a minor or patch version which would break consumers still using an earlier version. See [Compatibility when the provider moves first](#compatibility-when-the-provider-moves-first). Use `--skip-compatible` to leave this check out while iterating.
+`jsm validate` also checks each version against every other version with the same major version. Which documents run across versions depends on the scenario the family [declares](./scenarios.md#declaring-a-familys-scenario), as [the rule](./scenarios.md#the-rule) says. The same pairs run however you select a version, so validating an earlier version also shows a later version that breaks it, and the failure appears under the later version. In a family where the provider moves first, see [Compatibility when the provider moves first](#compatibility-when-the-provider-moves-first).
 
 #### Unexercised changes
 
-The compatibility check is only as strong as the `pass` documents. If a minor version adds an enum value, and no `pass` document uses it, every document still passes the earlier version, and the check cannot see that consumers on the earlier version would reject the new value.
+The check on later `pass` documents is only as strong as those documents. If a minor version adds an enum value, and no `pass` document uses it, every document still passes the earlier version, and the check cannot see that consumers on the earlier version would reject the new value.
 
 So `jsm validate` also compares each version with the version before it, and warns about each structural change which may make that version reject documents the new one accepts, and which none of the new version's `pass` documents uses:
 
@@ -213,7 +213,7 @@ So `jsm validate` also compares each version with the version before it, and war
   ! /status: enum adds "refunded" (widens)
 ```
 
-Add a `pass` document which uses the change. If the earlier version rejects it, the compatibility check fails, and the change needs a new major version.
+Add a `pass` document which uses the change. If the earlier version rejects it, the check fails, and the change needs a new major version.
 
 `jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each. Changes which only narrow what a schema accepts, such as a property becoming required or a limit tightened, are not warned about. They are safe for consumers on the earlier version when the provider moves first, but they can break a family where readers move first or documents are kept: see [Schema Family Scenarios](./scenarios.md). The comparison is structural, and follows local `$ref`s; for a change where it cannot tell which values matter, such as an `anyOf` alternative added, any `pass` document with a value at that location counts as using it.
 
@@ -380,18 +380,18 @@ JSON Schema Manager interprets semantic versioning as follows:
 
 ## Compatibility when the provider moves first
 
-JSM's compatibility check today is the model for one way of using a schema: a writer-ahead family, where data flows from a provider to its consumers, and the provider moves first. It starts sending documents which conform to the new version, while its consumers are still checking against an earlier one. Consumers catch up later, in their own time. That is scenario 1 of the [Schema Family Scenarios](./scenarios.md), which describes the others, and what JSM does and doesn't do yet for each.
+This is one way of using a schema: a writer-ahead family, where data flows from a provider to its consumers, and the provider moves first. It starts sending documents which conform to the new version, while its consumers are still checking against an earlier one. Consumers catch up later, in their own time. That is scenario 1 of the [Schema Family Scenarios](./scenarios.md), which describes the others, and what JSM does and doesn't do yet for each.
 
-For such a family, JSM checks compatibility in that one direction. For every minor or patch version, its `pass` documents must be accepted by each earlier version with the same major version. If they are not, a consumer still on the earlier version would reject what the provider now sends, and `jsm validate` fails, naming the earlier version which rejected the document. Today this check runs on every family, whichever scenario it serves.
+For such a family, JSM checks compatibility in that one direction. For every minor or patch version, its `pass` documents must be accepted by each earlier version with the same major version, and each earlier version's `fail` documents must be rejected by it. If not, a consumer still on the earlier version would reject what the provider now sends, and `jsm validate` fails, naming both versions.
 
-JSM does not check the other way, that documents valid under an earlier version are accepted by a newer one, except through the copies `jsm create-schema-version` makes. So this model does not protect:
+A family declared this way doesn't check the other way, that documents valid under an earlier version are accepted by a newer one, so it does not protect:
 
 - a consumer which upgrades before its provider does, and rejects what the provider still sends;
 - a client whose requests a newly upgraded service now refuses;
 - a new consumer replaying events kept from earlier versions;
 - stored data or config files, read long after they were written.
 
-If any of those describes your family, it serves a different [scenario](./scenarios.md).
+If any of those describes your family, declare the [scenario](./scenarios.md) it serves, and JSM checks what that scenario needs instead.
 
 In a writer-ahead family, consumers should follow the robustness principle: be strict in what you send, and tolerant in what you accept. A consumer which ignores the fields it does not need can stay on its version while a provider adds new ones. That covers additions only. It does not help a consumer which upgrades to a version that requires a new field, when the provider has not started sending it.
 

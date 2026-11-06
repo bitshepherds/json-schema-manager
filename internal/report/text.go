@@ -81,14 +81,16 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 		if tr.Verbose {
 			// Show for each schema, the tests that passed and failed, along with any errors
-			for _, spec := range passed {
+			for i := range passed {
+				spec := &passed[i]
 				_, _ = fmt.Fprintf(w, "  %s %s (%s)\n",
 					tr.cs(colGreen, "✓"),
 					tr.cs(colGrey, spec.TestInfo.Path),
 					tr.cs(colGreen, spec.ResultLabel()))
 			}
 
-			for _, spec := range failed {
+			for i := range failed {
+				spec := &failed[i]
 				_, _ = fmt.Fprintf(w, "  %s %s (%s):\n",
 					tr.cs(colRed, "✗"),
 					tr.cs(colGrey, spec.TestInfo.Path),
@@ -97,7 +99,8 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 			}
 		} else {
 			// Just show the failures
-			for _, spec := range failed {
+			for i := range failed {
+				spec := &failed[i]
 				_, _ = fmt.Fprintf(w, "  %s %s (%s):\n",
 					tr.cs(colRed, "✗"),
 					tr.cs(colGrey, spec.TestInfo.Path),

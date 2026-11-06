@@ -82,6 +82,16 @@ func (k Key) Version() SemVer {
 	return SemVer{k.Major(), k.Minor(), k.Patch()}
 }
 
+// SameMajorFamily returns true if the two keys are versions in one major of one family.
+func (k Key) SameMajorFamily(other Key) bool {
+	const versionParts = 2 // minor and patch
+	cut := func(key Key) string {
+		parts := strings.Split(string(key), KeySeparatorString)
+		return strings.Join(parts[:len(parts)-versionParts], KeySeparatorString)
+	}
+	return cut(k) == cut(other)
+}
+
 // InScope returns true if the key falls within the given search scope.
 func (k Key) InScope(ss SearchScope) bool {
 	if ss == "" {

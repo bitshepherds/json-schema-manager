@@ -322,16 +322,6 @@ func (e *InvalidCreateSchemaArgError) Error() string {
 		"separated by '/' e.g. 'domain/subdomain/family'", e.Arg)
 }
 
-// InvalidTestScopeError is returned when a test scope is not in the correct format.
-type InvalidTestScopeError struct {
-	Scope string
-}
-
-func (e *InvalidTestScopeError) Error() string {
-	return fmt.Sprintf("Invalid test scope: %s - valid scopes are: %s, %s, %s, %s, %s",
-		e.Scope, TestScopeLocal, TestScopePass, TestScopeFail, TestScopeConsumerBreaking, TestScopeAll)
-}
-
 // InvalidTargetArgumentError is returned when a target argument is not in the correct format.
 type InvalidTargetArgumentError struct {
 	Arg string

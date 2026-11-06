@@ -387,7 +387,7 @@ func TestWatchRequiresDeclarations(t *testing.T) {
 		t.Parallel()
 		mgr, _ := setup(t)
 		err := mgr.WatchValidation(context.Background(), schema.ResolvedTarget{Key: &key}, false, "text", false, false,
-			schema.TestScopeLocal, false, nil)
+			false, nil)
 		var missing *schema.MissingFamilyDeclarationError
 		require.ErrorAs(t, err, &missing)
 	})
@@ -396,7 +396,7 @@ func TestWatchRequiresDeclarations(t *testing.T) {
 		t.Parallel()
 		mgr, logs := setup(t)
 		mgr.handleWatchEvent(context.Background(), schema.WatchEvent{Key: key}, schema.ResolvedTarget{Key: &key},
-			false, "text", false, false, schema.TestScopeLocal, false)
+			false, "text", false, false, false)
 		assert.Contains(t, logs.String(), "does not declare how it is used")
 	})
 }
@@ -407,7 +407,7 @@ func TestValidateWithNoTargetStillSaysSo(t *testing.T) {
 	reg := setupTestRegistry(t)
 	mgr := NewCLIManager(slog.New(slog.DiscardHandler), reg, schema.NewTester(reg), &MockGitter{}, nil, io.Discard)
 	err := mgr.ValidateSchema(context.Background(), schema.ResolvedTarget{}, false, "text", false, false,
-		schema.TestScopeLocal, false, false)
+		false)
 	var none *schema.NoSchemaTargetsError
 	require.ErrorAs(t, err, &none)
 }

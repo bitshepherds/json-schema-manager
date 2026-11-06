@@ -13,12 +13,13 @@ import (
 )
 
 // WatchEvent describes a file change event in the registry.
-// Either the user changed a schema file, in which case we will run the
-// tests for that schema matching the test scope, or the user changed a test
-// document, in which case we will rerun the single test with its schema.
+// The user changed a schema file, in which case we will run the tests for that schema, or a test
+// document, in which case we will rerun that document wherever it runs, or a family's declaration, which
+// decides what runs for every version in the family.
 type WatchEvent struct {
-	Key      Key    // The Key of the schema that will be tested
-	TestPath string // If set, only this specific test document changed
+	Key      Key         // The Key of the schema that will be tested
+	TestPath string      // If set, only this specific test document changed
+	Family   SearchScope // If set, this family's declaration changed, and Key is empty
 }
 
 // eventWatcher is an interface that masks fsnotify.Watcher, allowing us to mock it in tests.
@@ -86,9 +87,10 @@ func (w *Watcher) Watch(ctx context.Context, target ResolvedTarget, callback fun
 		targetPath = filepath.Join(targetPath, filepath.FromSlash(string(*target.Scope)))
 		what = "the schemas in " + string(*target.Scope)
 	} else if target.Key != nil {
+		// A version's result depends on its family's declaration and on the versions it pairs with
 		s, err := w.registry.GetSchemaByKey(*target.Key)
 		if err == nil {
-			targetPath = filepath.Dir(s.Path(FilePath))
+			targetPath = s.Path(FamilyDir)
 		}
 		what = string(*target.Key)
 	}
@@ -171,6 +173,10 @@ func (w *Watcher) addRecursive(watcher eventWatcher, root string) error {
 
 // mapToWatchEvent maps a file path to a WatchEvent. Returns nil if the file is not relevant.
 func (w *Watcher) mapToWatchEvent(path string) *WatchEvent {
+	if filepath.Base(path) == FamilyDeclarationFile {
+		return w.mapDeclarationToWatchEvent(path)
+	}
+
 	if strings.HasSuffix(path, SchemaSuffix) {
 		key, err := w.registry.KeyFromSchemaPath(path)
 		if err == nil {
@@ -183,6 +189,16 @@ func (w *Watcher) mapToWatchEvent(path string) *WatchEvent {
 	}
 
 	return nil
+}
+
+// mapDeclarationToWatchEvent maps a family's declaration to an event for the family. A file of that
+// name which is not under the registry root belongs to no family.
+func (w *Watcher) mapDeclarationToWatchEvent(path string) *WatchEvent {
+	rel, err := filepath.Rel(w.registry.RootDirectory(), filepath.Dir(path))
+	if err != nil || rel == "." || !filepath.IsLocal(rel) {
+		return nil
+	}
+	return &WatchEvent{Family: SearchScope(filepath.ToSlash(rel))}
 }
 
 func (w *Watcher) mapTestDocToWatchEvent(path string) *WatchEvent {

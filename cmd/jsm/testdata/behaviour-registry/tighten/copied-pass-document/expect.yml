@@ -1,6 +1,6 @@
-# 1.1.0 carries a copy of 1.0.0's pass document and now rejects it. Only a copy reaches a later
-# version today.
+# 1.1.0 carries a copy of 1.0.0's pass document and now rejects it, so both the copy and the original
+# show the tightening.
 promise: no-tightening
 validate:
-  1.0.0: pass
+  1.0.0: fail
   1.1.0: fail

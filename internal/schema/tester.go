@@ -15,57 +15,20 @@ import (
 // ErrStopTesting is a sentinel error used to signal that further tests should be stopped and the report shown.
 var ErrStopTesting = errors.New("stopping after first error")
 
-// TestScope describes which test documents are used.
-type TestScope string
-
-// NewTestScope creates a new TestScope from a string.
-func NewTestScope(s string) (TestScope, error) {
-	switch s {
-	case "local":
-		return TestScopeLocal, nil
-	case "pass-only":
-		return TestScopePass, nil
-	case "fail-only":
-		return TestScopeFail, nil
-	case "consumer-breaking":
-		return TestScopeConsumerBreaking, nil
-	case "all":
-		return TestScopeAll, nil
-	default:
-		return "", &InvalidTestScopeError{Scope: s}
-	}
-}
-
-const (
-	// TestScopeLocal selects a schema's local test documents (in the pass and fail folders next it).
-	TestScopeLocal TestScope = "local"
-
-	// TestScopePass selects a schema's local passing test documents (in the pass folder next to it).
-	TestScopePass TestScope = "pass-only"
-
-	// TestScopeFail selects a schema's local failing test documents (in the fail folder next to it).
-	TestScopeFail TestScope = "fail-only"
-
-	// TestScopeConsumerBreaking selects passing test documents for LATER versions of the schema sharing the same
-	// major version. This identifies whether supposedly later 'non-breaking' changes actually are breaking.
-	TestScopeConsumerBreaking TestScope = "consumer-breaking"
-
-	// TestScopeAll means for each schema in the test, identify all relevant tests to run.
-	// This combines TestScopeLocal and TestScopeConsumerBreaking.
-	TestScopeAll TestScope = "all"
-)
-
-// Tester is the type used to manage a run of tests for one or more schemas.
+// Tester is the type used to manage a run of tests for one or more schemas. It runs one rule, in
+// rule.go: the family's declaration decides which documents run against which versions, however a
+// version was selected.
 type Tester struct {
 	registry *Registry
 
 	// Test run options
 	stopOnFirstError bool
-	skipCompatible   bool
 	numWorkers       int
-	scope            TestScope
 
 	report *TestReport
+
+	mu       sync.Mutex
+	ranPairs map[versionPair]bool // the pairs this run has already taken on
 }
 
 // NewTester creates a new tester for the given registry.
@@ -73,44 +36,27 @@ func NewTester(r *Registry) *Tester {
 	return &Tester{
 		registry:         r,
 		report:           NewTestReport(),
-		scope:            TestScopeLocal,
 		stopOnFirstError: true,
 		numWorkers:       runtime.GOMAXPROCS(0),
+		ranPairs:         make(map[versionPair]bool),
 	}
 }
 
-// TestSingleSchema executes tests for a schema identified by a relative or absolute filepath.
+// TestSingleSchema runs a schema's own documents, then the pairs it is part of, with every earlier
+// and every later version in its major, as far as its family's declaration asks for them.
 // The context can be used to cancel the test run early (e.g., on Ctrl+C).
-// After local tests pass, this will also run provider compatibility checks against earlier
-// versions in the same major family (unless skipCompatible is set).
 func (t *Tester) TestSingleSchema(ctx context.Context, k Key) (*TestReport, error) {
 	t.report.StartTime = time.Now()
 	defer func() { t.report.EndTime = time.Now() }()
 
-	localFailed, err := t.testSchema(ctx, k)
-	if err != nil && !errors.Is(err, ErrStopTesting) {
+	if err := t.testVersion(ctx, k); err != nil && !errors.Is(err, ErrStopTesting) {
 		return nil, err
 	}
-
-	// If local tests had failures, don't run compatibility checks
-	if localFailed {
-		return t.report, nil
-	}
-
-	// Run provider compatibility check against earlier versions
-	if !t.skipCompatible {
-		if err := t.testSchemaCompatibleWithEarlierVersions(ctx, k); err != nil && !errors.Is(err, ErrStopTesting) {
-			return nil, err
-		}
-		if err := t.findUnexercisedChanges(k); err != nil {
-			return nil, err
-		}
-	}
-
 	return t.report, nil
 }
 
-// TestSpecificDocument executes a single test document for a schema.
+// TestSpecificDocument runs one test document of a schema: on the schema itself, and wherever its
+// family's declaration runs it on the other versions in the major.
 func (t *Tester) TestSpecificDocument(ctx context.Context, k Key, testPath string) (*TestReport, error) {
 	t.report.StartTime = time.Now()
 	defer func() { t.report.EndTime = time.Now() }()
@@ -125,8 +71,7 @@ func (t *Tester) TestSpecificDocument(ctx context.Context, k Key, testPath strin
 	}
 
 	// Ahead of running the tests, ensure the schema is valid by forcing a render.
-	ri, err := s.Render(t.registry.config.ProductionEnvConfig())
-	if err != nil {
+	if _, err = s.Render(t.registry.config.ProductionEnvConfig()); err != nil {
 		return nil, err
 	}
 
@@ -147,21 +92,20 @@ func (t *Tester) TestSpecificDocument(ctx context.Context, k Key, testPath strin
 		return nil, &InvalidTestDocumentDirectoryError{Path: testPath}
 	}
 
-	spec := NewSpec(s, ti, tt, nil)
-	err = spec.Run(ri.Validator)
+	decl, err := t.registry.FamilyDeclaration(k)
 	if err != nil {
-		t.report.AddFailedTest(k, &spec)
-	} else {
-		t.report.AddPassedTest(k, &spec)
+		return nil, err
+	}
+	cross, err := t.documentAcrossVersions(s, decl, ti, tt)
+	if err != nil {
+		return nil, err
 	}
 
+	specs := append([]Spec{NewSpec(s, ti, tt)}, cross...)
+	if err = t.runSpecs(ctx, specs); err != nil && !errors.Is(err, ErrStopTesting) {
+		return nil, err
+	}
 	return t.report, nil
-}
-
-// SetScope controls the testing scope. This adjusts which tests are identified for each specific
-// schema. It defaults to TestScopeLocal.
-func (t *Tester) SetScope(s TestScope) {
-	t.scope = s
 }
 
 // SetStopOnFirstError controls whether the test run should stop on the first error.
@@ -177,18 +121,10 @@ func (t *Tester) SetNumWorkers(n int) {
 	t.numWorkers = n
 }
 
-// SetSkipCompatible controls whether provider compatibility checking is skipped.
-// It defaults to false, meaning compatibility checks run after local tests pass.
-func (t *Tester) SetSkipCompatible(b bool) {
-	t.skipCompatible = b
-}
-
 // TestFoundSchemas searches for schemas matching the given search scope, and
 // executes tests for each schema found.
-// As with TestSingleSchema, each schema whose local tests pass is then checked for provider
-// compatibility against earlier versions in its major family (unless skipCompatible is set).
-// The consumer-breaking and all scopes already test each schema against its later versions'
-// pass documents, which covers the same pairs, so they skip this check to avoid running them twice.
+// Each schema's documents, and the pairs it is part of, run as for TestSingleSchema. A pair two found
+// schemas share runs once.
 // Testing runs in parallel. Use SetNumWorkers to control the number of workers.
 // The context can be used to cancel the test run early (e.g., on Ctrl+C).
 func (t *Tester) TestFoundSchemas(ctx context.Context, ss SearchScope) (*TestReport, error) {
@@ -259,7 +195,7 @@ func (t *Tester) processSearchResult(
 		defer wg.Done()
 		defer func() { <-sem }() // Release slot when finished
 
-		if tErr := t.testFoundSchema(ctx, k); tErr != nil {
+		if tErr := t.testVersion(ctx, k); tErr != nil {
 			errOnce.Do(func() {
 				if !errors.Is(tErr, ErrStopTesting) {
 					*finalErr = tErr
@@ -270,28 +206,6 @@ func (t *Tester) processSearchResult(
 	}(res.Key)
 
 	return false
-}
-
-// testFoundSchema runs a found schema's tests, then its provider compatibility check if that applies.
-func (t *Tester) testFoundSchema(ctx context.Context, k Key) error {
-	localFailed, err := t.testSchema(ctx, k)
-	if err != nil || localFailed {
-		return err
-	}
-
-	if t.skipCompatible {
-		return nil
-	}
-
-	if uErr := t.findUnexercisedChanges(k); uErr != nil {
-		return uErr
-	}
-
-	if t.scope == TestScopeConsumerBreaking || t.scope == TestScopeAll {
-		return nil
-	}
-
-	return t.testSchemaCompatibleWithEarlierVersions(ctx, k)
 }
 
 // findUnexercisedChanges compares the schema with the version before it in its major family, and
@@ -325,69 +239,15 @@ func (t *Tester) findUnexercisedChanges(k Key) error {
 	return nil
 }
 
-// testSchema identifies the specs to run for the given schema, and executes them.
-// It returns when all specs have been run, or when context is cancelled.
-// If a test error is encountered, it is added to the report, but the function
-// continues to run the remaining tests (or return without error if stopOnFirstError is true).
-// An error is only returned if we can't load the schema or identify the specs to run, or if
-// we received a context cancellation error.
-// The localFailed result reports whether any of this schema's tests failed.
-func (t *Tester) testSchema(ctx context.Context, key Key) (localFailed bool, err error) {
-	s, err := t.registry.GetSchemaByKey(key)
-	if err != nil {
-		return false, err
-	}
-
-	// Ahead of running the tests, ensure the schema is valid by forcing a render.
-	ri, err := s.Render(t.registry.config.ProductionEnvConfig())
-	if err != nil {
-		return false, err
-	}
-
-	specs, err := t.getSpecsForSchema(s)
-	if err != nil {
-		return false, err
-	}
-
-	if t.scope == TestScopeLocal || t.scope == TestScopeAll {
-		t.summarise(s, ri, specs)
-	}
-
-	// execute tests
-	for _, spec := range specs {
-		if ce := ctx.Err(); ce != nil {
-			return localFailed, ce
-		}
-
-		err = spec.Run(ri.Validator)
-
-		if err != nil {
-			localFailed = true
-			t.report.AddFailedTest(key, &spec)
-			if t.stopOnFirstError {
-				// Signal to the producer to stop other testing activity
-				return localFailed, ErrStopTesting
-			}
-		} else {
-			t.report.AddPassedTest(key, &spec)
-		}
-	}
-
-	return localFailed, nil
-}
-
 // summarise adds to the report how well the schema's own test documents, in specs, cover it: how
 // many there are, which points in the schema the pass documents reach, and which keywords reject
 // each fail document.
 func (t *Tester) summarise(s *Schema, ri RenderInfo, specs []Spec) {
 	var passDocs, failDocs []TestInfo
 	for i := range specs {
-		switch {
-		case specs[i].ForwardVersion != nil:
-			// a later version's document
-		case specs[i].TestDocType == TestDocTypePass:
+		if specs[i].TestDocType == TestDocTypePass {
 			passDocs = append(passDocs, specs[i].TestInfo)
-		default:
+		} else {
 			failDocs = append(failDocs, specs[i].TestInfo)
 		}
 	}
@@ -419,231 +279,258 @@ func (t *Tester) summarise(s *Schema, ri RenderInfo, specs []Spec) {
 	t.report.AddSummary(s.Key(), summary)
 }
 
-// getSpecsForSchema identifies the tests to run for the given schema.
-func (t *Tester) getSpecsForSchema(s *Schema) ([]Spec, error) {
+// testVersion runs a schema's own documents and the pairs it is part of, then looks for its
+// unexercised changes. A failure goes in the report, and the run goes on unless stopOnFirstError, when
+// it returns ErrStopTesting. Any other error means the tests could not run: the schema can't be loaded
+// or rendered, its family has no valid declaration, or the context was cancelled.
+func (t *Tester) testVersion(ctx context.Context, k Key) error {
+	s, err := t.registry.GetSchemaByKey(k)
+	if err != nil {
+		return err
+	}
+
+	decl, err := t.registry.FamilyDeclaration(k)
+	if err != nil {
+		return err
+	}
+
+	// Ahead of running the tests, ensure the schema is valid by forcing a render.
+	ri, err := s.Render(t.registry.config.ProductionEnvConfig())
+	if err != nil {
+		return err
+	}
+
+	own, err := ownSpecs(s)
+	if err != nil {
+		return err
+	}
+	t.summarise(s, ri, own)
+
+	cross, err := t.pairSpecs(s, decl)
+	if err != nil {
+		return err
+	}
+
+	if rErr := t.runSpecs(ctx, append(own, cross...)); rErr != nil {
+		return rErr
+	}
+
+	return t.findUnexercisedChanges(k)
+}
+
+// runSpecs runs each spec on the version it names, and adds the result to the report, under the
+// later version for a run across versions. A failure stops the run only if stopOnFirstError, when it
+// returns ErrStopTesting.
+func (t *Tester) runSpecs(ctx context.Context, specs []Spec) error {
+	env := t.registry.config.ProductionEnvConfig()
+	for i := range specs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		spec := &specs[i]
+		ri, err := spec.Schema.Render(env)
+		if err != nil {
+			return err
+		}
+
+		if spec.Run(ri.Validator) == nil {
+			t.report.AddPassedTest(spec.ReportKey(), spec)
+			continue
+		}
+		t.report.AddFailedTest(spec.ReportKey(), spec)
+		if t.stopOnFirstError {
+			return ErrStopTesting
+		}
+	}
+	return nil
+}
+
+// ownSpecs returns the specs which run the schema's own documents on it.
+func ownSpecs(s *Schema) ([]Spec, error) {
 	var specs []Spec
-	var err error
-
-	// Pass Tests?
-	if t.scope != TestScopeFail && t.scope != TestScopeConsumerBreaking {
-		specs, err = t.appendSpecsByTestDocType(s, s, TestDocTypePass, specs)
+	for _, tt := range []TestDocType{TestDocTypePass, TestDocTypeFail} {
+		docs, err := s.TestDocuments(tt)
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	// Fail Tests?
-	if t.scope != TestScopePass && t.scope != TestScopeConsumerBreaking {
-		specs, err = t.appendSpecsByTestDocType(s, s, TestDocTypeFail, specs)
-		if err != nil {
-			return nil, err
+		for _, doc := range docs {
+			specs = append(specs, NewSpec(s, doc, tt))
 		}
 	}
-
-	// Breaking Tests?
-	if t.scope == TestScopeConsumerBreaking || t.scope == TestScopeAll {
-		specs, err = t.appendBreakingSpecs(s, specs)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return specs, nil
 }
 
-// appendBreakingSpecs appends to the specs slice the breaking specs which are pass specs
-// for schemas which share the same major family version as s, and which are a later version
-// in the family.
-// E.g. If s is version 1.2.3, and we also have in the family version:
-// 1.2.4, 1.3.0, 1.3.1, 2.0.0, then we will append specs which use passing test docs for
-// 1.2.4, 1.3.0, 1.3.1, but NOT 2.0.0.
-func (t *Tester) appendBreakingSpecs(s *Schema, specs []Spec) ([]Spec, error) {
-	fsKeys, err := s.MajorFamilyFutureSchemas()
+// otherVersions returns the schemas of the other versions in s's major: those before it, and those after it.
+func (t *Tester) otherVersions(s *Schema) (earlier, later []*Schema, err error) {
+	earlierKeys, err := s.MajorFamilyEarlierSchemas()
+	if err != nil {
+		return nil, nil, err
+	}
+	laterKeys, err := s.MajorFamilyFutureSchemas()
+	if err != nil {
+		return nil, nil, err
+	}
+	if earlier, err = t.schemas(earlierKeys); err != nil {
+		return nil, nil, err
+	}
+	if later, err = t.schemas(laterKeys); err != nil {
+		return nil, nil, err
+	}
+	return earlier, later, nil
+}
+
+func (t *Tester) schemas(keys []Key) ([]*Schema, error) {
+	schemas := make([]*Schema, len(keys))
+	for i, k := range keys {
+		s, err := t.registry.GetSchemaByKey(k)
+		if err != nil {
+			return nil, err
+		}
+		schemas[i] = s
+	}
+	return schemas, nil
+}
+
+// pairSpecs returns the specs for the pairs s is part of, leaving out any this run has already taken
+// on, so a pair two selected versions share runs once.
+func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
+	if decl.Facts.EffectiveAhead() == AheadNeither {
+		return nil, nil
+	}
+
+	earlier, later, err := t.otherVersions(s)
 	if err != nil {
 		return nil, err
 	}
-	for _, fsKey := range fsKeys {
-		fs, err2 := t.registry.GetSchemaByKey(fsKey)
-		if err2 != nil {
-			return nil, err2
+
+	var specs []Spec
+	addPair := func(e, l *Schema) error {
+		if !t.claimPair(versionPair{e.Key(), l.Key()}) {
+			return nil
 		}
-		specs, err = t.appendSpecsByTestDocType(s, fs, TestDocTypePass, specs)
-		if err != nil {
-			return nil, err
-		}
+		pair, pErr := pairRuns(e, l, decl)
+		specs = append(specs, pair...)
+		return pErr
 	}
 
+	for _, e := range earlier {
+		if pErr := addPair(e, s); pErr != nil {
+			return nil, pErr
+		}
+	}
+	for _, l := range later {
+		if pErr := addPair(s, l); pErr != nil {
+			return nil, pErr
+		}
+	}
 	return specs, nil
 }
 
-// appendSpecsByTestDocType appends to the given slice the specs which test the schema under test
-// with source's test documents of the given type, optimising allocations where possible.
-// If source is a later version in the family sharing the same major version, the specs set the
-// ForwardVersion field to its version.
-func (t *Tester) appendSpecsByTestDocType(
-	underTest *Schema,
-	source *Schema,
-	testDocType TestDocType,
-	specs []Spec,
+// pairRuns returns the specs which the family's declaration asks of the pair.
+func pairRuns(earlier, later *Schema, decl *FamilyDeclaration) ([]Spec, error) {
+	var specs []Spec
+	for _, run := range acrossVersionRuns {
+		if !run.appliesTo(decl.Facts.EffectiveAhead()) {
+			continue
+		}
+		docs, err := run.source(earlier, later).TestDocuments(run.docType)
+		if err != nil {
+			return nil, err
+		}
+		for _, doc := range docs {
+			specs = append(specs, run.spec(earlier, later, doc, decl))
+		}
+	}
+	return specs, nil
+}
+
+// claimPair reports whether this run is the first to take on the pair.
+func (t *Tester) claimPair(p versionPair) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.ranPairs[p] {
+		return false
+	}
+	t.ranPairs[p] = true
+	return true
+}
+
+// documentAcrossVersions returns the specs which run one document of s, of the given type, on the
+// other versions in its major.
+func (t *Tester) documentAcrossVersions(
+	s *Schema, decl *FamilyDeclaration, doc TestInfo, tt TestDocType,
 ) ([]Spec, error) {
-	tests, err := source.TestDocuments(testDocType)
+	ahead := decl.Facts.EffectiveAhead()
+	if ahead == AheadNeither {
+		return nil, nil
+	}
+
+	earlier, later, err := t.otherVersions(s)
 	if err != nil {
 		return nil, err
 	}
 
-	// optimise allocations:
-	if newlen := len(specs) + len(tests); cap(specs) < newlen {
-		newSpecs := make([]Spec, len(specs), newlen)
-		copy(newSpecs, specs)
-		specs = newSpecs
-	}
-
-	var forwardVersion *SemVer
-
-	if source != underTest {
-		forwardVersion = &source.core.version
-	}
-
-	for _, test := range tests {
-		specs = append(specs, NewSpec(underTest, test, testDocType, forwardVersion))
-	}
-
-	return specs, nil
-}
-
-// testSchemaCompatibleWithEarlierVersions checks that the target schema's pass tests
-// also validate against earlier versions in the same major family.
-// This ensures a provider using the new schema won't break consumers on older versions.
-func (t *Tester) testSchemaCompatibleWithEarlierVersions(ctx context.Context, targetKey Key) error {
-	targetSchema, err := t.registry.GetSchemaByKey(targetKey)
-	if err != nil {
-		return err
-	}
-
-	passTests, err := targetSchema.TestDocuments(TestDocTypePass)
-	if err != nil {
-		return err
-	}
-
-	earlierKeys, err := targetSchema.MajorFamilyEarlierSchemas()
-	if err != nil {
-		return err
-	}
-
-	if len(passTests) == 0 || len(earlierKeys) == 0 {
-		return nil
-	}
-
-	return t.runCompatibilityTests(ctx, targetSchema, passTests, earlierKeys)
-}
-
-func (t *Tester) runCompatibilityTests(
-	ctx context.Context,
-	targetSchema *Schema,
-	passTests []TestInfo,
-	earlierKeys []Key,
-) error {
-	runCtx, cancelRun := context.WithCancel(ctx)
-	defer cancelRun()
-
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, t.numWorkers)
-
-	var finalErr error
-	var errOnce sync.Once
-
-	for _, earlierKey := range earlierKeys {
-		if stop := t.processCompatibilityTest(runCtx, earlierKey, targetSchema, passTests, &wg, sem, &errOnce,
-			&finalErr, cancelRun); stop {
-			break
+	var specs []Spec
+	for _, run := range acrossVersionRuns {
+		if !run.appliesTo(ahead) || run.docType != tt {
+			continue
 		}
-	}
-
-	wg.Wait()
-
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	return finalErr
-}
-
-func (t *Tester) processCompatibilityTest(
-	ctx context.Context,
-	earlierKey Key,
-	targetSchema *Schema,
-	passTests []TestInfo,
-	wg *sync.WaitGroup,
-	sem chan struct{},
-	errOnce *sync.Once,
-	//nolint:gocritic // finalErr updated via pointer
-	finalErr *error,
-	cancelFunc context.CancelFunc,
-) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	case sem <- struct{}{}: // Acquire worker slot
-	}
-
-	wg.Add(1)
-	go func(ek Key) {
-		defer wg.Done()
-		defer func() { <-sem }()
-
-		if tErr := t.testEarlierSchemaWithTargetTests(ctx, ek, targetSchema, passTests); tErr != nil {
-			errOnce.Do(func() {
-				if !errors.Is(tErr, ErrStopTesting) {
-					*finalErr = tErr
-				}
-				cancelFunc()
-			})
-		}
-	}(earlierKey)
-
-	return false
-}
-
-// testEarlierSchemaWithTargetTests runs the target schema's pass tests against an earlier schema.
-func (t *Tester) testEarlierSchemaWithTargetTests(
-	ctx context.Context,
-	earlierKey Key,
-	targetSchema *Schema,
-	passTests []TestInfo,
-) error {
-	earlierSchema, err := t.registry.GetSchemaByKey(earlierKey)
-	if err != nil {
-		return err
-	}
-
-	// Render the earlier schema to get its validator
-	ri, err := earlierSchema.Render(t.registry.config.ProductionEnvConfig())
-	if err != nil {
-		return err
-	}
-
-	// The ForwardVersion is set to the target schema's version,
-	// as these tests are from a "forward" (newer) version
-	forwardVersion := &targetSchema.core.version
-
-	// Run each pass test from the target schema against the earlier schema
-	for _, testInfo := range passTests {
-		if ce := ctx.Err(); ce != nil {
-			return ce
-		}
-
-		spec := NewSpec(earlierSchema, testInfo, TestDocTypePass, forwardVersion)
-		err = spec.Run(ri.Validator)
-
-		if err != nil {
-			t.report.AddFailedTest(earlierKey, &spec)
-			if t.stopOnFirstError {
-				return ErrStopTesting
+		if run.fromLater {
+			for _, e := range earlier {
+				specs = append(specs, run.spec(e, s, doc, decl))
 			}
 		} else {
-			t.report.AddPassedTest(earlierKey, &spec)
+			for _, l := range later {
+				specs = append(specs, run.spec(s, l, doc, decl))
+			}
 		}
 	}
+	return specs, nil
+}
 
-	return nil
+// LaterPassRejection is a pass document of a later version which the version under test rejects.
+type LaterPassRejection struct {
+	Later Key
+	Path  string
+	Err   error
+}
+
+// LaterPassRejections runs the pass documents of every later version in k's major on k, and returns
+// those it rejects. It is what check-consumer asks, whatever the family's scenario.
+func (t *Tester) LaterPassRejections(ctx context.Context, k Key) ([]LaterPassRejection, error) {
+	s, err := t.registry.GetSchemaByKey(k)
+	if err != nil {
+		return nil, err
+	}
+	ri, err := s.Render(t.registry.config.ProductionEnvConfig())
+	if err != nil {
+		return nil, err
+	}
+	laterKeys, err := s.MajorFamilyFutureSchemas()
+	if err != nil {
+		return nil, err
+	}
+	later, err := t.schemas(laterKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	var rejections []LaterPassRejection
+	for _, l := range later {
+		docs, dErr := l.TestDocuments(TestDocTypePass)
+		if dErr != nil {
+			return nil, dErr
+		}
+		for _, doc := range docs {
+			if cErr := ctx.Err(); cErr != nil {
+				return nil, cErr
+			}
+			spec := NewSpec(s, doc, TestDocTypePass)
+			if rErr := spec.Run(ri.Validator); rErr != nil {
+				rejections = append(rejections, LaterPassRejection{Later: l.Key(), Path: doc.Path, Err: rErr})
+			}
+		}
+	}
+	return rejections, nil
 }

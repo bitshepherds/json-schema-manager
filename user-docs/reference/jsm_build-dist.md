@@ -9,9 +9,10 @@ Build rendered schemas for the specified environment and write them to dist/[env
 the registry root. So the registry must be in a subdirectory of its git repository, which
 keeps dist inside the repository. Other commands work with the registry at the git root.
 
-Before building, it runs every schema's tests and compatibility check, as
-'jsm validate all' does. If any fail, it prints the report, builds nothing and exits
-with code 1. Use --skip-tests if your pipeline already runs validate.
+Before building, it runs every schema's tests, and the documents its family's declaration
+runs across versions, as 'jsm validate all' does. If any fail, it prints the report, builds
+nothing and exits with code 1. It also prints any warnings, and --strict fails on them, as
+it does for validate. Use --skip-tests if your pipeline already runs validate.
 
 By default, this command only builds schemas that have been added or modified since 
 the last successful deployment to that environment. A mutation check is performed 
@@ -50,7 +51,8 @@ jsm build-dist [environment] [flags]
   -a, --all          Render and build all schemas, skipping mutation checks
       --collapse     Inline external $ref dependencies into each schema's $defs block
   -h, --help         help for build-dist
-      --skip-tests   Build without first running the schemas' tests and compatibility check
+      --skip-tests   Build without first running the schemas' tests
+      --strict       Fail on warnings: a schema with no pass or no fail document, or with a change which may break consumers of the version before it and which none of its pass documents uses
 ```
 
 ### Options inherited from parent commands

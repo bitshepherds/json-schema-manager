@@ -31,19 +31,16 @@ func (m *MockManager) Registry() *schema.Registry {
 }
 
 func (m *MockManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	strict bool,
+	format string, useColour bool, continueOnError bool, strict bool,
 ) error {
-	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible,
-		strict)
+	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, strict)
 	return args.Error(0)
 }
 
 func (m *MockManager) WatchValidation(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	readyChan chan<- struct{},
+	format string, useColour bool, continueOnError bool, strict bool, readyChan chan<- struct{},
 ) error {
-	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible, readyChan)
+	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, strict, readyChan)
 	return args.Error(0)
 }
 
@@ -93,8 +90,8 @@ func (m *MockManager) TagDeployment(ctx context.Context, envName config.Env, _ b
 	return args.Error(0)
 }
 
-func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
-	args := m.Called(ctx, envName, all, collapse, skipTests)
+func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests, strict bool) error {
+	args := m.Called(ctx, envName, all, collapse, skipTests, strict)
 	return args.Error(0)
 }
 

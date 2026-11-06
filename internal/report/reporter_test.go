@@ -173,22 +173,27 @@ func TestJSONReporter_CompatibilityDetail(t *testing.T) {
 
 	earlier := schema.Key("shop_order_1_0_0")
 	later := schema.Key("shop_order_1_1_0")
-	forward, err := schema.NewSemVer("1", "1", "0")
-	require.NoError(t, err)
 	breaking := schema.Spec{
-		Schema:         schema.New(earlier, nil),
-		TestInfo:       schema.TestInfo{Path: "1/1/0/pass/refunded.json"},
-		TestDocType:    schema.TestDocTypePass,
-		ForwardVersion: &forward,
-		Err:            fmt.Errorf("rejected"),
+		Schema:       schema.New(earlier, nil),
+		TestInfo:     schema.TestInfo{Path: "1/1/0/pass/refunded.json"},
+		TestDocType:  schema.TestDocTypePass,
+		Rule:         schema.RuleNoLoosening,
+		DocumentFrom: later,
+		Earlier:      earlier,
+		Later:        later,
+		Err:          fmt.Errorf("rejected"),
 	}
 	local := schema.Spec{
 		Schema:      schema.New(later, nil),
 		TestInfo:    schema.TestInfo{Path: "1/1/0/pass/refunded.json"},
 		TestDocType: schema.TestDocTypePass,
 	}
-	r.AddFailedTest(earlier, &breaking)
+	own := schema.Spec{Schema: schema.New(earlier, nil), TestInfo: schema.TestInfo{Path: "1/0/0/pass/a.json"}}
+	newest := schema.Key("shop_order_1_2_0")
+	r.AddFailedTest(later, &breaking)
 	r.AddPassedTest(later, &local)
+	r.AddFailedTest(earlier, &own)
+	r.AddPassedTest(newest, &local)
 
 	var buf bytes.Buffer
 	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
@@ -201,19 +206,23 @@ func TestJSONReporter_CompatibilityDetail(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
 
-	failed := out.Results[earlier].Failed
+	failed := out.Results[later].Failed
 	require.Len(t, failed, 1)
 	assert.Equal(t, "shop_order_1_0_0", failed[0]["validatedBy"])
-	assert.Equal(t, "1.1.0", failed[0]["forwardVersion"])
+	assert.Equal(t, "no-loosening", failed[0]["rule"])
+	assert.Equal(t, "shop_order_1_0_0", failed[0]["earlier"])
+	assert.Equal(t, "shop_order_1_1_0", failed[0]["later"])
+	assert.Equal(t, "shop_order_1_1_0", failed[0]["documentFrom"])
 
 	passed := out.Results[later].Passed
 	require.Len(t, passed, 1)
 	assert.Equal(t, "shop_order_1_1_0", passed[0]["validatedBy"])
-	assert.NotContains(t, passed[0], "forwardVersion")
+	assert.NotContains(t, passed[0], "earlier")
+	assert.NotContains(t, passed[0], "later")
 
 	// Empty result lists are written as [], not null
 	assert.NotNil(t, out.Results[earlier].Passed)
-	assert.NotNil(t, out.Results[later].Failed)
+	assert.NotNil(t, out.Results[newest].Failed)
 	assert.NotContains(t, buf.String(), "null")
 }
 

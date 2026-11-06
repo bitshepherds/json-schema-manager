@@ -1,7 +1,6 @@
-# 1.1.0 adds an open anyOf arm, so it accepts 1.0.0's fail document. No document running today shows
-# it. The promise wants 1.0.0's fail document to run on 1.1.0.
+# 1.1.0 adds an open anyOf arm, so it accepts 1.0.0's fail document. No pass document shows it: only
+# 1.0.0's fail document, running on 1.1.0, does. Validating 1.0.0 runs that pair too.
 promise: no-loosening
-gap: 119
 validate:
-  1.0.0: pass
+  1.0.0: fail
   1.1.0: fail

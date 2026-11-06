@@ -38,6 +38,11 @@ func NewSearchScope(s string) (SearchScope, error) {
 	return SearchScope(cleanS), nil
 }
 
+// Contains returns true if the scope covers the whole of the other scope.
+func (ss SearchScope) Contains(other SearchScope) bool {
+	return ss == "" || ss == other || strings.HasPrefix(string(other), string(ss)+SearchSeparatorString)
+}
+
 // Searcher is used to define the scope of a search for schemas in a registry, and then
 // to execute a search for schemas that match the scope.
 type Searcher struct {

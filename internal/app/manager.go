@@ -27,11 +27,9 @@ var ErrTestsFailed = errors.New("one or more tests failed")
 // Manager defines the business logic for JSON schema operations.
 type Manager interface {
 	ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool, format string,
-		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-		strict bool) error
+		useColour bool, continueOnError bool, strict bool) error
 	WatchValidation(ctx context.Context, target schema.ResolvedTarget, verbose bool, format string,
-		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-		readyChan chan<- struct{}) error
+		useColour bool, continueOnError bool, strict bool, readyChan chan<- struct{}) error
 	Registry() *schema.Registry
 	CreateSchema(domainAndFamilyName string, spec schema.FamilySpec) (schema.Key, error)
 	CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (schema.Key, error)
@@ -40,7 +38,7 @@ type Manager interface {
 	CheckConsumer(ctx context.Context, manifestPath, format string, useColour, strict bool) error
 	CheckChanges(ctx context.Context, envName config.Env) error
 	TagDeployment(ctx context.Context, envName config.Env, push bool) error
-	BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error
+	BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests, strict bool) error
 }
 
 // Ensure the interface is satisfied.
@@ -72,20 +70,16 @@ func (l *LazyManager) check() Manager {
 
 // ValidateSchema implements the Manager interface.
 func (l *LazyManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	strict bool,
+	format string, useColour bool, continueOnError bool, strict bool,
 ) error {
-	return l.check().ValidateSchema(ctx, target, verbose, format, useColour, continueOnError, testScope,
-		skipCompatible, strict)
+	return l.check().ValidateSchema(ctx, target, verbose, format, useColour, continueOnError, strict)
 }
 
 // WatchValidation implements the Manager interface.
 func (l *LazyManager) WatchValidation(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	readyChan chan<- struct{},
+	format string, useColour bool, continueOnError bool, strict bool, readyChan chan<- struct{},
 ) error {
-	return l.check().WatchValidation(ctx, target, verbose, format, useColour, continueOnError,
-		testScope, skipCompatible, readyChan)
+	return l.check().WatchValidation(ctx, target, verbose, format, useColour, continueOnError, strict, readyChan)
 }
 
 // Registry implements the Manager interface.
@@ -134,8 +128,8 @@ func (l *LazyManager) TagDeployment(ctx context.Context, envName config.Env, pus
 }
 
 // BuildDist implements the Manager interface.
-func (l *LazyManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
-	return l.check().BuildDist(ctx, envName, all, collapse, skipTests)
+func (l *LazyManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests, strict bool) error {
+	return l.check().BuildDist(ctx, envName, all, collapse, skipTests, strict)
 }
 
 // Ensure the interface is satisfied.
@@ -199,20 +193,16 @@ func (m *CLIManager) CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (s
 
 // ValidateSchema runs tests on the target schema(s).
 func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	strict bool,
+	format string, useColour bool, continueOnError bool, strict bool,
 ) error {
 	m.logger.Debug("validating schema", "target", target, "verbose", verbose, "format", format,
-		"useColour", useColour, "continueOnError", continueOnError, "skipCompatible", skipCompatible,
-		"strict", strict)
+		"useColour", useColour, "continueOnError", continueOnError, "strict", strict)
 
 	if err := m.requireDeclarations(ctx, target); err != nil {
 		return err
 	}
 
 	m.tester.SetStopOnFirstError(!continueOnError)
-	m.tester.SetScope(testScope)
-	m.tester.SetSkipCompatible(skipCompatible)
 
 	var tr *schema.TestReport
 	var err error
@@ -234,8 +224,7 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 		return wErr
 	}
 
-	warned := len(tr.UnexercisedChanges) > 0 || tr.MissingDocuments() > 0
-	if len(tr.FailedTests) > 0 || strict && warned {
+	if len(tr.FailedTests) > 0 || strict && tr.HasWarnings() {
 		return ErrTestsFailed
 	}
 
@@ -270,11 +259,10 @@ func newReporter(format string, verbose, useColour, strict bool) schema.Reporter
 // If you want to know when the watcher is ready to start listening to changes,
 // pass a non-nil readyChan to be notified.
 func (m *CLIManager) WatchValidation(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	readyChan chan<- struct{},
+	format string, useColour bool, continueOnError bool, strict bool, readyChan chan<- struct{},
 ) error {
 	m.logger.Debug("watching validation", "target", target, "verbose", verbose, "format", format,
-		"useColour", useColour, "continueOnError", continueOnError, "skipCompatible", skipCompatible)
+		"useColour", useColour, "continueOnError", continueOnError, "strict", strict)
 
 	if target.Key == nil && target.Scope == nil {
 		return &schema.NoSchemaTargetsError{}
@@ -286,7 +274,7 @@ func (m *CLIManager) WatchValidation(ctx context.Context, target schema.Resolved
 	watcher := schema.NewWatcher(m.registry, m.logger)
 
 	callback := func(event schema.WatchEvent) {
-		m.handleWatchEvent(ctx, event, target, verbose, format, useColour, continueOnError, testScope, skipCompatible)
+		m.handleWatchEvent(ctx, event, target, verbose, format, useColour, continueOnError, strict)
 	}
 
 	// Forward watcher Ready signal if caller wants notification
@@ -301,48 +289,77 @@ func (m *CLIManager) WatchValidation(ctx context.Context, target schema.Resolved
 }
 
 func (m *CLIManager) handleWatchEvent(ctx context.Context, event schema.WatchEvent, target schema.ResolvedTarget,
-	verbose bool, format string, useColour bool, continueOnError bool,
-	testScope schema.TestScope, skipCompatible bool,
+	verbose bool, format string, useColour bool, continueOnError bool, strict bool,
 ) {
-	// Filter events based on target
-	if target.Key != nil && event.Key != *target.Key {
-		return
-	}
-	if target.Scope != nil && !event.Key.InScope(*target.Scope) {
-		return
-	}
-
-	if err := m.registry.RequireFamilyDeclared(event.Key); err != nil {
-		m.logger.Error("Validation failed", "error", err)
+	run := watchRunFor(event, target)
+	if run == nil {
 		return
 	}
 
 	// Create a new tester for each event to ensure fresh reporting
 	tester := schema.NewTester(m.registry)
 	tester.SetStopOnFirstError(!continueOnError)
-	tester.SetScope(testScope)
-	tester.SetSkipCompatible(skipCompatible)
 
-	var tr *schema.TestReport
-	var err error
-
-	if event.TestPath != "" {
-		m.logger.Info("Test changed:", "schema", event.Key, "test", event.TestPath)
-		tr, err = tester.TestSpecificDocument(ctx, event.Key, event.TestPath)
-	} else {
-		m.logger.Info("Schema changed:", "schema", event.Key)
-		m.registry.Reset()
-		tr, err = tester.TestSingleSchema(ctx, event.Key)
-	}
-
+	tr, err := m.runForWatch(ctx, tester, event, *run)
 	if err != nil {
 		m.logger.Error("Validation failed", "error", err)
 		return
 	}
 
-	if rErr := newReporter(format, verbose, useColour, false).Write(m.reporterWriter, tr); rErr != nil {
+	if rErr := newReporter(format, verbose, useColour, strict).Write(m.reporterWriter, tr); rErr != nil {
 		m.logger.Error("Failed to write report", "error", rErr)
 	}
+	if strict && tr.HasWarnings() {
+		m.logger.Error("Validation failed: there are warnings, and --strict is set")
+	}
+}
+
+// watchRunFor returns what to test for a change, or nil if the target doesn't depend on what changed:
+// a whole family, the key of the version watched, or the version changed. A watched version depends on
+// its family's declaration and on the other versions in its major, as its pairs include them.
+func watchRunFor(event schema.WatchEvent, target schema.ResolvedTarget) *schema.ResolvedTarget {
+	switch {
+	case target.Key != nil && event.Family != "":
+		if target.Key.InScope(event.Family) {
+			return &schema.ResolvedTarget{Key: target.Key}
+		}
+	case target.Key != nil:
+		if event.Key.SameMajorFamily(*target.Key) {
+			return &schema.ResolvedTarget{Key: target.Key}
+		}
+	case target.Scope != nil && event.Family != "":
+		if target.Scope.Contains(event.Family) {
+			return &schema.ResolvedTarget{Scope: &event.Family}
+		}
+	case target.Scope != nil:
+		if event.Key.InScope(*target.Scope) {
+			return &schema.ResolvedTarget{Key: &event.Key}
+		}
+	}
+	return nil
+}
+
+// runForWatch tests what watchRunFor chose. A changed document of the version being tested runs just
+// that document; anything else may have changed what every run gives, so reloads the registry first.
+func (m *CLIManager) runForWatch(ctx context.Context, tester *schema.Tester, event schema.WatchEvent,
+	run schema.ResolvedTarget,
+) (*schema.TestReport, error) {
+	if err := m.requireDeclarations(ctx, run); err != nil {
+		return nil, err
+	}
+
+	if event.TestPath != "" && run.Key != nil && event.Key == *run.Key {
+		m.logger.Info("Test changed:", "schema", event.Key, "test", event.TestPath)
+		return tester.TestSpecificDocument(ctx, event.Key, event.TestPath)
+	}
+
+	m.registry.Reset()
+	if run.Scope != nil {
+		m.logger.Info("Declaration changed:", "family", *run.Scope)
+		return tester.TestFoundSchemas(ctx, *run.Scope)
+	}
+	m.logger.Info("Schema changed:", "schema", *run.Key)
+	return tester.TestSingleSchema(ctx, *run.Key)
 }
 
 // RenderSchema renders a schema for a specific environment.
@@ -709,11 +726,11 @@ func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env, push
 }
 
 // BuildDist builds a distribution directory for the given environment.
-// Unless skipTests is set, it first runs every schema's tests and compatibility check, as
+// Unless skipTests is set, it first runs every schema's tests, and the rule across versions, as
 // validate all does, and builds nothing if any fail.
-func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
+func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests, strict bool) error {
 	m.logger.Debug("building distribution", "env", envName, "all", all, "collapse", collapse,
-		"skipTests", skipTests)
+		"skipTests", skipTests, "strict", strict)
 
 	if dErr := m.registry.RequireFamilyDeclarations(ctx, ""); dErr != nil {
 		return dErr
@@ -723,13 +740,13 @@ func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, col
 	var err error
 	if all {
 		if !skipTests {
-			if tErr := m.testBeforeBuild(ctx); tErr != nil {
+			if tErr := m.testBeforeBuild(ctx, strict); tErr != nil {
 				return tErr
 			}
 		}
 		count, err = m.distBuilder.BuildAll(ctx, envName, collapse)
 	} else {
-		count, err = m.buildChanged(ctx, envName, collapse, skipTests)
+		count, err = m.buildChanged(ctx, envName, collapse, skipTests, strict)
 	}
 
 	if err != nil {
@@ -750,13 +767,15 @@ func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, col
 
 // buildChanged checks that no deployed schema has changed, runs the tests unless skipTests, then
 // builds the schemas changed since the last deployment, and returns how many it built.
-func (m *CLIManager) buildChanged(ctx context.Context, envName config.Env, collapse, skipTests bool) (int, error) {
+func (m *CLIManager) buildChanged(ctx context.Context, envName config.Env, collapse, skipTests, strict bool) (
+	int, error,
+) {
 	if err := m.CheckChanges(ctx, envName); err != nil {
 		return 0, err
 	}
 
 	if !skipTests {
-		if err := m.testBeforeBuild(ctx); err != nil {
+		if err := m.testBeforeBuild(ctx, strict); err != nil {
 			return 0, err
 		}
 	}
@@ -797,23 +816,24 @@ func (m *CLIManager) reportUntrackedSchemas(ctx context.Context) error {
 	return nil
 }
 
-// testBeforeBuild runs every schema's tests and compatibility check. If any fail, it writes
-// the test report and returns ErrTestsFailed.
-func (m *CLIManager) testBeforeBuild(ctx context.Context) error {
+// testBeforeBuild runs every schema's tests, as validate all does, and writes the report if it has
+// failures or warnings. It returns ErrTestsFailed if any test failed, or if strict and it has warnings.
+func (m *CLIManager) testBeforeBuild(ctx context.Context, strict bool) error {
 	m.tester.SetStopOnFirstError(false)
-	m.tester.SetScope(schema.TestScopeLocal)
-	m.tester.SetSkipCompatible(false)
 
 	tr, err := m.tester.TestFoundSchemas(ctx, "")
 	if err != nil {
 		return err
 	}
-	if len(tr.FailedTests) == 0 {
+	if len(tr.FailedTests) == 0 && !tr.HasWarnings() {
 		return nil
 	}
 
 	if wErr := (&report.TextReporter{}).Write(m.reporterWriter, tr); wErr != nil {
 		return wErr
+	}
+	if len(tr.FailedTests) == 0 && !strict {
+		return nil
 	}
 	_, _ = fmt.Fprintln(m.reporterWriter, "Not building: fix the failing tests, or use --skip-tests")
 	return ErrTestsFailed

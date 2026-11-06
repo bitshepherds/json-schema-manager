@@ -1,0 +1,6 @@
+# The same rename as lock-step-rename. Each document names its version, and is only ever validated
+# against that version, so only each version's own documents run.
+promise: only-versions-that-meet
+validate:
+  1.0.0: pass
+  1.1.0: pass

@@ -1,0 +1,6 @@
+# The same rename, in a writer-ahead family which overrides readerPicksSchema: the fact decides, not
+# the scenario's name.
+promise: only-versions-that-meet
+validate:
+  1.0.0: pass
+  1.1.0: pass

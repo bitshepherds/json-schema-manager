@@ -1,7 +1,6 @@
-# 1.1.0 makes a property required, so it rejects a 1.0.0 pass document. The promise wants 1.0.0's
-# pass document to run on 1.1.0.
+# 1.1.0 makes a property required, so it rejects a 1.0.0 pass document, which runs on 1.1.0.
+# Validating 1.0.0 runs that pair too.
 promise: no-tightening
-gap: 119
 validate:
-  1.0.0: pass
+  1.0.0: fail
   1.1.0: fail

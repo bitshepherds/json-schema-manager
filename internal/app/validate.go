@@ -1,8 +1,6 @@
 package app
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
@@ -12,12 +10,10 @@ import (
 func NewValidateCmd(m Manager) *cobra.Command {
 	var verbose bool
 	var continueOnError bool
-	var skipCompatible bool
 	var strict bool
 	var keyStr string
 	var idStr string
 	var scopeStr string
-	var testScopeStr string
 
 	cmd := &cobra.Command{
 		Use:   "validate [target]",
@@ -26,11 +22,21 @@ func NewValidateCmd(m Manager) *cobra.Command {
 Validate one or more JSON schemas against their test documents: each document in a schema's pass/
 directory must be accepted, and each in its fail/ directory rejected.
 
-Each schema's pass documents must also be accepted by every earlier version with the same major
-version, so that a provider moving to the schema does not break consumers still on an earlier one.
-Use --skip-compatible to leave this check out.
+The family's declaration, family.yml, then decides which documents run across versions, between each
+schema and every earlier and later version with the same major version:
 
-That check is only as strong as the pass documents, so validate also compares each schema with the
+  who can be ahead  what runs across versions
+  writer            later pass documents on earlier versions, earlier fail documents on later versions
+  reader            earlier pass documents on later versions, later fail documents on earlier versions
+  either            all four
+  neither           none, and so too when the reader picks its schema from the document
+
+The same pairs run however a schema is selected, so validating an earlier version also runs its pairs
+with later versions. A failure appears under the later version, since that's what changed, and says
+which rule broke, the two versions, the document, and what that means for the family's scenario. See
+user-docs/scenarios.md.
+
+These checks are only as strong as the documents, so validate also compares each schema with the
 version before it, and warns about each structural change which may break consumers of that version
 and which none of the schema's pass documents uses: for example, an enum value added with no
 document using it. Add a pass document which uses the change. 'jsm diff' lists every structural
@@ -74,16 +80,6 @@ ALL SCHEMAS
 	cmd.Flags().StringVarP(&keyStr, "key", "k", "", "Validate a schema identified by its key")
 	cmd.Flags().StringVarP(&idStr, "id", "i", "", "Validate a schema identified by its canonical ID")
 	cmd.Flags().StringVarP(&scopeStr, "search-scope", "s", "", "Validate all schemas identified by JSM Search Scope")
-	cmd.Flags().StringVarP(&testScopeStr, "test-scope", "t", "local",
-		fmt.Sprintf("Test Docs Selection (%s, %s, %s, %s, %s)",
-			schema.TestScopeLocal,
-			schema.TestScopePass,
-			schema.TestScopeFail,
-			schema.TestScopeConsumerBreaking,
-			schema.TestScopeAll,
-		))
-	cmd.Flags().BoolVar(&skipCompatible, "skip-compatible", false,
-		"Skip checking each schema's pass documents against earlier versions in its major family")
 	cmd.Flags().BoolVar(&strict, "strict", false,
 		"Fail on warnings: a schema with no pass or no fail document, or with a change which may "+
 			"break consumers of the version before it and which none of its pass documents uses")
@@ -107,11 +103,6 @@ ALL SCHEMAS
 			resolver.SetScope(schema.SearchScope(scopeStr))
 		}
 
-		testScope, err := schema.NewTestScope(testScopeStr)
-		if err != nil {
-			return err
-		}
-
 		target, err := resolver.Resolve()
 		if err != nil {
 			return err
@@ -122,11 +113,11 @@ ALL SCHEMAS
 
 		if watch {
 			return m.WatchValidation(cmd.Context(), target, verbose, outputVal.String(),
-				useColour, continueOnError, testScope, skipCompatible, nil)
+				useColour, continueOnError, strict, nil)
 		}
 
 		return m.ValidateSchema(cmd.Context(), target, verbose, outputVal.String(),
-			useColour, continueOnError, testScope, skipCompatible, strict)
+			useColour, continueOnError, strict)
 	}
 
 	return cmd

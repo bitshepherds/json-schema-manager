@@ -30,17 +30,11 @@ This page describes the common ways schemas are used, what can go wrong in each,
 
 ## What JSM does today
 
-- Within a major, later `pass` documents run on earlier versions, from `validate`, `check-consumer` and `build-dist`. Patch and minor are treated alike.
-- Earlier documents never run on later versions, except as copies, because `create-schema-version` copies a version's whole directory on every bump.
-- `fail` documents never cross versions, and no document crosses a major.
-- `validate` warns about a change that widens what the version before accepts, or that it cannot judge, when none of the version's `pass` documents uses the change. See [Unexercised changes](./developing-schemas.md#unexercised-changes).
-
-So scenario 1 is partly served, by `pass` documents only, and no other scenario has checks of its own. Every family [declares its scenario](#declaring-a-familys-scenario), but the declaration doesn't yet decide what runs, so every family gets the same checks, whichever scenario it serves.
-
-Two things follow until the rest is built:
-
-- **Keep the copies.** The copied documents are the only way earlier documents reach a later version: a copied `pass` document catches a tightening, and a copied `fail` document catches a loosening. Nothing stops a copy being edited or deleted, so this protection is only as good as your care with them.
-- **Expect false alarms outside scenario 1.** The check on later `pass` documents runs on every family, so it can fail a change that is harmless in that family's scenario. `jsm validate --skip-compatible` leaves it out, and `jsm build-dist --skip-tests` leaves out all the tests.
+- Every family [declares its scenario](#declaring-a-familys-scenario), and the declaration decides which documents run across versions, within a major, as [the rule](#the-rule) says. `validate` and `build-dist` run the same rule, and `validate --watch` runs it for what changed. Patch and minor are treated alike, and no document crosses a major.
+- The same pairs of versions run however a version is selected: by key, by search scope or with `all`. Validating an earlier version runs its pairs with later versions too, so it can't miss a later breakage. A failure appears under the later version, since that's what changed.
+- `create-schema-version` still copies a version's whole directory on every bump, so the copies also run as the new version's own documents.
+- `validate` warns about a change that widens what the version before accepts, or that it cannot judge, when none of the version's `pass` documents uses the change, whichever scenario the family serves. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
+- `check-consumer` doesn't follow the declaration yet: it runs later `pass` documents on the version a consumer pins, in every family, so it can fail a change that is harmless in that family's scenario.
 
 **Not yet built**, besides what each scenario below lists:
 
@@ -99,8 +93,8 @@ A distributed system evolves component by component: a lagging consumer on the s
 
 **What JSM checks:** a writer-ahead family needs no loosening.
 
-- Today: later `pass` documents run on earlier versions, so a `1.1.0` `pass` document with `"status": "refunded"` fails on `1.0.0`. If no `pass` document uses the new value, `validate` warns instead.
-- **Not yet built** ([#119]): earlier `fail` documents run on later versions, so a `1.0.0` `fail` document with `"status": "refunded"` catches the change even when no `1.1.0` document uses the value.
+- Later `pass` documents run on earlier versions, so a `1.1.0` `pass` document with `"status": "refunded"` fails on `1.0.0`.
+- Earlier `fail` documents run on later versions, so a `1.0.0` `fail` document with `"status": "refunded"` catches the change even when no `1.1.0` document uses the value. If no `pass` document uses the new value, `validate` warns too.
 
 ### 2. Consumer moves first
 
@@ -116,8 +110,8 @@ Old clients' documents still pass, so new rules can't apply to them within a maj
 
 **What JSM checks:** a reader-ahead family needs no tightening.
 
-- Today: no check of its own. A copied `1.0.0` `pass` document fails on `1.1.0`, as long as the copy is kept. The check on later `pass` documents also runs, and raises a false alarm on the harmless `"store-credit"` change, since `1.0.0` rejects a `pass` document that uses it.
-- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, and later `pass` documents stop running on earlier versions.
+- Earlier `pass` documents run on later versions, so a `1.0.0` `pass` document with no `reason` fails on `1.1.0`. Later `fail` documents run on earlier versions, so a `1.1.0` `fail` document with no `reason` fails on `1.0.0`, which accepts it.
+- Later `pass` documents don't run on earlier versions, so the harmless `"store-credit"` change passes, even though `1.0.0` rejects a `pass` document that uses it.
 
 ### 3. Config files
 
@@ -133,8 +127,8 @@ Old files load after a tool upgrade. Schemas are often closed to catch typos, so
 
 **What JSM checks:** a reader-ahead family needs no tightening.
 
-- Today: no check of its own. A copied `1.0.0` `pass` document that uses `timeout` fails on `1.1.0`, as long as the copy is kept. The check on later `pass` documents also runs, and raises a false alarm on the harmless `parallel` option.
-- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, and later `pass` documents stop running on earlier versions.
+- Earlier `pass` documents run on later versions, so a `1.0.0` `pass` document that uses `timeout` fails on `1.1.0`. Later `fail` documents run on earlier versions.
+- Later `pass` documents don't run on earlier versions, so the harmless `parallel` option passes.
 - **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version, since files written against it may live indefinitely.
 
 ### 4. Stored data, one schema for all
@@ -152,8 +146,8 @@ Every old document stays valid, however old. A major bump doesn't make old data 
 
 **What JSM checks:** a reader-ahead family needs no tightening.
 
-- Today: no check of its own. A copied `1.3.0` `pass` document with no `email` fails on `1.4.0`, as long as the copy is kept.
-- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, and later `pass` documents stop running on earlier versions.
+- Earlier `pass` documents run on later versions, so a `1.3.0` `pass` document with no `email` fails on `1.4.0`, and on every later version in the major. Later `fail` documents run on earlier versions.
+- Later `pass` documents don't run on earlier versions, so adding an option the old versions reject passes.
 - **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version, and `validate` requires a migration statement for each new major. JSM records the statement. The migration is your code, and JSM tests no data.
 
 ### 5. Stored data, each document names its version
@@ -169,8 +163,7 @@ Documents are a mix of versions, each validated against its own. No version may 
 
 **What JSM checks:** a family whose reader picks the schema from the document behaves as `neither`, so only each version's own documents run.
 
-- Today: each version's own documents run. The check on later `pass` documents also runs, and can raise false alarms, since these versions never need to agree.
-- **Not yet built** ([#119]): later `pass` documents stop running on earlier versions.
+- Only each version's own documents run, since these versions never need to agree.
 - **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version.
 
 ### 6. Retained streams
@@ -187,8 +180,7 @@ Scenario 1, plus new consumers reading old events. Retention can limit how far b
 
 **What JSM checks:** an either family needs no loosening and no tightening.
 
-- Today: later `pass` documents run on earlier versions, which is half of what it needs. Copied earlier documents cover some of the rest, as long as they are kept.
-- **Not yet built** ([#119]): earlier `fail` documents run on later versions, earlier `pass` documents run on later versions, and later `fail` documents run on earlier versions.
+- All four runs across versions take place, so a `1.2.0` `pass` document with no `currency` fails on `1.3.0`, and so does an enum value added in `1.3.0` when a document shows it.
 - **Not yet built** ([#124]): the family declares its oldest live version, `oldestLive`, and moves it forward by a reviewed change. Older versions then take no part in the checks, and `check-changes` allows deleting them. JSM uses no clock, so results are repeatable. Until this is built, a retention family is checked against all the history in its major.
 
 ### 7. Uncoordinated parties
@@ -205,8 +197,7 @@ Nobody controls upgrade order, so few changes are safe in a minor.
 
 **What JSM checks:** an either family needs no loosening and no tightening.
 
-- Today: later `pass` documents run on earlier versions, which is half of what it needs. Copied earlier documents cover some of the rest, as long as they are kept.
-- **Not yet built** ([#119]): earlier `fail` documents run on later versions, earlier `pass` documents run on later versions, and later `fail` documents run on earlier versions.
+- All four runs across versions take place, so a `1.0.0` `pass` document with no `updatedAt` fails on `1.1.0`, and so does a `1.1.0` `pass` document with `"state": "pinned"` on `1.0.0`.
 
 ### 8. Lock-step
 
@@ -221,8 +212,7 @@ Only each version's own documents matter, and cross-version checks would be nois
 
 **What JSM checks:** a neither family runs only each version's own documents.
 
-- Today: each version's own documents run. The check on later `pass` documents also runs, and raises a false alarm on the rename.
-- **Not yet built** ([#119]): later `pass` documents stop running on earlier versions.
+- Only each version's own documents run, so the rename passes.
 
 ### 9. A format someone else owns
 
@@ -237,8 +227,8 @@ A new version records a change that has already happened. A failed check means "
 
 **What JSM checks:** this family follows reader-ahead. The schema is descriptive, which changes the wording of a failure but not which documents run.
 
-- Today: no check of its own. A copied `1.0.0` sample that uses `"out-for-delivery"` fails on `1.1.0`, as long as the copy is kept. The check on later `pass` documents also runs, and raises a false alarm on the new sample, since `1.0.0` rejects it. That alarm tells you only what you already know.
-- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, later `pass` documents stop running on earlier versions, and a failure says the real format has changed rather than that you made a mistake.
+- Earlier `pass` documents run on later versions, so a captured `1.0.0` sample that uses `"out-for-delivery"` fails on `1.1.0`, and the failure says the real format has changed rather than that you made a mistake. Later `fail` documents run on earlier versions.
+- Later `pass` documents don't run on earlier versions, so the new sample raises no alarm: `1.0.0` rejecting it tells you only what you already know.
 
 ## Declaring a family's scenario
 
@@ -287,8 +277,6 @@ The other facts bear on the rule like this. A reader that picks its schema from 
 
 Of the nine, only scenario 5 has a reader that picks its schema from the document, and only scenario 9 describes a format rather than prescribing one.
 
-**Not yet built** ([#119]): JSM checks the declaration, but doesn't yet act on it.
-
 ## The rule
 
 A writer ahead of its reader needs **no loosening**: a later version accepts nothing an earlier one rejects. A reader ahead of its writer needs **no tightening**: a later version rejects nothing an earlier one accepts.
@@ -303,15 +291,18 @@ Which documents prove that depends on which versions can meet, within a major:
 | Later fail on earlier version | No tightening | No | Yes | Yes | No |
 | Own documents on own version | The version behaves as intended | Yes | Yes | Yes | Yes |
 
-**Not yet built** ([#119]): the table above doesn't decide what runs yet. Today, in every family, whatever its scenario, only two of these rows run: later pass on earlier version, and own documents on own version.
+Each pair of versions in a major is checked, not only neighbouring versions, so a `1.2.0` document runs on `1.0.0` as well as on `1.1.0`. Versions are those on disk. The same pairs run however a version is selected, and each runs once.
+
+A failure always appears under the later version of its pair, whichever version you asked for, and the exit code is non-zero if any run fails. It names the rule that broke, both versions and the document, and says what that means for the family's scenario. For a family that describes someone else's format, it says the real format has changed, not that you made a mistake. Text, JSON and JUnit reports all name them.
 
 ## The promises
 
 JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/testdata/behaviour-registry`, and a test fails if a promise has nothing proving it. They show JSM does what it says. They can't show how your schemas would fare, since [checks only sample](#checks-only-sample).
 
 - <a id="own-documents"></a>**Own documents.** A version accepts its own `pass` documents and rejects its own `fail` documents.
-- <a id="no-loosening"></a>**No loosening.** Within a major, a later version accepts nothing an earlier one rejects, as far as the documents show. Today that means later `pass` documents, and copied `fail` documents. **Not yet built** ([#119]): earlier `fail` documents run on later versions, and this applies only where a writer can be ahead.
-- <a id="no-tightening"></a>**No tightening.** Within a major, a later version rejects nothing an earlier one accepts, as far as the documents show. Today that means copied `pass` documents only. **Not yet built** ([#119]): earlier `pass` documents run on later versions, and this applies only where a reader can be ahead.
+- <a id="no-loosening"></a>**No loosening.** Where a writer can be ahead, a later version in a major accepts nothing an earlier one rejects, as far as the documents show: later `pass` documents run on earlier versions, and earlier `fail` documents on later versions.
+- <a id="no-tightening"></a>**No tightening.** Where a reader can be ahead, a later version in a major rejects nothing an earlier one accepts, as far as the documents show: earlier `pass` documents run on later versions, and later `fail` documents on earlier versions.
+- <a id="only-versions-that-meet"></a>**Only versions that can meet are held to each other.** A writer-ahead family may tighten, a reader-ahead family may loosen, and a family with neither ahead, or whose reader picks its schema from the document, runs only each version's own documents.
 - <a id="unexercised-change-warned"></a>**Unexercised changes are warned about.** `validate` warns about a change that widens what the version before accepts when no `pass` document uses it, and `--strict` makes that warning a failure.
 - <a id="no-document-crosses-a-major"></a>**No document crosses a major.** A new major may change anything, and its documents never run on another major's versions, or theirs on it.
 - <a id="deployed-versions-fixed"></a>**Deployed versions stay fixed.** Where an environment doesn't allow schema mutation, `check-changes` fails if a deployed version's schema or test documents change. A deployed version may gain a test document, or be deleted as a whole.
@@ -323,8 +314,6 @@ JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/te
 Documents sample behaviour. A check that passes shows that none of your documents exposed a break, not that no break exists.
 
 A fail document can be rejected by a later version for a different reason, which hides a loosening, so each fail document should hold one fault. Take a `1.0.0` `fail` document, `{"status": "refunded", "quantity": "two"}`, which has both a status and a quantity that `1.0.0` rejects. If `1.1.0` allows `"refunded"`, the document is still rejected, because of its quantity, and the loosening goes unseen. Split it into two documents, and the one with only the status catches it.
-
-Today this applies to copied `fail` documents, the only ones that reach a later version. **Not yet built** ([#119]): earlier `fail` documents run on later versions.
 
 ### "Either" is only as strong as its samples
 
@@ -350,7 +339,6 @@ Answer these in order, and stop at the first that fits. If an API operation brou
 
 Writer-ahead is what Confluent Schema Registry calls FORWARD_TRANSITIVE, and reader-ahead is BACKWARD_TRANSITIVE, bounded by the major, and tested by documents rather than by comparing schemas. In the same terms, either is FULL_TRANSITIVE, and neither is NONE.
 
-[#119]: https://github.com/bitshepherds/json-schema-manager/issues/119
 [#120]: https://github.com/bitshepherds/json-schema-manager/issues/120
 [#121]: https://github.com/bitshepherds/json-schema-manager/issues/121
 [#122]: https://github.com/bitshepherds/json-schema-manager/issues/122

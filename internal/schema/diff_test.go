@@ -136,25 +136,13 @@ func TestTester_UnexercisedChanges(t *testing.T) {
 		assert.Equal(t, `adds "refunded"`, uc.Change.Detail)
 	})
 
-	t.Run("found schemas, in every test scope", func(t *testing.T) {
-		t.Parallel()
-		for _, scope := range []TestScope{TestScopeLocal, TestScopeAll} {
-			tr := NewTester(setup(t))
-			tr.SetScope(scope)
-			report, err := tr.TestFoundSchemas(context.Background(), "")
-			require.NoError(t, err)
-			assert.Len(t, report.UnexercisedChanges["shop_order_1_1_0"], 1, "scope %s", scope)
-			assert.Empty(t, report.UnexercisedChanges["shop_order_1_0_0"], "1.0.0 has no earlier version")
-		}
-	})
-
-	t.Run("skipped with the compatibility check", func(t *testing.T) {
+	t.Run("found schemas", func(t *testing.T) {
 		t.Parallel()
 		tr := NewTester(setup(t))
-		tr.SetSkipCompatible(true)
-		report, err := tr.TestSingleSchema(context.Background(), "shop_order_1_1_0")
+		report, err := tr.TestFoundSchemas(context.Background(), "")
 		require.NoError(t, err)
-		assert.Empty(t, report.UnexercisedChanges)
+		assert.Len(t, report.UnexercisedChanges["shop_order_1_1_0"], 1)
+		assert.Empty(t, report.UnexercisedChanges["shop_order_1_0_0"], "1.0.0 has no earlier version")
 	})
 
 	t.Run("cleared by a pass document which uses the change", func(t *testing.T) {
@@ -209,7 +197,7 @@ func TestTester_findUnexercisedChanges_Errors(t *testing.T) {
 
 		_, err := NewTester(r).TestSingleSchema(context.Background(), "d_f_1_0_1")
 		require.Error(t, err)
-		require.Error(t, NewTester(r).testFoundSchema(context.Background(), "d_f_1_0_1"))
+		require.Error(t, NewTester(r).testVersion(context.Background(), "d_f_1_0_1"))
 	})
 }
 

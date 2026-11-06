@@ -87,12 +87,16 @@ func (jr *JUnitReporter) Write(w io.Writer, r *schema.TestReport) error {
 // suite returns the test suite for the schema with the given key.
 func (jr *JUnitReporter) suite(r *schema.TestReport, k schema.Key) junitTestSuite {
 	suite := junitTestSuite{Name: string(k) + schema.SchemaSuffix}
-	for _, spec := range r.PassedTests[k] {
-		suite.Cases = append(suite.Cases, junitTestCase{Name: spec.TestInfo.Path, ClassName: suite.Name})
+	for i := range r.PassedTests[k] {
+		suite.Cases = append(
+			suite.Cases,
+			junitTestCase{Name: junitCaseName(&r.PassedTests[k][i]), ClassName: suite.Name},
+		)
 	}
-	for _, spec := range r.FailedTests[k] {
+	for i := range r.FailedTests[k] {
+		spec := &r.FailedTests[k][i]
 		suite.Cases = append(suite.Cases, junitTestCase{
-			Name:      spec.TestInfo.Path,
+			Name:      junitCaseName(spec),
 			ClassName: suite.Name,
 			Failure:   &junitFailure{Message: spec.ResultLabel(), Text: fmt.Sprint(spec.Err)},
 		})
@@ -119,6 +123,15 @@ func (jr *JUnitReporter) suite(r *schema.TestReport, k schema.Key) junitTestSuit
 		}
 	}
 	return suite
+}
+
+// junitCaseName names a test case by its document, and for a run across versions, by the version it
+// ran on too, as one document can run on several.
+func junitCaseName(spec *schema.Spec) string {
+	if spec.AcrossVersions() {
+		return spec.TestInfo.Path + " on " + string(spec.Schema.Key())
+	}
+	return spec.TestInfo.Path
 }
 
 // schemaWarnings returns the warnings for the schema with the given key: that it has no pass or no

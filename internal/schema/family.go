@@ -68,6 +68,16 @@ type FamilyFacts struct {
 	Schema            Role
 }
 
+// EffectiveAhead returns who the rule treats as able to be ahead. A reader that picks its schema from
+// the document only ever validates a document against the document's own version, so no two versions
+// meet, whoever is ahead.
+func (f FamilyFacts) EffectiveAhead() Ahead {
+	if f.ReaderPicksSchema {
+		return AheadNeither
+	}
+	return f.Ahead
+}
+
 // ScenarioInfo describes one scenario: its name, what it is called in the docs, and the facts it implies.
 type ScenarioInfo struct {
 	Name  Scenario

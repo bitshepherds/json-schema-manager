@@ -1,0 +1,7 @@
+# 1.1.0 makes name required, and an earlier pass document has none. A writer-ahead family may
+# tighten, because every document a reader on 1.0.0 now receives is one it already allowed, so 1.0.0's
+# pass document doesn't run on 1.1.0, and 1.1.0's fail document doesn't run on 1.0.0.
+promise: only-versions-that-meet
+validate:
+  1.0.0: pass
+  1.1.0: pass

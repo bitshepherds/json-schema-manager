@@ -605,9 +605,8 @@ func TestStaleGapFails(t *testing.T) {
 
 	t.Run("a standing gap is not reported, and without its entry it fails", func(t *testing.T) {
 		t.Parallel()
-		family := findFamily(t, "tighten/new-required")
-		require.NotZero(t, family.expect.Gap)
-		runs := runValidate(t, family)
+		family := behaviourFamily{expect: familyExpectation{Gap: 119}}
+		runs := []verdictRun{{name: "differs", want: verdictFail, got: verdictPass}}
 		assert.Empty(t, verdictProblems(family, runs))
 
 		family.expect.Gap = 0
