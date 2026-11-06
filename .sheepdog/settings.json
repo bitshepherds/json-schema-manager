@@ -1,0 +1,76 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bitshepherds/sheepdog/main/schemas/settings_repo_5_0_0.schema.json",
+  "repo": "bitshepherds/json-schema-manager",
+  "install": "mise install",
+  "gate": "make lint && make release-check && make test-race-coverage && make check-models && make check-apis",
+  "commitStyle": "Conventional Commits with a mandatory scope, <type>(<scope>): <description>. Use (jsm) for features, fixes and user docs that belong in the release notes, another scope such as (cicd) otherwise, and ! after the scope for a breaking change.",
+  "prTitleGate": "grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|deps)\\(.*\\)!?: .+'",
+  "health": {
+    "command": "gotestsum --junitfile junit.xml -- -count=1 ./...",
+    "junit": "junit.xml",
+    "repeat": "gotestsum --junitfile junit.xml -- -count=3 -shuffle={seed} ./..."
+  },
+  "infraDenied": [
+    "\\bgoreleaser\\s+release\\b(?!.*--snapshot)",
+    "\\bgh\\s+release\\s+(create|edit|delete|upload)\\b",
+    "\\bgit\\s+push\\b.*(--tags|\\bv\\d+\\.\\d+\\.\\d+\\b)"
+  ],
+  "criticalPaths": [
+    ".github/workflows/**",
+    ".goreleaser.yml",
+    ".github/CODEOWNERS"
+  ],
+  "criticalPathsOff": {
+    "**/*.schema.json": "The only ones tracked here are the demo registry's samples, which nothing consumes.",
+    "JSON Schema Manager registries": "demo-registry is a sample for the docs and the API examples, not a live contract."
+  },
+  "safetyNet": [
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/*_test.*",
+    "**/test_*.py",
+    "**/test/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/*.feature",
+    ".github/workflows/**",
+    ".gitlab-ci.yml",
+    ".husky/**",
+    "lefthook.yml",
+    ".pre-commit-config.yaml",
+    ".sheepdog/settings.json",
+    ".sheepdog/review.md",
+    "**/CODEOWNERS",
+    ".github/rulesets/**",
+    "**/biome.json",
+    "**/biome.jsonc",
+    "**/.eslintrc*",
+    "**/eslint.config.*",
+    "**/.prettierrc*",
+    "**/ruff.toml",
+    "**/.golangci.yml",
+    "**/bunfig.toml",
+    "**/vitest.config.*",
+    "**/jest.config.*",
+    "**/pytest.ini",
+    "**/.mocharc*",
+    "**/coverage-baseline.json",
+    "**/testdata/**",
+    "Makefile",
+    "win-make.ps1",
+    "scripts/**",
+    ".goreleaser.yml",
+    "mise.toml"
+  ],
+  "stance": "balanced",
+  "survey": {
+    "scripts": "44136fa355b3",
+    "workspaces": "4f53cda18c2b",
+    "makeTargets": "a6e19fc2d371",
+    "ci": "966f012d03da",
+    "hooks": "2485ba485215",
+    "lockfiles": "c45706289286",
+    "commitlint": "4f53cda18c2b",
+    "toolchain": "5cec2de0a04f"
+  }
+}
