@@ -151,7 +151,7 @@ jsm create-schema-version <schema> <major|minor|patch>
 where `<schema>` is the key, file path or canonical ID of an existing version of the family. It will:
 - create any necessary folders
 - create the schema file, as a copy of the given version
-- copy the given version's `pass` and `fail` test documents
+- create its `pass` and `fail` directories, and copy test documents into them if the family needs them: see [What a version carries](#what-a-version-carries)
 
 The new version number depends on which versions currently exist within the schema family, not on the version you give.
 
@@ -189,7 +189,23 @@ E.g. Given a family 'my-schema' with the following 5 versions:
 
   `<registry root>/domain-a/my-schema/1/0/1/domain-a_my-schema_1_0_1.schema.json`
 
-Since the new version is a copy of the one you give, you will usually give the newest version in the family.
+Since the new version's schema is a copy of the one you give, you will usually give the newest version in the family.
+
+#### What a version carries
+
+A new version carries only the documents for what it changes. Earlier documents in the major already run on it, as the family's [scenario](./scenarios.md#the-rule) says, so a copy would only run the same check twice, and hide which document is there for which change.
+
+| Bump | Family with cross-version runs | Family with neither side ahead, or whose reader picks its schema |
+| --- | --- | --- |
+| Patch or minor | The schema only | The schema and the given version's documents |
+| Major | The schema and the given version's documents | The schema and the given version's documents |
+
+- **A major bump copies documents as a starting point to edit**, since no document crosses a major and some will legitimately stop holding. It copies the documents of the version you give, not its whole major, so if that version carries few, add what the new major needs: `--strict` tells you if it has no `pass` or no `fail` document.
+- **A family with no cross-version runs keeps copying**, such as [lock-step](./scenarios.md#8-lock-step) or [a family whose documents name their version](./scenarios.md#5-stored-data-each-document-names-its-version), because nothing else would test the new version.
+- **Only documents are copied**: the `.json` files directly in `pass` and `fail`. Any other file in the version's directory stays behind, and `compat-exceptions.yml` never comes along, as an exception belongs to one version.
+- **Documents already copied into a version are left alone, and still run.** You can delete them from a version which isn't deployed yet, if you want to.
+
+So for a minor version which adds an enum value, add one `pass` document which uses the value and, in a writer-ahead family, nothing else.
 
 ### Testing schemas
 
@@ -221,7 +237,11 @@ Add a `pass` document which uses the change. If the earlier version rejects it, 
 
 Every schema `jsm validate` tests is listed in its report, and one with no `pass` document, or no `fail` document, is marked `[WARN]`.
 
-With `--verbose`, the report also shows how much of each schema its `pass` documents reach, and which keywords reject each `fail` document:
+Documents count if they are in the version's own directory, or inherited from an earlier version in its major. The first version of a major, including `1.0.0`, has nothing to inherit, so it needs its own, and the copies a major bump makes are its own. A family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so each of its versions needs its own.
+
+Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions, so a version with no `pass` document of its own has nothing showing what it accepts. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
+
+With `--verbose`, the report also shows how many documents a schema inherits, how much of the schema its own `pass` documents reach, and which keywords reject each of its own `fail` documents:
 
 ```
 [PASS] shop_order_1_0_0.schema.json (pass: 3, fail: 0)
@@ -231,7 +251,7 @@ With `--verbose`, the report also shows how much of each schema its `pass` docum
   .../fail/lost.json is rejected by #/properties/status/enum
 ```
 
-The points are the properties a schema declares, its enum values, the types of a `type` list, its `anyOf` and `oneOf` subschemas, and the two paths through each `if`. The JSON report (`--output json`) always includes this, under each schema's `summary`.
+The points are the properties a schema declares, its enum values, the types of a `type` list, its `anyOf` and `oneOf` subschemas, and the two paths through each `if`. The JSON report (`--output json`) always includes this, under each schema's `summary`, with `inheritedPassDocuments` and `inheritedFailDocuments`.
 
 The warnings, for unexercised changes and for missing documents, do not change the exit code unless you add `--strict`, which makes `jsm validate` exit `1` on any warning.
 

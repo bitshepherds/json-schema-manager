@@ -184,7 +184,7 @@ func (w *Watcher) mapToWatchEvent(path string) *WatchEvent {
 		}
 	}
 
-	if filepath.Ext(path) == ".json" && !strings.HasSuffix(path, SchemaSuffix) {
+	if filepath.Ext(path) == TestDocSuffix && !strings.HasSuffix(path, SchemaSuffix) {
 		return w.mapTestDocToWatchEvent(path)
 	}
 

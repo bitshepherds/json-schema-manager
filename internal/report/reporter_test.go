@@ -370,3 +370,29 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 	w.n -= len(p)
 	return len(p), nil
 }
+
+func TestSummaryCountsInheritedDocumentsInReports(t *testing.T) {
+	t.Parallel()
+	r := schema.NewTestReport()
+	r.AddSummary("d_inherits_1_1_0", &schema.Summary{InheritedPassDocs: 2, InheritedFailDocs: 1})
+	r.AddSummary("d_half_1_1_0", &schema.Summary{InheritedPassDocs: 2})
+	r.AddSummary("d_owns_1_0_0", &schema.Summary{PassDocs: 1, FailDocs: 1})
+
+	var buf bytes.Buffer
+	require.NoError(t, (&TextReporter{Verbose: true}).Write(&buf, r))
+	out := buf.String()
+	assert.Contains(t, out, "[PASS] d_inherits_1_1_0.schema.json (pass: 0, fail: 0)\n"+
+		"  inherited: 2 pass and 1 fail documents from earlier versions in its major\n")
+	assert.Contains(t, out, "[WARN] d_half_1_1_0.schema.json (pass: 0, fail: 0)\n  ! no fail documents\n")
+	assert.NotContains(t, out, "[PASS] d_owns_1_0_0.schema.json (pass: 0, fail: 0)\n  inherited")
+
+	buf.Reset()
+	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+	assert.Contains(t, buf.String(), `"inheritedPassDocuments": 2`)
+	assert.Contains(t, buf.String(), `"totalMissingDocuments": 1`)
+
+	buf.Reset()
+	require.NoError(t, (&JUnitReporter{Strict: true}).Write(&buf, r))
+	assert.NotContains(t, buf.String(), "no pass documents")
+	assert.Contains(t, buf.String(), "no fail documents")
+}

@@ -8,8 +8,22 @@ Create the next major, minor, or patch version of the given schema family
 Create the next major, minor, or patch version of the given schema family.
 The new version is numbered after the highest existing version: for example, if 1.0.0,
 1.1.0 and 2.0.0 exist, a minor version of 1.0.0 is 1.2.0, and a major version of any of
-them is 3.0.0. The new version starts as a copy of the target, with its pass/ and fail/
-test documents, so the target is usually the newest version in the family.
+them is 3.0.0. The new version starts as a copy of the target's schema, so the target is
+usually the newest version in the family.
+
+What else it carries depends on the bump and on the family's declaration:
+
+- A patch or minor bump copies the schema only. Earlier documents in the major run on the
+  new version as the family's scenario says, and copies would run the same checks twice, so
+  add only the documents for what this version changes.
+- A major bump also copies the target's pass/ and fail/ documents, as a starting point to
+  edit, since some of them may legitimately stop holding.
+- A family with no pairs of versions to run, whose scenario has neither side ahead or whose
+  reader picks its schema from the document, copies the documents on every bump, because
+  nothing else would test the new version.
+
+Other files in the target's directory, such as compat-exceptions.yml, belong to that version
+and are never copied.
 
 
 ```

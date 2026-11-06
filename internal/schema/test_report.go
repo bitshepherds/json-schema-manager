@@ -49,15 +49,29 @@ type TestReport struct {
 
 // Summary describes how well a schema's test documents cover it.
 type Summary struct {
-	PassDocs     int
-	FailDocs     int
-	Coverage     []coverage.Point    // the points in the schema, and whether its pass documents reach each
-	FailKeywords map[string][]string // for each fail document's path, the keywords which reject it
+	PassDocs int
+	FailDocs int
+	// InheritedPassDocs and InheritedFailDocs count the documents of earlier versions in the major, if
+	// the family inherits documents. Which of them run on this schema is for the family's rule to say.
+	InheritedPassDocs int
+	InheritedFailDocs int
+	Coverage          []coverage.Point    // the points in the schema, and whether its pass documents reach each
+	FailKeywords      map[string][]string // for each fail document's path, the keywords which reject it
 }
 
-// MissingDocuments reports whether the schema has no pass document, or no fail document.
+// MissingPassDocuments reports whether the schema has no pass document, of its own or inherited.
+func (s *Summary) MissingPassDocuments() bool {
+	return s.PassDocs+s.InheritedPassDocs == 0
+}
+
+// MissingFailDocuments reports whether the schema has no fail document, of its own or inherited.
+func (s *Summary) MissingFailDocuments() bool {
+	return s.FailDocs+s.InheritedFailDocs == 0
+}
+
+// MissingDocuments reports whether the schema has no pass document, or no fail document, of its own or inherited.
 func (s *Summary) MissingDocuments() bool {
-	return s.PassDocs == 0 || s.FailDocs == 0
+	return s.MissingPassDocuments() || s.MissingFailDocuments()
 }
 
 // Covered returns how many of the schema's coverage points its pass documents reach.

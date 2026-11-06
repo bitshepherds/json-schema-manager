@@ -67,7 +67,7 @@ func TestNewCreateSchemaVersionCmd(t *testing.T) {
 				_ = os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600)
 			},
 			wantOutput: "Successfully created new schema with key: domain_family_2_0_0\n\n" +
-				"The schema and its test documents can be found here:",
+				"The schema, and the pass and fail directories for its test documents, can be found here:",
 		},
 		{
 			name:        "Invalid release type",

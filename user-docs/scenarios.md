@@ -32,13 +32,12 @@ This page describes the common ways schemas are used, what can go wrong in each,
 
 - Every family [declares its scenario](#declaring-a-familys-scenario), and the declaration decides which documents run across versions, within a major, as [the rule](#the-rule) says. `validate` and `build-dist` run the same rule, and `validate --watch` runs it for what changed. Patch and minor are treated alike, and no document crosses a major.
 - The same pairs of versions run however a version is selected: by key, by search scope or with `all`. Validating an earlier version runs its pairs with later versions too, so it can't miss a later breakage. A failure appears under the later version, since that's what changed.
-- `create-schema-version` still copies a version's whole directory on every bump, so the copies also run as the new version's own documents.
+- A new version carries only the documents for what it changes, so documents aren't copied on a patch or minor bump, except in a family with no pairs of versions to run. `--strict` counts inherited documents. See [What a version carries](./developing-schemas.md#what-a-version-carries).
 - `validate` warns about a change that widens what the version before accepts, or that it cannot judge, when none of the version's `pass` documents uses the change, whichever scenario the family serves. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
 - `check-consumer` doesn't follow the declaration yet: it runs later `pass` documents on the version a consumer pins, in every family, so it can fail a change that is harmless in that family's scenario.
 
 **Not yet built**, besides what each scenario below lists:
 
-- A new version carries only the documents for what it changes, so the copies stop ([#120]).
 - A family declares a deliberate exception to a check, with a reason ([#121]).
 - The warnings about unexercised changes follow the family's scenario ([#122]).
 - `check-consumer` follows the family's scenario ([#123]).
@@ -303,6 +302,7 @@ JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/te
 - <a id="no-loosening"></a>**No loosening.** Where a writer can be ahead, a later version in a major accepts nothing an earlier one rejects, as far as the documents show: later `pass` documents run on earlier versions, and earlier `fail` documents on later versions.
 - <a id="no-tightening"></a>**No tightening.** Where a reader can be ahead, a later version in a major rejects nothing an earlier one accepts, as far as the documents show: earlier `pass` documents run on later versions, and later `fail` documents on earlier versions.
 - <a id="only-versions-that-meet"></a>**Only versions that can meet are held to each other.** A writer-ahead family may tighten, a reader-ahead family may loosen, and a family with neither ahead, or whose reader picks its schema from the document, runs only each version's own documents.
+- <a id="version-inherits-documents"></a>**A version inherits documents, where its family runs them across versions.** `--strict` asks each version to have a `pass` and a `fail` document, in its own directory or an earlier version's in its major. The first version of a major has nothing to inherit, and a family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so its versions each need their own.
 - <a id="unexercised-change-warned"></a>**Unexercised changes are warned about.** `validate` warns about a change that widens what the version before accepts when no `pass` document uses it, and `--strict` makes that warning a failure.
 - <a id="no-document-crosses-a-major"></a>**No document crosses a major.** A new major may change anything, and its documents never run on another major's versions, or theirs on it.
 - <a id="deployed-versions-fixed"></a>**Deployed versions stay fixed.** Where an environment doesn't allow schema mutation, `check-changes` fails if a deployed version's schema or test documents change. A deployed version may gain a test document, or be deleted as a whole.
@@ -339,7 +339,6 @@ Answer these in order, and stop at the first that fits. If an API operation brou
 
 Writer-ahead is what Confluent Schema Registry calls FORWARD_TRANSITIVE, and reader-ahead is BACKWARD_TRANSITIVE, bounded by the major, and tested by documents rather than by comparing schemas. In the same terms, either is FULL_TRANSITIVE, and neither is NONE.
 
-[#120]: https://github.com/bitshepherds/json-schema-manager/issues/120
 [#121]: https://github.com/bitshepherds/json-schema-manager/issues/121
 [#122]: https://github.com/bitshepherds/json-schema-manager/issues/122
 [#123]: https://github.com/bitshepherds/json-schema-manager/issues/123

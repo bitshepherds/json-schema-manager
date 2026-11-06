@@ -50,13 +50,15 @@ type jsonSchemaResults struct {
 
 // jsonSummary describes how well a schema's test documents cover it.
 type jsonSummary struct {
-	PassDocuments    int                 `json:"passDocuments"`
-	FailDocuments    int                 `json:"failDocuments"`
-	MissingDocuments bool                `json:"missingDocuments"` // no pass document, or no fail document
-	Covered          int                 `json:"covered"`
-	Total            int                 `json:"total"`
-	Points           []coverage.Point    `json:"points"`
-	FailKeywords     map[string][]string `json:"failKeywords"` // fail document path: the keywords which reject it
+	PassDocuments          int                 `json:"passDocuments"`
+	FailDocuments          int                 `json:"failDocuments"`
+	InheritedPassDocuments int                 `json:"inheritedPassDocuments"`
+	InheritedFailDocuments int                 `json:"inheritedFailDocuments"`
+	MissingDocuments       bool                `json:"missingDocuments"` // no pass or no fail document, own or inherited
+	Covered                int                 `json:"covered"`
+	Total                  int                 `json:"total"`
+	Points                 []coverage.Point    `json:"points"`
+	FailKeywords           map[string][]string `json:"failKeywords"` // fail document path: the keywords which reject it
 }
 
 func newJSONSummary(s *schema.Summary) *jsonSummary {
@@ -65,13 +67,15 @@ func newJSONSummary(s *schema.Summary) *jsonSummary {
 		points = []coverage.Point{}
 	}
 	return &jsonSummary{
-		PassDocuments:    s.PassDocs,
-		FailDocuments:    s.FailDocs,
-		MissingDocuments: s.MissingDocuments(),
-		Covered:          s.Covered(),
-		Total:            len(s.Coverage),
-		Points:           points,
-		FailKeywords:     s.FailKeywords,
+		PassDocuments:          s.PassDocs,
+		FailDocuments:          s.FailDocs,
+		InheritedPassDocuments: s.InheritedPassDocs,
+		InheritedFailDocuments: s.InheritedFailDocs,
+		MissingDocuments:       s.MissingDocuments(),
+		Covered:                s.Covered(),
+		Total:                  len(s.Coverage),
+		Points:                 points,
+		FailKeywords:           s.FailKeywords,
 	}
 }
 

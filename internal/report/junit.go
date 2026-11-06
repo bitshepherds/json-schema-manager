@@ -139,10 +139,10 @@ func junitCaseName(spec *schema.Spec) string {
 func schemaWarnings(r *schema.TestReport, k schema.Key) []string {
 	var warnings []string
 	if s := r.Summaries[k]; s != nil {
-		if s.PassDocs == 0 {
+		if s.MissingPassDocuments() {
 			warnings = append(warnings, "no pass documents")
 		}
-		if s.FailDocs == 0 {
+		if s.MissingFailDocuments() {
 			warnings = append(warnings, "no fail documents")
 		}
 	}

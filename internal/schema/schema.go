@@ -3,7 +3,6 @@ package schema
 import (
 	"encoding/json"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -73,6 +72,9 @@ const (
 
 // SchemaSuffix is the suffix for schema files.
 const SchemaSuffix = ".schema.json"
+
+// TestDocSuffix is the suffix for test documents.
+const TestDocSuffix = ".json"
 
 // NewSchemaContent returns initial content for a new schema file.
 func NewSchemaContent(draft validator.Draft) string {
@@ -304,30 +306,66 @@ func (s *Schema) WriteNewSchemaFiles() error {
 	return nil
 }
 
-// DuplicateSchemaFiles duplicates the schema files of another schema into this schema,
-// including the schema file, and the pass and fail test files.
-// It renames the duplicated schema to match the properties of this schema.
-func (s *Schema) DuplicateSchemaFiles(other *Schema) error {
-	ohd := other.Path(HomeDir)
+// CopySchemaFile makes this schema's directory, with empty pass and fail directories, and copies the
+// schema file of another version into it, under this schema's name. Nothing else comes with it.
+func (s *Schema) CopySchemaFile(other *Schema) error {
 	hd := s.Path(HomeDir)
+	for _, tt := range []TestDocType{TestDocTypePass, TestDocTypeFail} {
+		if err := os.MkdirAll(filepath.Join(hd, string(tt)), 0o750); err != nil {
+			return err
+		}
+	}
 
-	// Create the missing parent folders
-	if err := os.MkdirAll(hd, 0o750); err != nil {
+	content, err := os.ReadFile(other.Path(FilePath))
+	if err != nil {
+		return err
+	}
+	//nolint:gosec // the path is built from the schema's key, which the registry has already resolved
+	return os.WriteFile(s.Path(FilePath), content, 0o600)
+}
+
+// DuplicateSchemaFiles copies another version's schema file into this schema, as CopySchemaFile does,
+// and its pass and fail test documents. Other files in that version's directory belong to that
+// version, such as its exceptions, so they stay behind.
+func (s *Schema) DuplicateSchemaFiles(other *Schema) error {
+	if err := s.CopySchemaFile(other); err != nil {
+		return err
+	}
+	for _, tt := range []TestDocType{TestDocTypePass, TestDocTypeFail} {
+		if err := s.copyTestDocuments(other, tt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyTestDocuments copies the test documents of the given type from another version into this
+// schema. Like TestDocuments, it takes the .json files directly in the directory, and no others.
+func (s *Schema) copyTestDocuments(other *Schema, tt TestDocType) error {
+	from := filepath.Join(other.Path(HomeDir), string(tt))
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return err
 	}
 
-	// Copy the home directory of the other schema to the home directory of this schema:
-	if err := os.CopyFS(hd, os.DirFS(ohd)); err != nil {
-		return err
+	to := filepath.Join(s.Path(HomeDir), string(tt))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != TestDocSuffix {
+			continue
+		}
+		// The paths are in the registry, named by an entry in its own directory
+		content, rErr := os.ReadFile(filepath.Join(from, entry.Name())) //nolint:gosec // see above
+		if rErr != nil {
+			return rErr
+		}
+		wErr := os.WriteFile(filepath.Join(to, entry.Name()), content, 0o600) //nolint:gosec // see above
+		if wErr != nil {
+			return wErr
+		}
 	}
-
-	// Rename the copied schema file. It initially has the name of the other schema file so
-	// we need to rename it to be as expected in this schema.
-	copiedFile := path.Join(hd, other.Filename())
-	if err := os.Rename(copiedFile, s.Path(FilePath)); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -411,7 +449,7 @@ func (s *Schema) TestDocuments(tt TestDocType) ([]TestInfo, error) {
 		if entry.IsDir() {
 			continue
 		}
-		if filepath.Ext(entry.Name()) == ".json" {
+		if filepath.Ext(entry.Name()) == TestDocSuffix {
 			fp := filepath.Join(docDir, entry.Name())
 			ti, tErr := NewTestInfo(fp)
 			if tErr != nil {

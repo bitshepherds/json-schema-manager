@@ -511,6 +511,7 @@ func TestCreateNewSchemaVersion(t *testing.T) {
 				if err := os.WriteFile(filePath, []byte(validSchemaContent), 0o600); err != nil {
 					t.Fatal(err)
 				}
+				declareFamily(t, s)
 				return filePath
 			},
 			wantVersion: [3]uint64{2, 0, 0},
@@ -529,6 +530,7 @@ func TestCreateNewSchemaVersion(t *testing.T) {
 				if err := os.WriteFile(filePath, []byte(validSchemaContent), 0o600); err != nil {
 					t.Fatal(err)
 				}
+				declareFamily(t, s)
 				return filePath
 			},
 			wantVersion: [3]uint64{1, 1, 0},
@@ -547,6 +549,7 @@ func TestCreateNewSchemaVersion(t *testing.T) {
 				if err := os.WriteFile(filePath, []byte(validSchemaContent), 0o600); err != nil {
 					t.Fatal(err)
 				}
+				declareFamily(t, s)
 				return filePath
 			},
 			wantVersion: [3]uint64{1, 0, 1},
@@ -625,6 +628,7 @@ func TestCreateSchemaVersion(t *testing.T) {
 				homeDir := s.Path(HomeDir)
 				require.NoError(t, os.MkdirAll(homeDir, 0o755))
 				require.NoError(t, os.WriteFile(s.Path(FilePath), []byte(validSchemaContent), 0o600))
+				declareFamily(t, s)
 			},
 			wantVersion: [3]uint64{1, 1, 0},
 		},
@@ -644,6 +648,7 @@ func TestCreateSchemaVersion(t *testing.T) {
 				homeDir := s.Path(HomeDir)
 				require.NoError(t, os.MkdirAll(homeDir, 0o755))
 				require.NoError(t, os.WriteFile(s.Path(FilePath), []byte("{}"), 0o600))
+				declareFamily(t, s)
 
 				// Make the family directory read-only so subdirectories cannot be created.
 				familyDir := s.Path(FamilyDir)
@@ -678,6 +683,18 @@ func TestCreateSchemaVersion(t *testing.T) {
 			assert.Contains(t, r.cache, newSchema.Key())
 		})
 	}
+}
+
+func TestCreateSchemaVersionNeedsAValidDeclaration(t *testing.T) {
+	t.Parallel()
+	r := setupTestRegistry(t)
+	s := New(Key("domain_family_1_0_0"), r)
+	require.NoError(t, os.MkdirAll(s.Path(HomeDir), 0o755))
+	require.NoError(t, os.WriteFile(s.Path(FilePath), []byte("{}"), 0o600))
+
+	_, err := r.CreateSchemaVersion(s.Key(), ReleaseTypeMinor)
+	require.ErrorContains(t, err, "does not declare how it is used")
+	assert.NoDirExists(t, New(Key("domain_family_1_1_0"), r).Path(HomeDir), "nothing is created")
 }
 
 // Tests for os.Stat edge cases to achieve 100% coverage.
@@ -767,6 +784,7 @@ func TestCreateNewSchemaVersion_DuplicateSchemaFilesErr(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(sourceHomeDir, "fail"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	declareFamily(t, sourceSchema)
 
 	// After BumpVersion with ReleaseTypeMajor, the new version will be 2_0_0
 	// (since only 1_0_0 exists in dir .../domain/family/1/, nextVersion finds [1] and returns 2).

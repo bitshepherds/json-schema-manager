@@ -235,9 +235,10 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 
 	t.Run("the versions can't be listed", func(t *testing.T) {
 		t.Parallel()
-		// Listing the earlier versions asks for the major's minors, and each minor's patches. So failing
-		// on the call after that fails listing the later versions.
-		for _, succeeding := range []int{0, 3} {
+		// Listing the earlier versions asks for the major's minors, and each minor's patches. It happens
+		// to count inherited documents, then again for the pairs, so failing on each call after that
+		// fails the next listing: the earlier versions for the pairs, then the later versions.
+		for _, succeeding := range []int{0, 3, 6} {
 			r := ruleRegistry(t, "scenario: provider-first\n")
 			_, err := r.GetSchemaByKey(ruleEarlier)
 			require.NoError(t, err)
@@ -524,4 +525,49 @@ func TestWatcherMapsADeclarationToItsFamily(t *testing.T) {
 	assert.Equal(t, &WatchEvent{Family: "a/b"}, w.mapToWatchEvent(filepath.Join(root, "a", "b", FamilyDeclarationFile)))
 	assert.Nil(t, w.mapToWatchEvent(filepath.Join(root, FamilyDeclarationFile)), "the root is no family")
 	assert.Nil(t, w.mapToWatchEvent(filepath.Join(filepath.Dir(root), FamilyDeclarationFile)), "outside the registry")
+}
+
+func TestSummaryCountsInheritedDocuments(t *testing.T) {
+	t.Parallel()
+
+	t.Run("an earlier version's documents count, and its own stay apart", func(t *testing.T) {
+		t.Parallel()
+		r := ruleRegistry(t, "scenario: provider-first\n")
+		report, err := NewTester(r).TestSingleSchema(context.Background(), ruleLater)
+		require.NoError(t, err)
+		summary := report.Summaries[ruleLater]
+		require.NotNil(t, summary)
+		assert.Equal(t, 1, summary.PassDocs)
+		assert.Equal(t, 1, summary.FailDocs)
+		assert.Equal(t, 1, summary.InheritedPassDocs)
+		assert.Equal(t, 1, summary.InheritedFailDocs)
+		assert.False(t, summary.MissingDocuments())
+	})
+
+	t.Run("nothing is inherited in a family with neither side ahead", func(t *testing.T) {
+		t.Parallel()
+		r := ruleRegistry(t, "scenario: lock-step\n")
+		report, err := NewTester(r).TestSingleSchema(context.Background(), ruleLater)
+		require.NoError(t, err)
+		summary := report.Summaries[ruleLater]
+		require.NotNil(t, summary)
+		assert.Equal(t, 0, summary.InheritedPassDocs)
+		assert.Equal(t, 0, summary.InheritedFailDocs)
+	})
+
+	t.Run("an earlier document which can't be read stops the run", func(t *testing.T) {
+		t.Parallel()
+		r := ruleRegistry(t, "scenario: provider-first\n")
+		createTestDocs(t, r, ruleEarlier, TestDocTypePass, map[string]string{"bad.json": `{`})
+		_, err := NewTester(r).TestSingleSchema(context.Background(), ruleLater)
+		require.Error(t, err)
+	})
+
+	t.Run("an earlier version which can't be loaded stops the run", func(t *testing.T) {
+		t.Parallel()
+		r := ruleRegistry(t, "scenario: provider-first\n")
+		require.NoError(t, os.Remove(New(ruleEarlier, r).Path(FilePath)))
+		_, err := NewTester(r).TestSingleSchema(context.Background(), ruleLater)
+		require.Error(t, err)
+	})
 }

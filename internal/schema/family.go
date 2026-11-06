@@ -78,6 +78,14 @@ func (f FamilyFacts) EffectiveAhead() Ahead {
 	return f.Ahead
 }
 
+// InheritsDocuments reports whether a version counts the documents of earlier versions in its major as
+// well as its own, because the family's rule runs earlier documents across versions. Every family but
+// one with neither side ahead does: writer-ahead runs earlier fail documents on later versions,
+// reader-ahead runs earlier pass documents, and either runs both.
+func (f FamilyFacts) InheritsDocuments() bool {
+	return f.EffectiveAhead() != AheadNeither
+}
+
 // ScenarioInfo describes one scenario: its name, what it is called in the docs, and the facts it implies.
 type ScenarioInfo struct {
 	Name  Scenario

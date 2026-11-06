@@ -239,10 +239,44 @@ func (t *Tester) findUnexercisedChanges(k Key) error {
 	return nil
 }
 
+// inheritedDocuments counts the documents s inherits from the earlier versions in its major.
+func (t *Tester) inheritedDocuments(s *Schema, decl *FamilyDeclaration) (pass, fail int, err error) {
+	if !decl.Facts.InheritsDocuments() {
+		return 0, 0, nil
+	}
+	earlierKeys, err := s.MajorFamilyEarlierSchemas()
+	if err != nil {
+		return 0, 0, err
+	}
+	earlier, err := t.schemas(earlierKeys)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, e := range earlier {
+		docs, dErr := ownSpecs(e)
+		if dErr != nil {
+			return 0, 0, dErr
+		}
+		for i := range docs {
+			if docs[i].TestDocType == TestDocTypePass {
+				pass++
+			} else {
+				fail++
+			}
+		}
+	}
+	return pass, fail, nil
+}
+
 // summarise adds to the report how well the schema's own test documents, in specs, cover it: how
 // many there are, which points in the schema the pass documents reach, and which keywords reject
-// each fail document.
-func (t *Tester) summarise(s *Schema, ri RenderInfo, specs []Spec) {
+// each fail document. It also counts the documents the schema inherits.
+func (t *Tester) summarise(s *Schema, decl *FamilyDeclaration, ri RenderInfo, specs []Spec) error {
+	inheritedPass, inheritedFail, err := t.inheritedDocuments(s, decl)
+	if err != nil {
+		return err
+	}
+
 	var passDocs, failDocs []TestInfo
 	for i := range specs {
 		if specs[i].TestDocType == TestDocTypePass {
@@ -266,10 +300,12 @@ func (t *Tester) summarise(s *Schema, ri RenderInfo, specs []Spec) {
 	}
 
 	summary := &Summary{
-		PassDocs:     len(passDocs),
-		FailDocs:     len(failDocs),
-		Coverage:     coverage.Measure(ri.Unmarshalled, docs, validates),
-		FailKeywords: make(map[string][]string),
+		PassDocs:          len(passDocs),
+		FailDocs:          len(failDocs),
+		InheritedPassDocs: inheritedPass,
+		InheritedFailDocs: inheritedFail,
+		Coverage:          coverage.Measure(ri.Unmarshalled, docs, validates),
+		FailKeywords:      make(map[string][]string),
 	}
 	for _, doc := range failDocs {
 		if keywords := validator.FailedKeywords(ri.Validator.Validate(doc.Unmarshalled), id); keywords != nil {
@@ -277,6 +313,7 @@ func (t *Tester) summarise(s *Schema, ri RenderInfo, specs []Spec) {
 		}
 	}
 	t.report.AddSummary(s.Key(), summary)
+	return nil
 }
 
 // testVersion runs a schema's own documents and the pairs it is part of, then looks for its
@@ -304,7 +341,9 @@ func (t *Tester) testVersion(ctx context.Context, k Key) error {
 	if err != nil {
 		return err
 	}
-	t.summarise(s, ri, own)
+	if sErr := t.summarise(s, decl, ri, own); sErr != nil {
+		return sErr
+	}
 
 	cross, err := t.pairSpecs(s, decl)
 	if err != nil {
@@ -404,25 +443,24 @@ func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
 		return nil, err
 	}
 
-	var specs []Spec
-	addPair := func(e, l *Schema) error {
-		if !t.claimPair(versionPair{e.Key(), l.Key()}) {
-			return nil
-		}
-		pair, pErr := pairRuns(e, l, decl)
-		specs = append(specs, pair...)
-		return pErr
-	}
-
+	pairs := make([][2]*Schema, 0, len(earlier)+len(later))
 	for _, e := range earlier {
-		if pErr := addPair(e, s); pErr != nil {
-			return nil, pErr
-		}
+		pairs = append(pairs, [2]*Schema{e, s})
 	}
 	for _, l := range later {
-		if pErr := addPair(s, l); pErr != nil {
+		pairs = append(pairs, [2]*Schema{s, l})
+	}
+
+	var specs []Spec
+	for _, p := range pairs {
+		if !t.claimPair(versionPair{p[0].Key(), p[1].Key()}) {
+			continue
+		}
+		runs, pErr := pairRuns(p[0], p[1], decl)
+		if pErr != nil {
 			return nil, pErr
 		}
+		specs = append(specs, runs...)
 	}
 	return specs, nil
 }

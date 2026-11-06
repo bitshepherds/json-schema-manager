@@ -110,6 +110,15 @@ func createSchemaFiles(t *testing.T, r *Registry, schemas schemaMap) {
 	}
 }
 
+// declareFamily gives the schema's family a declaration.
+func declareFamily(t *testing.T, s *Schema) {
+	t.Helper()
+	declaration := filepath.Join(s.Path(FamilyDir), FamilyDeclarationFile)
+	if err := os.WriteFile(declaration, []byte("scenario: provider-first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // mockPathResolver is a test implementation of fsh.PathResolver.
 type mockPathResolver struct {
 	canonicalPathFn       func(path string) (string, error)

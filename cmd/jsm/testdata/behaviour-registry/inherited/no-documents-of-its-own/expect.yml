@@ -1,0 +1,8 @@
+# 1.1.0 carries only its schema, and counts 1.0.0's documents, so --strict has nothing to warn about.
+promise: version-inherits-documents
+validate:
+  1.0.0: pass
+  1.1.0: pass
+validateStrict:
+  1.0.0: pass
+  1.1.0: pass

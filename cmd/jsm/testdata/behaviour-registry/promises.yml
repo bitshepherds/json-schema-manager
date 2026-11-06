@@ -5,6 +5,7 @@ promises:
   - only-versions-that-meet
   - no-loosening
   - no-tightening
+  - version-inherits-documents
   - unexercised-change-warned
   - no-document-crosses-a-major
   - deployed-versions-fixed

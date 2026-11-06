@@ -1,0 +1,9 @@
+# 2.0.0 is the first version of its major, so it has nothing to inherit: 1.0.0's documents don't cross
+# a major, and --strict wants its own.
+promise: version-inherits-documents
+validate:
+  1.0.0: pass
+  2.0.0: pass
+validateStrict:
+  1.0.0: pass
+  2.0.0: fail

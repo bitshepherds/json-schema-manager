@@ -149,17 +149,17 @@ func reportKeys(r *schema.TestReport) []schema.Key {
 	return slices.Sorted(maps.Keys(keysMap))
 }
 
-// writeSummary writes a warning if the schema has no pass or no fail documents and, when verbose,
-// how well its documents cover it.
+// writeSummary writes a warning if the schema has no pass or no fail documents, of its own or
+// inherited, and, when verbose, what it inherits and how well its own documents cover it.
 func (tr *TextReporter) writeSummary(w io.Writer, s *schema.Summary) {
 	if s == nil {
 		return
 	}
 	var missing []string
-	if s.PassDocs == 0 {
+	if s.MissingPassDocuments() {
 		missing = append(missing, "pass")
 	}
-	if s.FailDocs == 0 {
+	if s.MissingFailDocuments() {
 		missing = append(missing, "fail")
 	}
 	if len(missing) > 0 {
@@ -169,6 +169,10 @@ func (tr *TextReporter) writeSummary(w io.Writer, s *schema.Summary) {
 		return
 	}
 
+	if s.InheritedPassDocs+s.InheritedFailDocs > 0 {
+		_, _ = fmt.Fprintf(w, "  %s %d pass and %d fail documents from earlier versions in its major\n",
+			tr.cs(colGrey, "inherited:"), s.InheritedPassDocs, s.InheritedFailDocs)
+	}
 	_, _ = fmt.Fprintf(w, "  %s %d of %d points reached by pass documents\n",
 		tr.cs(colGrey, "coverage:"), s.Covered(), len(s.Coverage))
 	for _, p := range s.Coverage {

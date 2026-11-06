@@ -1,5 +1,6 @@
 # 1.1.0 carries a copy of 1.0.0's fail document and now accepts it, so both the copy and the original
-# show the loosening.
+# show the loosening. create-schema-version no longer makes such copies on a minor bump, but one
+# already there is left alone, and still runs.
 promise: no-loosening
 validate:
   1.0.0: fail
