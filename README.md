@@ -22,7 +22,8 @@ go install github.com/bitshepherds/json-schema-manager/cmd/jsm@latest
 
 jsm create-registry ./my-registry                  # a registry, ideally the root of a git repo
 export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
-jsm create-schema "customer/b2c-customer"          # version 1.0.0, with pass/ and fail/ test directories
+jsm create-schema "customer/b2c-customer" --scenario provider-first   # version 1.0.0, with pass/ and fail/ test directories
+                                                  # and family.yml, which says how the family is used
 jsm validate all                                   # test every schema, and that no version breaks an earlier one
 jsm create-schema-version customer_b2c-customer_1_0_0 minor
 ```

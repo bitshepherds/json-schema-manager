@@ -10,6 +10,7 @@ cp config.yml registry/json-schema-manager-config.yml
 # Create initial schema
 mkdir registry/domain/family/1/0/0
 cp schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/family/family.yml
 exec git add .
 exec git commit -m "first"
 exec git tag jsm-deploy/production/v1
@@ -21,6 +22,7 @@ stdout 'All changes are valid'
 
 # Modify the schema and check again (should fail on mutation)
 cp modified.schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/family/family.yml
 exec git add .
 exec git commit -m "mutation"
 
@@ -37,6 +39,7 @@ exec git config user.name test
 mkdir registry/domain/family/1/0/0/pass registry/domain/family/1/0/0/fail
 cp $WORK/config.yml registry/json-schema-manager-config.yml
 cp $WORK/schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/family/family.yml
 cp $WORK/doc.json registry/domain/family/1/0/0/pass/a.json
 cp $WORK/doc.json registry/domain/family/1/0/0/fail/b.json
 exec git add .
@@ -109,3 +112,5 @@ environments:
 {}
 -- modified.schema.json --
 {"type": "object"}
+-- family-decl.yml --
+scenario: provider-first

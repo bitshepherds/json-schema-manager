@@ -138,6 +138,13 @@ func setupTestRegistry(t *testing.T) *schema.Registry {
 	return r
 }
 
+// declareFamily gives the schema's family a declaration, which the commands that read it require.
+func declareFamily(t *testing.T, s *schema.Schema) {
+	t.Helper()
+	path := filepath.Join(s.Path(schema.FamilyDir), schema.FamilyDeclarationFile)
+	require.NoError(t, os.WriteFile(path, []byte("scenario: provider-first\n"), 0o600))
+}
+
 func TestCLIManager_ValidateSchema(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -149,6 +156,7 @@ func TestCLIManager_ValidateSchema(t *testing.T) {
 	homeDir := s.Path(schema.HomeDir)
 	require.NoError(t, os.MkdirAll(homeDir, 0o755))
 	require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+	declareFamily(t, s)
 	// Ensure pass/fail dirs exist
 	require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "pass"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "fail"), 0o755))
@@ -232,6 +240,7 @@ environments:
 		tHomeDir := s2.Path(schema.HomeDir)
 		require.NoError(t, os.MkdirAll(tHomeDir, 0o755))
 		require.NoError(t, os.WriteFile(s2.Path(schema.FilePath), []byte(`{}`), 0o600))
+		declareFamily(t, s2)
 
 		var out bytes.Buffer
 		mgr2 := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, nil, &out)
@@ -253,6 +262,7 @@ environments:
 		require.NoError(t, os.MkdirAll(filepath.Join(fHomeDir, "pass"), 0o755))
 		require.NoError(t, os.MkdirAll(filepath.Join(fHomeDir, "fail"), 0o755))
 		require.NoError(t, os.WriteFile(fs.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+		declareFamily(t, fs)
 		// The mock validator accepts every document, so this fail test fails
 		require.NoError(t, os.WriteFile(filepath.Join(fHomeDir, "fail", "accepted.json"), []byte(`{}`), 0o600))
 
@@ -288,6 +298,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		s := schema.New(key, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+		declareFamily(t, s)
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "pass"), 0o755))
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "fail"), 0o755))
 		return registry, key, s
@@ -345,6 +356,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		<-readyChan
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath),
 			[]byte(`{"type": "object", "description": "updated"}`), 0o600))
+		declareFamily(t, s)
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
@@ -396,6 +408,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		// Trigger an event to exercise the JSON reporter branch
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath),
 			[]byte(`{"type": "object", "title": "updated"}`), 0o600))
+		declareFamily(t, s)
 
 		// Wait for output to be written (more reliable than fixed sleep)
 		require.True(t, buf.waitForOutput(5*time.Second), "expected output to be written")
@@ -424,6 +437,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 		<-readyChan
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{ invalid }`), 0o600))
+		declareFamily(t, s)
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
@@ -487,6 +501,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		s := schema.New(key, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+		declareFamily(t, s)
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "pass"), 0o755))
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "fail"), 0o755))
 
@@ -509,10 +524,12 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 
 		// First update - should pass
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object", "title": "v1"}`), 0o600))
+		declareFamily(t, s)
 		time.Sleep(500 * time.Millisecond)
 
 		// Second update - should trigger "already exists" error in current state
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object", "title": "v2"}`), 0o600))
+		declareFamily(t, s)
 		// Wait long enough for debounce (100ms) + processing
 		time.Sleep(1 * time.Second)
 
@@ -540,6 +557,7 @@ func TestCLIManager_WatchValidation(t *testing.T) {
 		<-readyChan
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath),
 			[]byte(`{"type": "object", "title": "updated"}`), 0o600))
+		declareFamily(t, s)
 
 		// Wait for processing
 		time.Sleep(500 * time.Millisecond)
@@ -557,7 +575,8 @@ func TestCLIManager_CreateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 
-		key, err := mgr.CreateSchema("test-domain/test-family")
+		key, err := mgr.CreateSchema("test-domain/test-family",
+			schema.FamilySpec{Scenario: schema.ScenarioProviderFirst})
 		require.NoError(t, err)
 		assert.Equal(t, schema.Key("test-domain_test-family_1_0_0"), key)
 	})
@@ -568,7 +587,7 @@ func TestCLIManager_CreateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 
-		_, err := mgr.CreateSchema("INVALID/scope")
+		_, err := mgr.CreateSchema("INVALID/scope", schema.FamilySpec{Scenario: schema.ScenarioProviderFirst})
 		require.Error(t, err)
 	})
 }
@@ -588,6 +607,7 @@ func TestCLIManager_CreateSchemaVersion(t *testing.T) {
 		s := schema.New(baseKey, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
+		declareFamily(t, s)
 
 		newKey, err := mgr.CreateSchemaVersion(baseKey, schema.ReleaseTypeMajor)
 		require.NoError(t, err)
@@ -620,6 +640,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		s := schema.New(baseKey, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		rendered, err := mgr.RenderSchema(context.Background(), target, config.Env("prod"), false)
@@ -637,6 +658,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		s := schema.New(baseKey, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		rendered, err := mgr.RenderSchema(context.Background(), target, "", false)
@@ -704,6 +726,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		// Invalid JSON should trigger an error in renderer.Render
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{ invalid"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
@@ -720,6 +743,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		s := schema.New(baseKey, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		rendered, err := mgr.RenderSchema(context.Background(), target, "prod", true)
@@ -741,6 +765,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		badJSON := `{"properties": {"a": {` +
 			`"$ref": "https://json-schemas.internal.myorg.io/domain_missing_1_0_0.schema.json"}}}`
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(badJSON), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		_, err := mgr.RenderSchema(context.Background(), target, "prod", true)
@@ -768,6 +793,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		s := schema.New(baseKey, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 
@@ -790,6 +816,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		homedir := s.Path(schema.HomeDir)
 		require.NoError(t, os.MkdirAll(homedir, 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
+		declareFamily(t, s)
 
 		// Make it unreadable
 		require.NoError(t, os.Chmod(homedir, 0o000))
@@ -809,6 +836,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		s := schema.New(baseKey, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{{ bad }"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
@@ -825,6 +853,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		// Valid JSON, but bad template action
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{{ JSM \"!!\" }}"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
@@ -841,6 +870,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		// Valid template, but missing dependency will fail during rendering execution
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{{ JSM \"missing_dep_1_0_0\" }}"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
@@ -859,6 +889,7 @@ func TestCLIManager_RenderSchema(t *testing.T) {
 		s := schema.New(baseKey, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
+		declareFamily(t, s)
 
 		target := schema.ResolvedTarget{Key: &baseKey}
 		_, err := mgr.RenderSchema(context.Background(), target, "prod", false)
@@ -1024,8 +1055,10 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 		// Create a schema in a sub-directory
 		schemaDir := filepath.Join(dir, "domain", "family", "1", "0", "0")
 		require.NoError(t, os.MkdirAll(schemaDir, 0o755))
-		f1 := filepath.Join(schemaDir, "f1.schema.json")
+		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
+			[]byte("scenario: provider-first\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "init").Run())
 		require.NoError(
@@ -1046,7 +1079,8 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 		require.NoError(t, err)
 
 		// New schema
-		f2 := filepath.Join(schemaDir, "f2.schema.json")
+		f2 := filepath.Join(dir, "domain", "family", "1", "1", "0", "domain_family_1_1_0.schema.json")
+		require.NoError(t, os.MkdirAll(filepath.Dir(f2), 0o755))
 		require.NoError(t, os.WriteFile(f2, []byte("{}"), 0o600))
 		gitAdd := exec.CommandContext(context.Background(), "git", "add", ".")
 		gitAdd.Dir = dir
@@ -1075,8 +1109,10 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 
 		schemaDir := filepath.Join(dir, "domain", "family", "1", "0", "0")
 		require.NoError(t, os.MkdirAll(schemaDir, 0o755))
-		f1 := filepath.Join(schemaDir, "f1.schema.json")
+		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
+			[]byte("scenario: provider-first\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "in").Run())
 		require.NoError(
@@ -1102,7 +1138,7 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 
 		var mutationErr *schema.ChangedDeployedSchemasError
 		require.ErrorAs(t, err, &mutationErr)
-		assert.Contains(t, mutationErr.Paths[0], "f1.schema.json")
+		assert.Contains(t, mutationErr.Paths[0], "domain_family_1_0_0.schema.json")
 	})
 
 	t.Run("mutation allowed", func(t *testing.T) {
@@ -1120,8 +1156,10 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 
 		schemaDir := filepath.Join(dir, "domain", "family", "1", "0", "0")
 		require.NoError(t, os.MkdirAll(schemaDir, 0o755))
-		f1 := filepath.Join(schemaDir, "f1.schema.json")
+		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
+			[]byte("scenario: provider-first\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "in").Run())
 		require.NoError(
@@ -1161,8 +1199,10 @@ environments:
 
 		schemaDir := filepath.Join(dir, "domain", "family", "1", "0", "0")
 		require.NoError(t, os.MkdirAll(schemaDir, 0o755))
-		f1 := filepath.Join(schemaDir, "f1.schema.json")
+		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
+			[]byte("scenario: provider-first\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "in").Run())
 		require.NoError(
@@ -1527,6 +1567,7 @@ func writeBuildDistSchema(t *testing.T, r *schema.Registry, failDoc bool) {
 	require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "pass"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "fail"), 0o755))
 	require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type": "object"}`), 0o600))
+	declareFamily(t, s)
 	if failDoc {
 		require.NoError(t, os.WriteFile(filepath.Join(homeDir, "fail", "bad.json"), []byte(`{}`), 0o600))
 	}
@@ -1585,6 +1626,7 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 		passDir := filepath.Join(s.Path(schema.HomeDir), string(schema.TestDocTypePass))
 		require.NoError(t, os.MkdirAll(passDir, 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{}`), 0o600))
+		declareFamily(t, s)
 		require.NoError(t, os.WriteFile(filepath.Join(passDir, "broken.json"), []byte(`{`), 0o600))
 		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, io.Discard)
 
@@ -1684,8 +1726,9 @@ func TestLazyManager_Delegation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test CreateSchema delegation
-	mockMgr.On("CreateSchema", "domain/family").Return(schema.Key("domain_family_1_0_0"), nil)
-	key2, err := lazy.CreateSchema("domain/family")
+	mockMgr.On("CreateSchema", "domain/family", schema.FamilySpec{Scenario: schema.ScenarioProviderFirst}).
+		Return(schema.Key("domain_family_1_0_0"), nil)
+	key2, err := lazy.CreateSchema("domain/family", schema.FamilySpec{Scenario: schema.ScenarioProviderFirst})
 	require.NoError(t, err)
 	assert.Equal(t, schema.Key("domain_family_1_0_0"), key2)
 
@@ -1739,6 +1782,7 @@ func TestCLIManager_WatchValidation_ReporterError(t *testing.T) {
 	s := schema.New(key, registry)
 	require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 	require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
+	declareFamily(t, s)
 	require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "pass"), 0o755))
 
 	mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, &failingWriter{})
@@ -1756,6 +1800,7 @@ func TestCLIManager_WatchValidation_ReporterError(t *testing.T) {
 
 	// Trigger an event
 	require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type":"object"}`), 0o600))
+	declareFamily(t, s)
 
 	time.Sleep(500 * time.Millisecond) // Wait for debounce and callback
 
@@ -1773,6 +1818,7 @@ func TestCLIManager_WatchValidation_CallbackErrors(t *testing.T) {
 		s := schema.New(key, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type":"object"}`), 0o600))
+		declareFamily(t, s)
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "pass"), 0o755))
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "fail"), 0o755))
 		return key, s
@@ -1797,6 +1843,7 @@ func TestCLIManager_WatchValidation_CallbackErrors(t *testing.T) {
 
 		// Trigger write then immediately delete to cause load error in callback
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"updated":true}`), 0o600))
+		declareFamily(t, s)
 		require.NoError(t, os.Remove(s.Path(schema.FilePath)))
 
 		time.Sleep(500 * time.Millisecond)
@@ -1815,6 +1862,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 		s := schema.New(key, registry)
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type":"object"}`), 0o600))
+		declareFamily(t, s)
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "pass"), 0o755))
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "fail"), 0o755))
 		return key, s
@@ -1840,6 +1888,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 		// Trigger validation error by making the schema invalid at the JSON level
 		// although WatchValidation treats any error in TestSingleSchema as a return
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{ invalid }`), 0o600))
+		declareFamily(t, s)
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
@@ -1859,6 +1908,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 		sch := schema.New(k, reg)
 		require.NoError(t, os.MkdirAll(sch.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(sch.Path(schema.FilePath), []byte(`{"type":"object"}`), 0o600))
+		declareFamily(t, sch)
 		require.NoError(t, os.MkdirAll(filepath.Join(sch.Path(schema.HomeDir), "pass"), 0o755))
 		require.NoError(t, os.MkdirAll(filepath.Join(sch.Path(schema.HomeDir), "fail"), 0o755))
 
@@ -1876,6 +1926,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 
 		<-readyChan
 		require.NoError(t, os.WriteFile(sch.Path(schema.FilePath), []byte(`{"updated":true}`), 0o600))
+		declareFamily(t, sch)
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()
@@ -1899,6 +1950,7 @@ func TestCLIManager_WatchValidation_EdgeCases(t *testing.T) {
 
 		<-readyChan
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{"type":"object"}`), 0o600))
+		declareFamily(t, s)
 
 		time.Sleep(500 * time.Millisecond)
 		cancel()

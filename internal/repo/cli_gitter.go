@@ -222,6 +222,32 @@ func (g *CLIGitter) ShowFile(ctx context.Context, rev Revision, path string) ([]
 	return out, nil
 }
 
+// ListFiles returns the absolute paths of the files with the given suffix in dir, an absolute path
+// as returned in a Change, at the given revision. A dir which isn't there at that revision has none.
+func (g *CLIGitter) ListFiles(ctx context.Context, rev Revision, dir, suffix string) ([]string, error) {
+	root, err := g.getGitRoot(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	//nolint:gosec // CMD arguments are internal
+	cmd := exec.CommandContext(ctx, g.gitBinary, "ls-tree", "-r", "--name-only", "--full-name", rev.String(), "--", dir)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-tree failed: %w", err)
+	}
+
+	var paths []string
+	for line := range strings.Lines(string(out)) {
+		path := strings.TrimSpace(line)
+		if strings.HasSuffix(path, suffix) {
+			paths = append(paths, filepath.Join(root, path))
+		}
+	}
+	return paths, nil
+}
+
 // UntrackedFiles returns the absolute paths of the files with the given suffix in sourceDir which
 // git does not track, and does not ignore. GetSchemaChanges does not see them.
 func (g *CLIGitter) UntrackedFiles(ctx context.Context, sourceDir, suffix string) ([]string, error) {

@@ -55,6 +55,7 @@ func TestCLIManager_CheckConsumer(t *testing.T) {
 			require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), sub), 0o755))
 		}
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(schemaContent), 0o600))
+		declareFamily(t, s)
 		manifest := filepath.Join(t.TempDir(), "jsm-consumer.yml")
 		require.NoError(t, os.WriteFile(manifest, []byte("schemas: [shop_order_1_0_0]\n"), 0o600))
 		return registry, manifest

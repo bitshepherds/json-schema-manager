@@ -84,3 +84,5 @@ environments:
 {"status": "refunded"}
 -- reg/shop/order/1/1/0/fail/lost.json --
 {"status": "lost"}
+-- reg/shop/order/family.yml --
+scenario: provider-first

@@ -127,6 +127,7 @@ func TestCLIManager_DiffSchemas(t *testing.T) {
 		s := schema.New(k, registry)
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "pass"), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(content), 0o600))
+		declareFamily(t, s)
 	}
 	mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, io.Discard)
 

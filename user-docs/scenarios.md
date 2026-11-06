@@ -35,7 +35,7 @@ This page describes the common ways schemas are used, what can go wrong in each,
 - `fail` documents never cross versions, and no document crosses a major.
 - `validate` warns about a change that widens what the version before accepts, or that it cannot judge, when none of the version's `pass` documents uses the change. See [Unexercised changes](./developing-schemas.md#unexercised-changes).
 
-So scenario 1 is partly served, by `pass` documents only, and no other scenario has checks of its own. There is no per-family declaration yet, so every family gets the same checks, whichever scenario it serves.
+So scenario 1 is partly served, by `pass` documents only, and no other scenario has checks of its own. Every family [declares its scenario](#declaring-a-familys-scenario), but the declaration doesn't yet decide what runs, so every family gets the same checks, whichever scenario it serves.
 
 Two things follow until the rest is built:
 
@@ -77,9 +77,9 @@ Nine scenarios name the common combinations of those facts.
 | 4 | [Stored data, one schema for all](#4-stored-data-one-schema-for-all) | A database of mixed versions, validated on read | Reader | Indefinitely |
 | 5 | [Stored data, each document names its version](#5-stored-data-each-document-names-its-version) | Documents carrying a version tag | Neither, for validation | Indefinitely |
 | 6 | [Retained streams](#6-retained-streams) | Replayable event logs, dead-letter queues | Either | A retention period |
-| 7 | [Uncoordinated parties](#7-uncoordinated-parties) | Several providers on a bus, syncing mobile clients, a published standard | Either | Varies |
+| 7 | [Uncoordinated parties](#7-uncoordinated-parties) | Several providers on a bus, syncing mobile clients, a published standard | Either | Varies: the family states it |
 | 8 | [Lock-step](#8-lock-step) | Both sides released together | Neither | A moment |
-| 9 | [A format someone else owns](#9-a-format-someone-else-owns) | A third party's API response or file format | Reader, catching up | Varies |
+| 9 | [A format someone else owns](#9-a-format-someone-else-owns) | A third party's API response or file format | Reader, catching up | Varies: the family states it |
 
 An API operation is both scenario 1 and scenario 2, so its request and its response are separate families.
 
@@ -242,19 +242,52 @@ A new version records a change that has already happened. A failed check means "
 
 ## Declaring a family's scenario
 
-**Not yet built** ([#118]): a family has no declaration today. This section is what's planned.
-
-A family names its scenario in a required file, `family.yml`, in the family's directory:
+A family names its scenario in a required file, `family.yml`, in the family's directory, beside its version directories. `jsm create-schema` asks for the scenario, or takes it as `--scenario`, and writes the file:
 
 ```yaml
 scenario: provider-first
 ```
 
-The names a family declares, in order: `provider-first`, `consumer-first`, `config-file`, `stored-one-schema`, `stored-self-naming`, `retained-stream`, `uncoordinated`, `lock-step` and `third-party-format`. A family's scenario is fixed once it's deployed: a changed scenario means a new family.
+The scenario implies four facts, and the file may override any of them:
+
+```yaml
+scenario: provider-first
+# Optional overrides of what the scenario implies:
+ahead: writer             # writer | reader | either | neither
+documentsLive: moment     # moment | retention | indefinitely
+readerPicksSchema: false
+schema: prescribes        # prescribes | describes
+# Required when documentsLive is retention:
+oldestLive: 1.2.0
+```
+
+Each scenario implies these facts:
+
+| Scenario | `ahead` | `documentsLive` | `readerPicksSchema` | `schema` |
+| --- | --- | --- | --- | --- |
+| `provider-first` | writer | moment | no | prescribes |
+| `consumer-first` | reader | moment | no | prescribes |
+| `config-file` | reader | indefinitely | no | prescribes |
+| `stored-one-schema` | reader | indefinitely | no | prescribes |
+| `stored-self-naming` | neither | indefinitely | yes | prescribes |
+| `retained-stream` | either | retention | no | prescribes |
+| `uncoordinated` | either | states it | no | prescribes |
+| `lock-step` | neither | moment | no | prescribes |
+| `third-party-format` | reader | states it | no | describes |
+
+**Two scenarios must state `documentsLive`.** How long documents live varies in `uncoordinated` and `third-party-format`, so the scenario alone is refused, and the family says which it is. A chat app's synced notes may be kept for good, and a webhook's messages may be read and gone. **If you don't know how long your documents live, choose `indefinitely`.** It is always accepted, and it is the safe answer, because it assumes old documents may still be out there.
+
+**A retention family gives its oldest live version.** `retained-stream`, or any family that sets `documentsLive: retention`, must have `oldestLive`. `jsm create-schema` starts it at `1.0.0`.
+
+**Every command that reads a family needs its declaration.** `validate`, `build-dist`, `check-consumer`, `check-changes`, `diff` and `create-schema-version` fail on a family with no declaration, or an invalid one, and say how to declare it. Only `create-registry`, `render-schema` and `tag-deployment` don't need one. An existing family with no `family.yml` gets one by hand: there's no migration command.
+
+**A declaration is fixed once a family is deployed.** Where an environment doesn't allow schema mutation, `check-changes` fails on a change to the declaration of a family with a deployed version, meaning one at the newest `jsm-deploy/<env>/*` tag reachable from `HEAD`. A family is one flow, so a changed scenario means a new family. It allows three things: moving `oldestLive` forward, adding a declaration to a family that had none, and deleting a whole family.
 
 The other facts bear on the rule like this. A reader that picks its schema from the document means no cross-version runs, so that family behaves as `neither`. `describes` changes the wording of failures, not which documents run. How long documents live affects the version lifecycle: a retention family declares its oldest live version, and moves it forward by a reviewed change.
 
 Of the nine, only scenario 5 has a reader that picks its schema from the document, and only scenario 9 describes a format rather than prescribing one.
+
+**Not yet built** ([#119]): JSM checks the declaration, but doesn't yet act on it.
 
 ## The rule
 
@@ -317,7 +350,6 @@ Answer these in order, and stop at the first that fits. If an API operation brou
 
 Writer-ahead is what Confluent Schema Registry calls FORWARD_TRANSITIVE, and reader-ahead is BACKWARD_TRANSITIVE, bounded by the major, and tested by documents rather than by comparing schemas. In the same terms, either is FULL_TRANSITIVE, and neither is NONE.
 
-[#118]: https://github.com/bitshepherds/json-schema-manager/issues/118
 [#119]: https://github.com/bitshepherds/json-schema-manager/issues/119
 [#120]: https://github.com/bitshepherds/json-schema-manager/issues/120
 [#121]: https://github.com/bitshepherds/json-schema-manager/issues/121

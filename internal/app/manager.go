@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -32,7 +33,7 @@ type Manager interface {
 		useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
 		readyChan chan<- struct{}) error
 	Registry() *schema.Registry
-	CreateSchema(domainAndFamilyName string) (schema.Key, error)
+	CreateSchema(domainAndFamilyName string, spec schema.FamilySpec) (schema.Key, error)
 	CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (schema.Key, error)
 	RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env, collapse bool) ([]byte, error)
 	DiffSchemas(older, newer schema.Key) ([]schema.Change, error)
@@ -93,8 +94,8 @@ func (l *LazyManager) Registry() *schema.Registry {
 }
 
 // CreateSchema implements the Manager interface.
-func (l *LazyManager) CreateSchema(domainAndFamilyName string) (schema.Key, error) {
-	return l.check().CreateSchema(domainAndFamilyName)
+func (l *LazyManager) CreateSchema(domainAndFamilyName string, spec schema.FamilySpec) (schema.Key, error) {
+	return l.check().CreateSchema(domainAndFamilyName, spec)
 }
 
 // CreateSchemaVersion implements the Manager interface.
@@ -175,8 +176,8 @@ func (m *CLIManager) Registry() *schema.Registry {
 }
 
 // CreateSchema creates a new schema with the given name.
-func (m *CLIManager) CreateSchema(domainAndFamilyName string) (schema.Key, error) {
-	s, err := m.registry.CreateSchema(domainAndFamilyName)
+func (m *CLIManager) CreateSchema(domainAndFamilyName string, spec schema.FamilySpec) (schema.Key, error) {
+	s, err := m.registry.CreateSchema(domainAndFamilyName, spec)
 	if err != nil {
 		return schema.Key(""), err
 	}
@@ -186,6 +187,9 @@ func (m *CLIManager) CreateSchema(domainAndFamilyName string) (schema.Key, error
 // CreateSchemaVersion increments the version of an existing schema.
 func (m *CLIManager) CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (schema.Key, error) {
 	m.logger.Debug("creating schema version", "key", k, "releaseType", rt)
+	if err := m.registry.RequireFamilyDeclared(k); err != nil {
+		return schema.Key(""), err
+	}
 	s, err := m.registry.CreateSchemaVersion(k, rt)
 	if err != nil {
 		return schema.Key(""), err
@@ -201,6 +205,10 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 	m.logger.Debug("validating schema", "target", target, "verbose", verbose, "format", format,
 		"useColour", useColour, "continueOnError", continueOnError, "skipCompatible", skipCompatible,
 		"strict", strict)
+
+	if err := m.requireDeclarations(ctx, target); err != nil {
+		return err
+	}
 
 	m.tester.SetStopOnFirstError(!continueOnError)
 	m.tester.SetScope(testScope)
@@ -234,6 +242,18 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 	return nil
 }
 
+// requireDeclarations returns an error if a family in the target has no valid declaration.
+func (m *CLIManager) requireDeclarations(ctx context.Context, target schema.ResolvedTarget) error {
+	switch {
+	case target.Key != nil:
+		return m.registry.RequireFamilyDeclared(*target.Key)
+	case target.Scope != nil:
+		return m.registry.RequireFamilyDeclarations(ctx, *target.Scope)
+	default:
+		return nil
+	}
+}
+
 // newReporter returns the reporter for the given output format.
 func newReporter(format string, verbose, useColour, strict bool) schema.Reporter {
 	switch format {
@@ -258,6 +278,9 @@ func (m *CLIManager) WatchValidation(ctx context.Context, target schema.Resolved
 
 	if target.Key == nil && target.Scope == nil {
 		return &schema.NoSchemaTargetsError{}
+	}
+	if err := m.requireDeclarations(ctx, target); err != nil {
+		return err
 	}
 
 	watcher := schema.NewWatcher(m.registry, m.logger)
@@ -286,6 +309,11 @@ func (m *CLIManager) handleWatchEvent(ctx context.Context, event schema.WatchEve
 		return
 	}
 	if target.Scope != nil && !event.Key.InScope(*target.Scope) {
+		return
+	}
+
+	if err := m.registry.RequireFamilyDeclared(event.Key); err != nil {
+		m.logger.Error("Validation failed", "error", err)
 		return
 	}
 
@@ -390,15 +418,20 @@ func renderEnvConfig(cfg *config.Config, env config.Env) (*config.EnvConfig, err
 func (m *CLIManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, error) {
 	m.logger.Debug("comparing schemas", "older", older, "newer", newer)
 
-	os, err := m.registry.GetSchemaByKey(older)
+	olderSchema, err := m.registry.GetSchemaByKey(older)
 	if err != nil {
 		return nil, err
 	}
-	ns, err := m.registry.GetSchemaByKey(newer)
+	newerSchema, err := m.registry.GetSchemaByKey(newer)
 	if err != nil {
 		return nil, err
 	}
-	return schema.Diff(os, ns)
+	for _, k := range []schema.Key{older, newer} {
+		if dErr := m.registry.RequireFamilyDeclared(k); dErr != nil {
+			return nil, dErr
+		}
+	}
+	return schema.Diff(olderSchema, newerSchema)
 }
 
 // CheckConsumer checks the schema versions in the consumer manifest at manifestPath against the
@@ -466,10 +499,21 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 		if uErr != nil {
 			return uErr
 		}
-
-		if modifiedPaths := deployedMutations(changes); len(modifiedPaths) > 0 || len(urlRoots) > 0 {
-			return &schema.ChangedDeployedSchemasError{Paths: modifiedPaths, URLRoots: urlRoots}
+		declarations, dErr := m.changedDeclarations(ctx, anchor, changes)
+		if dErr != nil {
+			return dErr
 		}
+
+		modifiedPaths := deployedMutations(changes)
+		if len(modifiedPaths) > 0 || len(urlRoots) > 0 || len(declarations) > 0 {
+			return &schema.ChangedDeployedSchemasError{
+				Paths: modifiedPaths, URLRoots: urlRoots, Declarations: declarations,
+			}
+		}
+	}
+
+	if dErr := m.registry.RequireFamilyDeclarations(ctx, ""); dErr != nil {
+		return dErr
 	}
 
 	_, _ = fmt.Fprintln(m.reporterWriter, "All changes are valid")
@@ -555,6 +599,83 @@ func (m *CLIManager) changedURLRoots(
 	return roots, nil
 }
 
+// changedDeclarations describes each change since the anchor to the declaration of a family with a
+// deployed version. A family with no declaration at the anchor may gain one, and a declaration may go
+// along with the whole family. Whether the new declaration is valid is checked on its own, so an
+// invalid one isn't reported here. One which was invalid at the anchor declared nothing to protect.
+func (m *CLIManager) changedDeclarations(
+	ctx context.Context,
+	anchor repo.Revision,
+	changes []repo.Change,
+) ([]string, error) {
+	var refused []string
+	for _, c := range changes {
+		if c.IsNew || filepath.Base(c.Path) != schema.FamilyDeclarationFile {
+			continue
+		}
+		familyDir := filepath.Dir(c.Path)
+		deployed, err := m.gitter.ListFiles(ctx, anchor, familyDir, schema.SchemaSuffix)
+		if err != nil {
+			return nil, err
+		}
+		if !hasVersion(familyDir, deployed) {
+			continue
+		}
+
+		reason, err := m.declarationChange(ctx, anchor, c.Path)
+		if err != nil {
+			return nil, err
+		}
+		if reason != "" {
+			refused = append(refused, fmt.Sprintf("%s: %s", c.Path, reason))
+		}
+	}
+	return refused, nil
+}
+
+// hasVersion reports whether any of the schema files is a version of the family in familyDir, at
+// <major>/<minor>/<patch>/<schema file>.
+func hasVersion(familyDir string, schemaFiles []string) bool {
+	return slices.ContainsFunc(schemaFiles, func(p string) bool {
+		rel := strings.TrimPrefix(p, familyDir+string(filepath.Separator))
+		return strings.Count(rel, string(filepath.Separator)) == 3
+	})
+}
+
+// declarationChange says why the declaration at path may not differ from the one at the anchor, or
+// returns "" if it may.
+func (m *CLIManager) declarationChange(ctx context.Context, anchor repo.Revision, path string) (string, error) {
+	//nolint:gosec // The path comes from git, within the registry
+	current, err := os.ReadFile(path)
+	if err != nil {
+		// git can report a removed declaration as a rename, so go by what's there, not by its status
+		if familyHasVersions(filepath.Dir(path)) {
+			return "it cannot be removed while the family has versions", nil
+		}
+		return "", nil
+	}
+
+	data, err := m.gitter.ShowFile(ctx, anchor, path)
+	if err != nil {
+		return "", err
+	}
+	was, err := schema.ParseFamilyDeclaration(data)
+	if err != nil {
+		return "", nil //nolint:nilerr // see changedDeclarations
+	}
+	is, err := schema.ParseFamilyDeclaration(current)
+	if err != nil {
+		return "", nil //nolint:nilerr // see changedDeclarations
+	}
+	return is.ChangeFrom(was), nil
+}
+
+// familyHasVersions reports whether any schema file remains in the family's directory.
+func familyHasVersions(familyDir string) bool {
+	matches, _ := filepath.Glob(filepath.Join(familyDir, "*", "*", "*", "*"+schema.SchemaSuffix))
+	return len(matches) > 0
+}
+
 // TagDeployment ensures that a successful deployment is tagged in git.
 func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env, push bool) error {
 	m.logger.Debug("tagging deployment", "env", envName, "push", push)
@@ -593,6 +714,10 @@ func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env, push
 func (m *CLIManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
 	m.logger.Debug("building distribution", "env", envName, "all", all, "collapse", collapse,
 		"skipTests", skipTests)
+
+	if dErr := m.registry.RequireFamilyDeclarations(ctx, ""); dErr != nil {
+		return dErr
+	}
 
 	var count int
 	var err error

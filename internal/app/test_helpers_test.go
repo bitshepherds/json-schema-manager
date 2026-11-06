@@ -47,8 +47,8 @@ func (m *MockManager) WatchValidation(ctx context.Context, target schema.Resolve
 	return args.Error(0)
 }
 
-func (m *MockManager) CreateSchema(domainAndFamilyName string) (schema.Key, error) {
-	args := m.Called(domainAndFamilyName)
+func (m *MockManager) CreateSchema(domainAndFamilyName string, spec schema.FamilySpec) (schema.Key, error) {
+	args := m.Called(domainAndFamilyName, spec)
 	k, _ := args.Get(0).(schema.Key)
 	return k, args.Error(1)
 }
@@ -105,6 +105,14 @@ type MockGitter struct {
 	GetSchemaChangesFunc func(ctx context.Context, anchor repo.Revision, sourceDir, suffix string) ([]repo.Change, error)
 	ShowFileFunc         func(ctx context.Context, rev repo.Revision, path string) ([]byte, error)
 	UntrackedFilesFunc   func(ctx context.Context, sourceDir, suffix string) ([]string, error)
+	ListFilesFunc        func(ctx context.Context, rev repo.Revision, dir, suffix string) ([]string, error)
+}
+
+func (m *MockGitter) ListFiles(ctx context.Context, rev repo.Revision, dir, suffix string) ([]string, error) {
+	if m.ListFilesFunc != nil {
+		return m.ListFilesFunc(ctx, rev, dir, suffix)
+	}
+	return nil, nil
 }
 
 func (m *MockGitter) UntrackedFiles(ctx context.Context, sourceDir, suffix string) ([]string, error) {

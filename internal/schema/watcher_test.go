@@ -50,7 +50,7 @@ func TestWatcher(t *testing.T) {
 		t.Parallel()
 		r := setupTestRegistry(t)
 		watcher := NewWatcher(r, logger)
-		s, err := r.CreateSchema("domain/family-1")
+		s, err := r.CreateSchema("domain/family-1", FamilySpec{Scenario: ScenarioProviderFirst})
 		require.NoError(t, err)
 		key := s.Key()
 
@@ -86,7 +86,7 @@ func TestWatcher(t *testing.T) {
 		t.Parallel()
 		r := setupTestRegistry(t)
 		watcher := NewWatcher(r, logger)
-		s, err := r.CreateSchema("domain/family-2")
+		s, err := r.CreateSchema("domain/family-2", FamilySpec{Scenario: ScenarioProviderFirst})
 		require.NoError(t, err)
 		key := s.Key()
 
@@ -278,7 +278,7 @@ func TestWatcher(t *testing.T) {
 		t.Parallel()
 		r := setupTestRegistry(t)
 		w := NewWatcher(r, logger)
-		s, _ := r.CreateSchema("domain/family-3")
+		s, _ := r.CreateSchema("domain/family-3", FamilySpec{Scenario: ScenarioProviderFirst})
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -345,7 +345,7 @@ func TestWatcher(t *testing.T) {
 			assert.Nil(t, ev)
 
 			// Success event
-			s, _ := r.CreateSchema("domain/event-race")
+			s, _ := r.CreateSchema("domain/event-race", FamilySpec{Scenario: ScenarioProviderFirst})
 			ev = w.handleEvent(subWatcher, fsnotify.Event{Name: s.Path(FilePath), Op: fsnotify.Write})
 			assert.NotNil(t, ev)
 			assert.Equal(t, s.Key(), ev.Key)
@@ -458,7 +458,7 @@ func TestWatcher_SaysWhatItWatches(t *testing.T) {
 	t.Parallel()
 
 	r := setupTestRegistry(t)
-	s, err := r.CreateSchema("domain/family-1")
+	s, err := r.CreateSchema("domain/family-1", FamilySpec{Scenario: ScenarioProviderFirst})
 	require.NoError(t, err)
 	key := s.Key()
 	scope := SearchScope("domain")

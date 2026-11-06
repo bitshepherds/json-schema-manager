@@ -14,7 +14,12 @@ In an environment which does not permit schema mutation, these changes since the
   - modifying a deployed schema file
   - modifying or deleting a pass/ or fail/ test document of a deployed version
   - changing the environment's privateUrlRoot or publicUrlRoot, which give deployed schemas their IDs
-Adding new schemas and test documents is allowed, and so is deleting a whole version.
+  - changing or removing the family.yml of a family with a deployed version, other than moving its
+    oldestLive forward: a changed scenario means a new family
+Adding new schemas and test documents is allowed, and so is deleting a whole version. A family with no
+family.yml may gain one, and a whole family may be deleted, along with its family.yml.
+
+In every environment, the check fails if any family has no family.yml, or an invalid one.
 
 The latest deployment anchor is the newest jsm-deploy/[env]/* tag in the history of HEAD, created by
 'jsm tag-deployment'. This needs the history and tags back to that deployment: in GitHub Actions, check out

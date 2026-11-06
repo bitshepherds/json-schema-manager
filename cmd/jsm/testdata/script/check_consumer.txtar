@@ -13,6 +13,7 @@ stdout 'Consumer check summary: 1 passed, 0 failed, 0 warnings'
 # A compatible 1.1.0, given by canonical URL in another manifest, still passes
 mkdir reg/shop/order/1/1/0/pass reg/shop/order/1/1/0/fail
 cp v110.json reg/shop/order/1/1/0/shop_order_1_1_0.schema.json
+cp $WORK/family-decl.yml reg/shop/order/family.yml
 cp paid.json reg/shop/order/1/1/0/pass/paid.json
 cp lost.json reg/shop/order/1/1/0/fail/lost.json
 exec jsm check-consumer -c by-url.yml
@@ -33,6 +34,7 @@ rm reg/shop/order/1/1/0/pass/refunded.json
 # A 2.0.0 gives a warning naming the new major, which --strict makes fail
 mkdir reg/shop/order/2/0/0/pass reg/shop/order/2/0/0/fail
 cp v200.json reg/shop/order/2/0/0/shop_order_2_0_0.schema.json
+cp $WORK/family-decl.yml reg/shop/order/family.yml
 exec jsm check-consumer -c
 stdout '\[WARN\] shop_order_1_0_0'
 stdout 'the family has a newer major version, shop_order_2_0_0: move to it before providers stop sending version 1'
@@ -96,3 +98,8 @@ environments:
 {"status": "paid"}
 -- reg/shop/order/1/0/0/fail/lost.json --
 {"status": "lost"}
+-- reg/shop/order/family.yml --
+scenario: provider-first
+
+-- family-decl.yml --
+scenario: provider-first

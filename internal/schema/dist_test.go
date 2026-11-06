@@ -44,6 +44,10 @@ func (m *mockGitter) UntrackedFiles(_ context.Context, _, _ string) ([]string, e
 	return nil, nil
 }
 
+func (m *mockGitter) ListFiles(_ context.Context, _ repo.Revision, _, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (m *mockGitter) ShowFile(_ context.Context, _ repo.Revision, _ string) ([]byte, error) {
 	return nil, nil
 }

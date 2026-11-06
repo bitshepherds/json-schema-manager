@@ -368,10 +368,12 @@ func (e *NoTargetArgumentError) Error() string {
 }
 
 // ChangedDeployedSchemasError is returned when deployed schemas or their test documents are
-// modified, or the URL roots which give deployed schemas their IDs are changed.
+// modified, the URL roots which give deployed schemas their IDs are changed, or a deployed
+// family's declaration is changed.
 type ChangedDeployedSchemasError struct {
-	Paths    []string // the modified or deleted schema files and test documents
-	URLRoots []string // a description of each changed URL root
+	Paths        []string // the modified or deleted schema files and test documents
+	URLRoots     []string // a description of each changed URL root
+	Declarations []string // a description of each refused change to a family's declaration
 }
 
 func (e *ChangedDeployedSchemasError) Error() string {
@@ -381,6 +383,10 @@ func (e *ChangedDeployedSchemasError) Error() string {
 	}
 	if len(e.URLRoots) > 0 {
 		problems = append(problems, "cannot change the URL roots of deployed schemas: "+strings.Join(e.URLRoots, "; "))
+	}
+	if len(e.Declarations) > 0 {
+		problems = append(problems, "cannot change the declaration of a deployed family: "+
+			strings.Join(e.Declarations, "; "))
 	}
 	return strings.Join(problems, ". ")
 }
@@ -410,4 +416,39 @@ type HardCodedIDError struct {
 func (e *HardCodedIDError) Error() string {
 	return fmt.Sprintf("%s sets $id to %v: set \"$id\": \"{{ ID }}\", so that JSM gives the schema its canonical ID",
 		e.Path, e.ID)
+}
+
+// MissingFamilyDeclarationError is returned when a family has no family.yml.
+type MissingFamilyDeclarationError struct {
+	Path string
+}
+
+func (e *MissingFamilyDeclarationError) Error() string {
+	return fmt.Sprintf("this family does not declare how it is used: create %s naming its scenario, such as "+
+		"\"scenario: %s\". The scenarios are: %s. See %s to choose one",
+		e.Path, ScenarioProviderFirst, ScenarioNames(), ScenariosDoc)
+}
+
+// InvalidFamilyDeclarationError is returned when a family's family.yml can't be used.
+type InvalidFamilyDeclarationError struct {
+	Path    string
+	Wrapped error
+}
+
+func (e *InvalidFamilyDeclarationError) Error() string {
+	return fmt.Sprintf("the declaration %s is invalid: %v. See %s", e.Path, e.Wrapped, ScenariosDoc)
+}
+
+func (e *InvalidFamilyDeclarationError) Unwrap() error {
+	return e.Wrapped
+}
+
+// FamilyAlreadyDeclaredError is returned when creating a family's first version, and the family
+// already has a declaration, which can't be chosen again.
+type FamilyAlreadyDeclaredError struct {
+	Path string
+}
+
+func (e *FamilyAlreadyDeclaredError) Error() string {
+	return fmt.Sprintf("this family is already declared in %s", e.Path)
 }

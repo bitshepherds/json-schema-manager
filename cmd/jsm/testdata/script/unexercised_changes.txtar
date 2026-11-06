@@ -88,3 +88,5 @@ environments:
 {"status": "paid", "total": 3}
 -- reg/shop/order/1/1/0/fail/unknown-status.json --
 {"status": "lost", "total": 3}
+-- reg/shop/order/family.yml --
+scenario: provider-first

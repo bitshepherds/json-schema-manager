@@ -9,10 +9,12 @@ exec git config user.name test
 mkdir registry/domain/family/1/0/0
 cp $WORK/config.yml registry/json-schema-manager-config.yml
 cp $WORK/schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/family/family.yml
 exec git add .
 exec git commit -q -m deployed
 exec git tag jsm-deploy/production/v1
 cp $WORK/modified.schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/family/family.yml
 exec git commit -q -am mutation
 
 # Full history: the mutation is caught
@@ -48,9 +50,11 @@ exec git config user.name test
 mkdir registry/domain/family/1/0/0
 cp $WORK/config.yml registry/json-schema-manager-config.yml
 cp $WORK/schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/family/family.yml
 exec git add .
 exec git commit -q -m first
 cp $WORK/modified.schema.json registry/domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/family/family.yml
 exec git commit -q -am edit
 exec jsm check-changes production
 stdout 'No deployment to production found'
@@ -67,3 +71,5 @@ environments:
 {}
 -- modified.schema.json --
 {"type": "object"}
+-- family-decl.yml --
+scenario: provider-first

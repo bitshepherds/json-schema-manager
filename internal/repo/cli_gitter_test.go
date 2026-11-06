@@ -634,3 +634,56 @@ func TestCLIGitter_UntrackedFiles(t *testing.T) {
 		require.ErrorContains(t, err, "git ls-files failed")
 	})
 }
+
+func TestCLIGitter_ListFiles(t *testing.T) {
+	t.Parallel()
+
+	t.Run("lists the files with the suffix at the revision", func(t *testing.T) {
+		t.Parallel()
+		dir := setupTestRepo(t)
+		root, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		f := filepath.Join(root, "reg", "family", "1", "a.schema.json")
+		require.NoError(t, os.MkdirAll(filepath.Dir(f), 0o755))
+		require.NoError(t, os.WriteFile(f, []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(root, "reg", "family", "family.yml"), []byte("x"), 0o600))
+		runGit(t, dir, "add", ".")
+		runGit(t, dir, "commit", "-q", "-m", "1")
+		runGit(t, dir, "tag", "v1")
+		require.NoError(t, os.Remove(f))
+		runGit(t, dir, "add", ".")
+		runGit(t, dir, "commit", "-q", "-m", "2")
+
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), filepath.Join(root, "reg"))
+		familyDir := filepath.Join(root, "reg", "family")
+
+		files, err := g.ListFiles(context.Background(), "v1", familyDir, ".schema.json")
+		require.NoError(t, err)
+		assert.Equal(t, []string{f}, files)
+
+		files, err = g.ListFiles(context.Background(), "HEAD", familyDir, ".schema.json")
+		require.NoError(t, err)
+		assert.Empty(t, files)
+
+		files, err = g.ListFiles(context.Background(), "v1", filepath.Join(root, "reg", "missing"), ".schema.json")
+		require.NoError(t, err)
+		assert.Empty(t, files)
+	})
+
+	t.Run("an unknown revision", func(t *testing.T) {
+		t.Parallel()
+		dir := setupTestRepo(t)
+		root, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), dir)
+		_, err = g.ListFiles(context.Background(), "no-such-tag", root, ".schema.json")
+		require.ErrorContains(t, err, "git ls-tree failed")
+	})
+
+	t.Run("not a git repo", func(t *testing.T) {
+		t.Parallel()
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), t.TempDir())
+		_, err := g.ListFiles(context.Background(), "HEAD", "/x", ".schema.json")
+		require.ErrorContains(t, err, "failed to find git root")
+	})
+}

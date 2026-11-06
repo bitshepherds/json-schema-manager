@@ -457,7 +457,7 @@ func TestCreateSchema(t *testing.T) {
 				tt.setup(t, r)
 			}
 
-			schema, err := r.CreateSchema(tt.domainAndFamily)
+			schema, err := r.CreateSchema(tt.domainAndFamily, FamilySpec{Scenario: ScenarioProviderFirst})
 
 			if tt.wantErrMsgContains != "" {
 				require.ErrorContains(t, err, tt.wantErrMsgContains)
@@ -733,7 +733,7 @@ func TestCreateSchema_WriteNewSchemaFilesErr(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := r.CreateSchema("domain/family")
+	_, err := r.CreateSchema("domain/family", FamilySpec{Scenario: ScenarioProviderFirst})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a directory")
 }

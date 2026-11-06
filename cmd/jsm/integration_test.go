@@ -84,6 +84,14 @@ environments:
 	); err != nil {
 		t.Fatal(err)
 	}
+	familyDir := filepath.Join(regDir, "domain", "family")
+	if err := os.MkdirAll(familyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	declaration := []byte("scenario: provider-first\n")
+	if err := os.WriteFile(filepath.Join(familyDir, "family.yml"), declaration, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return regDir
 }
 

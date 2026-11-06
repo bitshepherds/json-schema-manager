@@ -42,8 +42,10 @@ jsm create-registry ./my-registry
 export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
 
 # Create the first version, 1.0.0, of a schema family
-jsm create-schema "customer/b2c-customer"
+jsm create-schema "customer/b2c-customer" --scenario provider-first
 ```
+
+The scenario says how the family is used: see [Schema Family Scenarios](./scenarios.md#how-to-choose-a-scenario). Leave out `--scenario` and the command asks for it.
 
 Edit `my-registry/customer/b2c-customer/1/0/0/customer_b2c-customer_1_0_0.schema.json`, add JSON documents the schema should accept to the `pass` directory next to it, and documents it should reject to the `fail` directory. Then test it:
 
@@ -114,6 +116,8 @@ Where
 Valid characters are: `a-z`, `0-9`, `-`, and `/`.
 
 The initial schema in a family will have version 1.0.0, and use the `defaultJsonSchemaVersion` from the registry's configuration file.
+
+The command also asks which scenario the family serves, or takes it as `--scenario`, and writes the family's [declaration](./scenarios.md#declaring-a-familys-scenario), `family.yml`, beside its version directories. Most commands fail on a family without one.
 
 For example, if an organisation has a customer success team, and the team wants a JSON Schema to represent the entity `B2C Customer` in their system, they might choose to create a new family `b2c-customer` within domain `customer-success` and subdomain `entity`, using the command:
 

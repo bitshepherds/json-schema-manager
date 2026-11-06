@@ -218,7 +218,8 @@ func (r *Registry) GetSchema(path string) (*Schema, error) {
 // - e.g. "domain-a/family-name"
 // - e.g. "domain-a/subdomain-a/family-name"
 // There must be at least one domain component, and the family name is always the last component.
-func (r *Registry) CreateSchema(domainAndFamilyName string) (s *Schema, err error) {
+// The family's declaration, family.yml, is written beside its version directories, from spec.
+func (r *Registry) CreateSchema(domainAndFamilyName string, spec FamilySpec) (s *Schema, err error) {
 	if _, err = NewSearchScope(domainAndFamilyName); err != nil {
 		return nil, err
 	}
@@ -244,11 +245,20 @@ func (r *Registry) CreateSchema(domainAndFamilyName string) (s *Schema, err erro
 		return nil, &AlreadyExistsError{K: key}
 	}
 
+	declaration, err := spec.content()
+	if err != nil {
+		return nil, err
+	}
+	declarationPath := r.FamilyDeclarationPath(key)
+	if _, statErr := os.Stat(declarationPath); statErr == nil {
+		return nil, &FamilyAlreadyDeclaredError{Path: declarationPath}
+	}
+
 	if iErr := r.initNewRegistrySchema(s); iErr != nil {
 		return nil, iErr
 	}
 
-	return s, nil
+	return s, os.WriteFile(declarationPath, declaration, 0o600)
 }
 
 // CreateSchemaVersion creates a new version in an existing schema family, based

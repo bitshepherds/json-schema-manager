@@ -227,7 +227,7 @@ e.g.
 jsm create-schema "logistics/data/shipment"
 ```
 
-creates `logistics/data/shipment/1/0/0/logistics_data_shipment_1_0_0.schema.json`, with empty `pass` and `fail` directories beside it, creating any missing directories. The schema uses the `defaultJsonSchemaVersion` from the [configuration file](#schema-registry-configuration-file); change its `$schema` to use another supported version.
+asks which [scenario](./scenarios.md#how-to-choose-a-scenario) the family serves, unless `--scenario` says, and creates `logistics/data/shipment/family.yml`, which [declares it](./scenarios.md#declaring-a-familys-scenario), and `logistics/data/shipment/1/0/0/logistics_data_shipment_1_0_0.schema.json`, with empty `pass` and `fail` directories beside it, creating any missing directories. The schema uses the `defaultJsonSchemaVersion` from the [configuration file](#schema-registry-configuration-file); change its `$schema` to use another supported version.
 
 To create later versions, use `jsm create-schema-version`. See [Developing Schemas](./developing-schemas.md#creating-a-new-version-of-an-existing-schema).
 

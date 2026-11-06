@@ -36,6 +36,7 @@ func newRegistry(t *testing.T, schemas map[schema.Key]string) *schema.Registry {
 			require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), sub), 0o755))
 		}
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(content), 0o600))
+		require.NoError(t, os.WriteFile(r.FamilyDeclarationPath(k), []byte("scenario: provider-first"), 0o600))
 	}
 	return r
 }
@@ -126,6 +127,19 @@ func TestCheck_Errors(t *testing.T) {
 		_, err = Check(context.Background(), r, &Manifest{Schemas: []string{"shop_order_1_0_0"}})
 		require.ErrorAs(t, err, new(*schema.NotFoundError))
 	})
+}
+
+func TestCheckFailsOnFamilyWithoutDeclaration(t *testing.T) {
+	t.Parallel()
+
+	key := schema.Key("shop_order_1_0_0")
+	r := newRegistry(t, map[schema.Key]string{key: "{}"})
+	require.NoError(t, os.Remove(r.FamilyDeclarationPath(key)))
+
+	_, err := Check(context.Background(), r, &Manifest{Schemas: []string{string(key)}})
+
+	var missing *schema.MissingFamilyDeclarationError
+	require.ErrorAs(t, err, &missing)
 }
 
 func TestStatus(t *testing.T) {

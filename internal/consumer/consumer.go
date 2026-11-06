@@ -129,6 +129,9 @@ func checkEntry(ctx context.Context, r *schema.Registry, entry string) (SchemaRe
 	if sr.Problem != "" {
 		return sr, nil
 	}
+	if err := r.RequireFamilyDeclared(sr.Key); err != nil {
+		return sr, err
+	}
 
 	// Run the later versions' pass documents, in the same major family, against this version
 	tester := schema.NewTester(r)
