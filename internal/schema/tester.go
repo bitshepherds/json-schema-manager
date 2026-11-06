@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitshepherds/json-schema-manager/internal/config"
 	"github.com/bitshepherds/json-schema-manager/internal/coverage"
 	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 	"github.com/bitshepherds/json-schema-manager/internal/validator"
@@ -779,22 +780,22 @@ func (t *Tester) documentAcrossVersions(
 	return specs, nil
 }
 
-// LaterPassRejection is a pass document of a later version which the version under test rejects.
-type LaterPassRejection struct {
-	Later Key
-	Path  string
-	Err   error
-}
-
-// LaterPassRejections runs the pass documents of every later version in k's major on k, and returns
-// those it rejects. It is what check-consumer asks, whatever the family's scenario.
-func (t *Tester) LaterPassRejections(ctx context.Context, k Key) ([]LaterPassRejection, error) {
+// RunsOnLaterVersions runs, for k and each later version in its major, the document runs of the pair
+// which the family holds to the given rule, as validate does, whatever their outcome: a run which
+// didn't give the right outcome has its Err set, and its Exception if the later version's file names it.
+// It is what check-party asks. It leaves a stale exception file entry to validate, whose report it
+// doesn't write.
+func (t *Tester) RunsOnLaterVersions(ctx context.Context, k Key, rule Rule) ([]Spec, error) {
 	s, err := t.registry.GetSchemaByKey(k)
 	if err != nil {
 		return nil, err
 	}
-	ri, err := s.Render(t.registry.config.ProductionEnvConfig())
+	decl, err := t.registry.FamilyDeclaration(k)
 	if err != nil {
+		return nil, err
+	}
+	env := t.registry.config.ProductionEnvConfig()
+	if _, err = s.Render(env); err != nil {
 		return nil, err
 	}
 	laterKeys, err := s.MajorFamilyFutureSchemas()
@@ -806,21 +807,35 @@ func (t *Tester) LaterPassRejections(ctx context.Context, k Key) ([]LaterPassRej
 		return nil, err
 	}
 
-	var rejections []LaterPassRejection
+	var ran []Spec
 	for _, l := range later {
-		docs, dErr := l.TestDocuments(TestDocTypePass)
-		if dErr != nil {
-			return nil, dErr
+		runs, pErr := pairRuns(s, l, decl)
+		if pErr != nil {
+			return nil, pErr
 		}
-		for _, doc := range docs {
-			if cErr := ctx.Err(); cErr != nil {
-				return nil, cErr
-			}
-			spec := NewSpec(s, doc, TestDocTypePass)
-			if rErr := spec.Run(ri.Validator); rErr != nil {
-				rejections = append(rejections, LaterPassRejection{Later: l.Key(), Path: doc.Path, Err: rErr})
-			}
+		if eErr := t.applyExceptions(runs, s, l, decl); eErr != nil {
+			return nil, eErr
 		}
+		runs = slices.DeleteFunc(runs, func(spec Spec) bool { return spec.Rule != rule })
+		if rErr := runForOutcome(ctx, runs, env); rErr != nil {
+			return nil, rErr
+		}
+		ran = append(ran, runs...)
 	}
-	return rejections, nil
+	return ran, nil
+}
+
+// runForOutcome runs each spec on the version it names, leaving the outcome on the spec.
+func runForOutcome(ctx context.Context, specs []Spec, env *config.EnvConfig) error {
+	for i := range specs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		ri, err := specs[i].Schema.Render(env)
+		if err != nil {
+			return err
+		}
+		_ = specs[i].Run(ri.Validator)
+	}
+	return nil
 }

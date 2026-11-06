@@ -361,64 +361,96 @@ func TestTestSpecificDocumentRunsAcrossVersions(t *testing.T) {
 	})
 }
 
-func TestLaterPassRejections(t *testing.T) {
+func TestRunsOnLaterVersions(t *testing.T) {
 	t.Parallel()
 
-	t.Run("runs later pass documents, whatever the scenario", func(t *testing.T) {
+	const provider = "scenario: provider-first\n"
+
+	run := func(r *Registry, k Key, rule Rule) ([]Spec, error) {
+		return NewTester(r).RunsOnLaterVersions(context.Background(), k, rule)
+	}
+
+	t.Run("runs the rule's documents with each later version, leaving the outcome on each run", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: lock-step\n")
+		r := ruleRegistry(t, provider)
 		behaves(t, r, ruleEarlier)
-		rejections, err := NewTester(r).LaterPassRejections(context.Background(), ruleEarlier)
+		runs, err := run(r, ruleEarlier, RuleNoLoosening)
 		require.NoError(t, err)
-		require.Len(t, rejections, 1)
-		assert.Equal(t, ruleLater, rejections[0].Later)
-		assert.Equal(t, "p.json", filepath.Base(rejections[0].Path))
-		assert.ErrorAs(t, rejections[0].Err, new(*PassTestFailedError))
+		require.Len(t, runs, 2, "the later pass document, and the earlier fail document")
+		assert.Equal(t, ruleLater, runs[0].DocumentFrom)
+		require.ErrorAs(t, runs[0].Err, new(*RuleBrokenError))
+		assert.Equal(t, ruleEarlier, runs[1].DocumentFrom)
+	})
+
+	t.Run("a rule the family doesn't hold has no runs", func(t *testing.T) {
+		t.Parallel()
+		runs, err := run(ruleRegistry(t, provider), ruleEarlier, RuleNoTightening)
+		require.NoError(t, err)
+		assert.Empty(t, runs)
 	})
 
 	t.Run("no later version", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: lock-step\n")
-		rejections, err := NewTester(r).LaterPassRejections(context.Background(), ruleLater)
+		runs, err := run(ruleRegistry(t, provider), ruleLater, RuleNoLoosening)
 		require.NoError(t, err)
-		assert.Empty(t, rejections)
+		assert.Empty(t, runs)
 	})
 
 	t.Run("errors", func(t *testing.T) {
 		t.Parallel()
-		_, err := NewTester(setupTestRegistry(t)).LaterPassRejections(context.Background(), ruleEarlier)
+		_, err := run(setupTestRegistry(t), ruleEarlier, RuleNoLoosening)
 		require.Error(t, err, "no such schema")
 
-		r := ruleRegistry(t, "scenario: lock-step\n")
+		_, err = run(ruleRegistry(t, "scenario: nonsense\n"), ruleEarlier, RuleNoLoosening)
+		require.ErrorAs(t, err, new(*InvalidFamilyDeclarationError))
+
+		r := ruleRegistry(t, provider)
 		mc, ok := r.compiler.(*mockCompiler)
 		require.True(t, ok)
 		mc.CompileFunc = func(_ string) (validator.Validator, error) { return nil, errors.New("render failure") }
-		_, err = NewTester(r).LaterPassRejections(context.Background(), ruleEarlier)
+		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.ErrorContains(t, err, "render failure")
 
-		r = ruleRegistry(t, "scenario: lock-step\n")
+		r = ruleRegistry(t, provider)
+		mc, ok = r.compiler.(*mockCompiler)
+		require.True(t, ok)
+		mc.CompileFunc = func(id string) (validator.Validator, error) {
+			if strings.Contains(id, string(ruleLater)) {
+				return nil, errors.New("later render failure")
+			}
+			return &mockValidator{}, nil
+		}
+		_, err = run(r, ruleEarlier, RuleNoLoosening)
+		require.ErrorContains(t, err, "later render failure")
+
+		r = ruleRegistry(t, provider)
 		require.NoError(t, os.Remove(New(ruleLater, r).Path(FilePath)))
-		_, err = NewTester(r).LaterPassRejections(context.Background(), ruleEarlier)
+		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.Error(t, err, "a later version with no schema")
 
-		r = ruleRegistry(t, "scenario: lock-step\n")
+		r = ruleRegistry(t, provider)
 		_, sErr := r.GetSchemaByKey(ruleEarlier)
 		require.NoError(t, sErr)
 		r.pathResolver = &mockPathResolver{getUintSubdirectories: func(string) ([]uint64, error) {
 			return nil, errors.New("listing error")
 		}}
-		_, err = NewTester(r).LaterPassRejections(context.Background(), ruleEarlier)
+		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.ErrorContains(t, err, "listing error")
 
-		r = ruleRegistry(t, "scenario: lock-step\n")
+		r = ruleRegistry(t, provider)
 		createTestDocs(t, r, ruleLater, TestDocTypePass, map[string]string{"bad.json": `{`})
-		_, err = NewTester(r).LaterPassRejections(context.Background(), ruleEarlier)
+		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.Error(t, err, "a later document which isn't JSON")
 
-		r = ruleRegistry(t, "scenario: lock-step\n")
+		r = ruleRegistry(t, provider)
+		require.NoError(t, os.WriteFile(filepath.Join(New(ruleLater, r).Path(HomeDir), ExceptionsFile),
+			[]byte("exceptions: ["), 0o600))
+		_, err = run(r, ruleEarlier, RuleNoLoosening)
+		require.ErrorAs(t, err, new(*InvalidExceptionsError))
+
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err = NewTester(r).LaterPassRejections(ctx, ruleEarlier)
+		_, err = NewTester(ruleRegistry(t, provider)).RunsOnLaterVersions(ctx, ruleEarlier, RuleNoLoosening)
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }

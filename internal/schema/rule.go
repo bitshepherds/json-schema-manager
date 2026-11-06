@@ -43,16 +43,21 @@ var acrossVersionRuns = []acrossVersionRun{
 	{fromLater: true, docType: TestDocTypeFail, rule: RuleNoTightening},
 }
 
-// appliesTo reports whether the run is one the family's rule asks for: a writer ahead of its reader
-// needs no loosening, and a reader ahead of its writer needs no tightening.
-func (run acrossVersionRun) appliesTo(ahead Ahead) bool {
-	if ahead == AheadEither {
+// Holds reports whether a family with this party ahead holds its versions to the rule: a writer ahead
+// of its reader needs no loosening, and a reader ahead of its writer needs no tightening.
+func (a Ahead) Holds(rule Rule) bool {
+	if a == AheadEither {
 		return true
 	}
-	if run.rule == RuleNoLoosening {
-		return ahead == AheadWriter
+	if rule == RuleNoLoosening {
+		return a == AheadWriter
 	}
-	return ahead == AheadReader
+	return a == AheadReader
+}
+
+// appliesTo reports whether the run is one the family's rule asks for.
+func (run acrossVersionRun) appliesTo(ahead Ahead) bool {
+	return ahead.Holds(run.rule)
 }
 
 // source returns the version of the pair whose document the run uses.

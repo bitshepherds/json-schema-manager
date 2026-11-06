@@ -73,7 +73,7 @@ func (m *MockManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, err
 	return res, args.Error(1)
 }
 
-func (m *MockManager) CheckConsumer(
+func (m *MockManager) CheckParty(
 	ctx context.Context, manifestPath, format string, useColour, strict bool,
 ) error {
 	args := m.Called(ctx, manifestPath, format, useColour, strict)

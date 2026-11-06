@@ -36,12 +36,8 @@ This page describes the common ways schemas are used, what can go wrong in each,
 - The same pairs of versions run however a version is selected: by key, by search scope or with `all`. Validating an earlier version runs its pairs with later versions too, so it can't miss a later breakage. A failure appears under the later version, since that's what changed.
 - A new version carries only the documents for what it changes, so documents aren't copied on a patch or minor bump, except in a family with no pairs of versions to run. `--strict` counts inherited documents. See [What a version carries](./developing-schemas.md#what-a-version-carries).
 - `validate` compares the same pairs of versions structurally, and warns about each change in a direction the family protects which no document shows. A writer-ahead family needs a `pass` document for a change that widens what's accepted, a reader-ahead family a `fail` document for one that narrows it, an either family both, and a neither family none. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
-- A version can list a [deliberate exception](#deliberate-exceptions) to the rule, with a reason, for one run of one document. `validate` and `build-dist` then don't fail on that run, and nothing else is cleared.
-- `check-consumer` doesn't follow the declaration yet: it runs later `pass` documents on the version a consumer pins, in every family, so it can fail a change that is harmless in that family's scenario.
-
-**Not yet built**, besides what each scenario below lists:
-
-- `check-consumer` follows the family's scenario ([#123]).
+- A version can list a [deliberate exception](#deliberate-exceptions) to the rule, with a reason, for one run of one document. `validate`, `build-dist` and `check-party` then don't fail on that run, and nothing else is cleared.
+- `check-party` tells a reader or writer whether later versions in its major can harm it, following the family's declaration and the role its manifest states. It runs the same pairs as `validate`, for that side of the rule, and honours the same exceptions. Where no later version can harm the party, such as a reader in a reader-ahead family, it says why and exits `0`. See [Checking a party's schema versions](./developing-schemas.md#checking-a-partys-schema-versions).
 
 ## Words used on this page
 
@@ -269,7 +265,7 @@ Each scenario implies these facts:
 
 **A retention family gives its oldest live version.** `retained-stream`, or any family that sets `documentsLive: retention`, must have `oldestLive`. `jsm create-schema` starts it at `1.0.0`.
 
-**Every command that reads a family needs its declaration.** `validate`, `build-dist`, `check-consumer`, `check-changes`, `diff` and `create-schema-version` fail on a family with no declaration, or an invalid one, and say how to declare it. Only `create-registry`, `render-schema` and `tag-deployment` don't need one. An existing family with no `family.yml` gets one by hand: there's no migration command.
+**Every command that reads a family needs its declaration.** `validate`, `build-dist`, `check-party`, `check-changes`, `diff` and `create-schema-version` fail on a family with no declaration, or an invalid one, and say how to declare it. Only `create-registry`, `render-schema` and `tag-deployment` don't need one. An existing family with no `family.yml` gets one by hand: there's no migration command.
 
 **A declaration is fixed once a family is deployed.** Where an environment doesn't allow schema mutation, `check-changes` fails on a change to the declaration of a family with a deployed version, meaning one at the newest `jsm-deploy/<env>/*` tag reachable from `HEAD`. A family is one flow, so a changed scenario means a new family. It allows three things: moving `oldestLive` forward, adding a declaration to a family that had none, and deleting a whole family.
 
@@ -390,5 +386,4 @@ Answer these in order, and stop at the first that fits. If an API operation brou
 
 Writer-ahead is what Confluent Schema Registry calls FORWARD_TRANSITIVE, and reader-ahead is BACKWARD_TRANSITIVE, bounded by the major, and tested by documents rather than by comparing schemas. In the same terms, either is FULL_TRANSITIVE, and neither is NONE.
 
-[#123]: https://github.com/bitshepherds/json-schema-manager/issues/123
 [#124]: https://github.com/bitshepherds/json-schema-manager/issues/124

@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/bitshepherds/json-schema-manager/internal/config"
-	"github.com/bitshepherds/json-schema-manager/internal/consumer"
+	"github.com/bitshepherds/json-schema-manager/internal/party"
 	"github.com/bitshepherds/json-schema-manager/internal/repo"
 	"github.com/bitshepherds/json-schema-manager/internal/report"
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
@@ -35,7 +35,7 @@ type Manager interface {
 	CreateSchemaVersion(k schema.Key, rt schema.ReleaseType) (schema.Key, error)
 	RenderSchema(ctx context.Context, target schema.ResolvedTarget, env config.Env, collapse bool) ([]byte, error)
 	DiffSchemas(older, newer schema.Key) ([]schema.Change, error)
-	CheckConsumer(ctx context.Context, manifestPath, format string, useColour, strict bool) error
+	CheckParty(ctx context.Context, manifestPath, format string, useColour, strict bool) error
 	CheckChanges(ctx context.Context, envName config.Env) error
 	TagDeployment(ctx context.Context, envName config.Env, push bool) error
 	BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests, strict bool) error
@@ -112,9 +112,9 @@ func (l *LazyManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, err
 	return l.check().DiffSchemas(older, newer)
 }
 
-// CheckConsumer implements the Manager interface.
-func (l *LazyManager) CheckConsumer(ctx context.Context, manifestPath, format string, useColour, strict bool) error {
-	return l.check().CheckConsumer(ctx, manifestPath, format, useColour, strict)
+// CheckParty implements the Manager interface.
+func (l *LazyManager) CheckParty(ctx context.Context, manifestPath, format string, useColour, strict bool) error {
+	return l.check().CheckParty(ctx, manifestPath, format, useColour, strict)
 }
 
 // CheckChanges implements the Manager interface.
@@ -451,31 +451,31 @@ func (m *CLIManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, erro
 	return schema.Diff(olderSchema, newerSchema)
 }
 
-// CheckConsumer checks the schema versions in the consumer manifest at manifestPath against the
+// CheckParty checks the schema versions in the party manifest at manifestPath against the
 // registry, and writes the result. It returns ErrTestsFailed if any check failed, or if strict and
 // any gave a warning.
-func (m *CLIManager) CheckConsumer(ctx context.Context, manifestPath, format string, useColour, strict bool) error {
-	m.logger.Debug("checking consumer", "manifest", manifestPath, "format", format, "strict", strict)
+func (m *CLIManager) CheckParty(ctx context.Context, manifestPath, format string, useColour, strict bool) error {
+	m.logger.Debug("checking party", "manifest", manifestPath, "format", format, "strict", strict)
 
-	manifest, err := consumer.LoadManifest(manifestPath)
+	manifest, err := party.LoadManifest(manifestPath)
 	if err != nil {
 		return err
 	}
-	res, err := consumer.Check(ctx, m.registry, manifest)
+	res, err := party.Check(ctx, m.registry, manifest)
 	if err != nil {
 		return err
 	}
 
 	if format == formatJSON {
-		err = (&report.JSONReporter{}).WriteConsumerCheck(m.reporterWriter, res)
+		err = (&report.JSONReporter{}).WritePartyCheck(m.reporterWriter, res)
 	} else {
-		err = (&report.TextReporter{UseColour: useColour}).WriteConsumerCheck(m.reporterWriter, res)
+		err = (&report.TextReporter{UseColour: useColour}).WritePartyCheck(m.reporterWriter, res)
 	}
 	if err != nil {
 		return err
 	}
 
-	if res.Count(consumer.Fail) > 0 || strict && res.Count(consumer.Warn) > 0 {
+	if res.Count(party.Fail) > 0 || strict && res.Count(party.Warn) > 0 {
 		return ErrTestsFailed
 	}
 	return nil

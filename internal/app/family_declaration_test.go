@@ -27,7 +27,7 @@ const (
 )
 
 // declTestRegistry is a registry in a git repository, with one family of two versions and no
-// declaration, committed, and a consumer manifest pinning the earlier version.
+// declaration, committed, and a party manifest listing the earlier version.
 type declTestRegistry struct {
 	t    *testing.T
 	repo string
@@ -52,7 +52,7 @@ func newDeclTestRegistry(t *testing.T) *declTestRegistry {
 		require.NoError(t, os.MkdirAll(filepath.Join(r.reg, "domain/family", v, "pass"), 0o750))
 		require.NoError(t, os.MkdirAll(filepath.Join(r.reg, "domain/family", v, "fail"), 0o750))
 	}
-	r.write("jsm-consumer.yml", "schemas:\n  - "+declTestKey+"\n")
+	r.write("jsm-party.yml", "role: reader\nschemas:\n  - "+declTestKey+"\n")
 	r.git("init", "-q")
 	r.commit("first")
 	return r
@@ -108,7 +108,7 @@ func TestCommandsFailOnFamilyWithoutDeclaration(t *testing.T) {
 		"build-dist all":        {"build-dist", "prod", "--all"},
 		"build-dist skip tests": {"build-dist", "prod", "--all", "--skip-tests"},
 		"build-dist changed":    {"build-dist", "prod"},
-		"check-consumer":        {"check-consumer"},
+		"check-party":           {"check-party"},
 		"diff":                  {"diff", declTestKey, declTestLater},
 		"create-schema-version": {"create-schema-version", declTestKey, "minor"},
 		"check-changes":         {"check-changes", "prod"},
@@ -118,8 +118,8 @@ func TestCommandsFailOnFamilyWithoutDeclaration(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			r := newDeclTestRegistry(t)
-			if args[0] == "check-consumer" {
-				args = []string{"check-consumer", filepath.Join(r.reg, "jsm-consumer.yml")}
+			if args[0] == "check-party" {
+				args = []string{"check-party", filepath.Join(r.reg, "jsm-party.yml")}
 			}
 
 			out, err := r.jsm(args...)

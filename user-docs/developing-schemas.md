@@ -298,23 +298,38 @@ Add `--collapse` to `render-schema` or `build-dist` to inline the other JSM sche
 
 JSM does not publish the `dist` directory: copy it to wherever your schemas are served from, at the URL roots in the configuration file.
 
-### Checking a consumer's schema versions
+### Checking a party's schema versions
 
-A service which consumes documents validates them against particular schema versions. List them in a consumer manifest, `jsm-consumer.yml` by default, by key or canonical URL:
+A party is a service or tool which reads or writes a family's documents, and can lag behind later versions. It can ask whether those later versions are safe for it. List the versions it uses in a party manifest, `jsm-party.yml` by default, by key or canonical URL, and state its `role`, which is required:
 
 ```yaml
+role: reader
 schemas:
   - shop_order_1_0_0
   - https://json-schemas.myorg.io/customer_1_2_0.schema.json
 ```
 
-Then check them against the registry, in the consumer's CI with the registry checked out, or in the registry's CI for each consumer:
+A service which both reads and writes a family has a manifest for each role.
+
+Then check them against the registry, in the party's CI with the registry checked out, or in the registry's CI for each party:
 
 ```bash
-jsm check-consumer path/to/jsm-consumer.yml
+jsm check-party path/to/jsm-party.yml
 ```
 
-For each listed version, the check fails if the version is not in the registry, or if a later version with the same major version has a `pass` document which the listed version rejects: a provider sending that document would break the consumer. It warns if the family has a newer major version, so you can plan to move the consumer to it while providers send both. `--strict` makes the warnings fail, and `--output json` gives the result as JSON.
+The family's [scenario](./scenarios.md) decides what can harm the party. The check fails if a listed version isn't in the registry. Otherwise, it runs the documents [the rule](./scenarios.md#the-rule) runs between that version and each later version in its major, for the party's side:
+
+| Party | Family | What runs | A failure means |
+|-------|--------|-----------|-----------------|
+| Reader | Writer-ahead or either | Later `pass` documents on the listed version, and the listed version's `fail` documents on later versions | A writer on the later version can send this reader a document it rejects |
+| Writer | Reader-ahead or either | The listed version's `pass` documents on later versions, and later `fail` documents on the listed version | A reader on the later version rejects a document this writer sends |
+| Any other combination | | Nothing | No later version can harm this party, so it gets a notice saying why, and the check exits `0` |
+
+For example, a team running a service which takes requests from old clients declares `consumer-first`. The client team is a writer, and lags behind the service, so its check is the one that can fail: if `1.1.0` rejects a document `1.0.0` accepted, the client on `1.0.0` is broken. The service team's own check, as a reader, gives a notice, since it always moves first.
+
+A failure is reported as `validate` reports it, under the later version, naming the rule, both versions and the document. A [deliberate exception](./scenarios.md#deliberate-exceptions) applies here too, and the report shows it with its reason. A stale exception entry fails `validate`, not this check, since it doesn't harm the party.
+
+The check doesn't look across majors. It warns if the family has a newer major version, so you can plan the party's move to it. `--strict` makes warnings fail, as on `validate`, and `--output json` gives the result as JSON.
 
 ## Exit codes
 
@@ -323,7 +338,7 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 | Code | Meaning |
 |------|---------|
 | `0`  | The command succeeded, and every test and check passed. |
-| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), or an entry in a `compat-exceptions.yml` is stale, `check-changes` found a deployed schema or exception modified, or `check-consumer` found a listed version missing or broken by a later one. With `--strict`, a warning also exits `1`. The report says which. |
+| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), or an entry in a `compat-exceptions.yml` is stale, `check-changes` found a deployed schema or exception modified, or `check-party` found a listed version missing or harmed by a later one. With `--strict`, a warning also exits `1`. The report says which. |
 | `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
 | `130` | JSM was interrupted, by Ctrl+C (SIGINT), before it finished. |
 | `143` | JSM was stopped by SIGTERM, for example when a CI job times out, before it finished. |
