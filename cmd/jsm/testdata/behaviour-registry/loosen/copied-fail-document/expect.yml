@@ -1,0 +1,6 @@
+# 1.1.0 carries a copy of 1.0.0's fail document and now accepts it. Only a copy reaches a later
+# version today.
+promise: no-loosening
+validate:
+  1.0.0: pass
+  1.1.0: fail

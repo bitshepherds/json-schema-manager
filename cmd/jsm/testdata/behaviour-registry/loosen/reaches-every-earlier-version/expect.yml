@@ -1,0 +1,7 @@
+# 1.2.0's pass document is accepted by 1.1.0 and rejected by 1.0.0: the check reaches past the
+# version just before.
+promise: no-loosening
+validate:
+  1.0.0: pass
+  1.1.0: pass
+  1.2.0: fail

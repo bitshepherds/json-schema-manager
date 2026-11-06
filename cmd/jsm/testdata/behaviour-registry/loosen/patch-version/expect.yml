@@ -1,0 +1,5 @@
+# A patch is held to the same promise as a minor: 1.0.1 loosens, as a minor would.
+promise: no-loosening
+validate:
+  1.0.0: pass
+  1.0.1: fail

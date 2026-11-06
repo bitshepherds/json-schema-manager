@@ -1,0 +1,4 @@
+# A version accepts its own pass documents and rejects its own fail documents.
+promise: own-documents
+validate:
+  1.0.0: pass

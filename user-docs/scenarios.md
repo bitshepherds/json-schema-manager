@@ -15,6 +15,7 @@
   - [9. A format someone else owns](#9-a-format-someone-else-owns)
 - [Declaring a family's scenario](#declaring-a-familys-scenario)
 - [The rule](#the-rule)
+- [The promises](#the-promises)
 - [What the checks can and cannot show](#what-the-checks-can-and-cannot-show)
 - [How to choose a scenario](#how-to-choose-a-scenario)
 - [Terms from other schema registries](#terms-from-other-schema-registries)
@@ -270,6 +271,17 @@ Which documents prove that depends on which versions can meet, within a major:
 | Own documents on own version | The version behaves as intended | Yes | Yes | Yes | Yes |
 
 **Not yet built** ([#119]): the table above doesn't decide what runs yet. Today, in every family, whatever its scenario, only two of these rows run: later pass on earlier version, and own documents on own version.
+
+## The promises
+
+JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/testdata/behaviour-registry`, and a test fails if a promise has nothing proving it. They show JSM does what it says. They can't show how your schemas would fare, since [checks only sample](#checks-only-sample).
+
+- <a id="own-documents"></a>**Own documents.** A version accepts its own `pass` documents and rejects its own `fail` documents.
+- <a id="no-loosening"></a>**No loosening.** Within a major, a later version accepts nothing an earlier one rejects, as far as the documents show. Today that means later `pass` documents, and copied `fail` documents. **Not yet built** ([#119]): earlier `fail` documents run on later versions, and this applies only where a writer can be ahead.
+- <a id="no-tightening"></a>**No tightening.** Within a major, a later version rejects nothing an earlier one accepts, as far as the documents show. Today that means copied `pass` documents only. **Not yet built** ([#119]): earlier `pass` documents run on later versions, and this applies only where a reader can be ahead.
+- <a id="unexercised-change-warned"></a>**Unexercised changes are warned about.** `validate` warns about a change that widens what the version before accepts when no `pass` document uses it, and `--strict` makes that warning a failure.
+- <a id="no-document-crosses-a-major"></a>**No document crosses a major.** A new major may change anything, and its documents never run on another major's versions, or theirs on it.
+- <a id="deployed-versions-fixed"></a>**Deployed versions stay fixed.** Where an environment doesn't allow schema mutation, `check-changes` fails if a deployed version's schema or test documents change. A deployed version may gain a test document, or be deleted as a whole.
 
 ## What the checks can and cannot show
 

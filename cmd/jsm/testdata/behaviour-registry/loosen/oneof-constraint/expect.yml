@@ -1,0 +1,8 @@
+# 1.1.0 adds a maximum to a oneOf arm. 20 matched both arms of 1.0.0, so was rejected, and matches
+# one arm of 1.1.0, so is accepted: a constraint that loosens. The promise wants 1.0.0's fail document
+# to run on 1.1.0.
+promise: no-loosening
+gap: 119
+validate:
+  1.0.0: pass
+  1.1.0: fail

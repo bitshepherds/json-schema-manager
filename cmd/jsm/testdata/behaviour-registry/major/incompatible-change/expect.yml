@@ -1,0 +1,5 @@
+# 2.0.0 shares no status with 1.0.0, and neither version's documents run on the other.
+promise: no-document-crosses-a-major
+validate:
+  1.0.0: pass
+  2.0.0: pass

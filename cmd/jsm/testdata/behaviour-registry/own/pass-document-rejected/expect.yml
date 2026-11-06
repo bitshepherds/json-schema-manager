@@ -1,0 +1,4 @@
+# A pass document the version rejects fails the check.
+promise: own-documents
+validate:
+  1.0.0: fail

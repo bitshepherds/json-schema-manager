@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": {
+    "sku": {
+      "type": "string"
+    },
+    "qty": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "sku",
+    "qty"
+  ]
+}

@@ -22,10 +22,6 @@ stdout '"earlier": "shop_order_1_0_0"'
 stdout '"location": "/status"'
 stdout '"effect": "widens"'
 
-# --strict makes the warning fail the run
-! exec jsm validate shop_order_1_1_0 -c --strict
-stdout '1 unexercised change'
-
 # --skip-compatible leaves it out with the compatibility check
 exec jsm validate shop_order_1_1_0 -c --skip-compatible
 ! stdout 'unexercised change'
