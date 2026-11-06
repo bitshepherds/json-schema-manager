@@ -1,0 +1,9 @@
+# 1.1.0 moves a limit into allOf. The comparison sees it removed, which no pass document can use, so the
+# exception file acknowledges it, and --strict passes.
+promise: unexercised-change-warned
+validate:
+  1.0.0: pass
+  1.1.0: pass
+validateStrict:
+  1.0.0: pass
+  1.1.0: pass

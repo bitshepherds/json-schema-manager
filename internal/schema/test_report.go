@@ -2,6 +2,8 @@ package schema
 
 import (
 	"io"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,6 +51,8 @@ type TestReport struct {
 
 	// UnexercisedChanges lists, for each schema, the changes which none of its pass documents use.
 	UnexercisedChanges map[Key][]UnexercisedChange
+	// AcknowledgedChanges lists, for each schema, the changes its exception file acknowledges.
+	AcknowledgedChanges map[Key][]AcknowledgedChange
 
 	// Summaries describe, for each schema tested against its own documents, how well they cover it.
 	Summaries map[Key]*Summary
@@ -64,6 +68,9 @@ type Summary struct {
 	InheritedFailDocs int
 	Coverage          []coverage.Point    // the points in the schema, and whether its pass documents reach each
 	FailKeywords      map[string][]string // for each fail document's path, the keywords which reject it
+	// SeveralReasons gives, for each fail document rejected for several independent reasons, where they
+	// are. One of them can hide a change to another when the document runs on another version.
+	SeveralReasons map[string][]string
 }
 
 // MissingPassDocuments reports whether the schema has no pass document, of its own or inherited.
@@ -81,6 +88,11 @@ func (s *Summary) MissingDocuments() bool {
 	return s.MissingPassDocuments() || s.MissingFailDocuments()
 }
 
+// HasWarnings reports whether the summary holds anything --strict fails on.
+func (s *Summary) HasWarnings() bool {
+	return s.MissingDocuments() || len(s.SeveralReasons) > 0
+}
+
 // Covered returns how many of the schema's coverage points its pass documents reach.
 func (s *Summary) Covered() int {
 	n := 0
@@ -92,13 +104,31 @@ func (s *Summary) Covered() int {
 	return n
 }
 
-// UnexercisedChange is a structural change in a schema since the version before it in its major
-// family, which may make that earlier version reject documents the schema accepts, and which none
-// of the schema's pass documents uses. So the compatibility check cannot tell whether the change
-// breaks consumers of the earlier version.
+// UnexercisedChange is a structural change between two versions in a major which may go in a direction
+// the family protects, and which no document shows going that way. So the rule's document runs cannot
+// tell whether the change breaks anyone.
 type UnexercisedChange struct {
-	Earlier Key // the version before the schema
+	Earlier   Key
+	Later     Key
+	Direction structdiff.Effect // Widens or Narrows: the direction which needs evidence
+	Change    structdiff.Change
+}
+
+// NeededDocument returns the kind of document which would show the change.
+func (uc *UnexercisedChange) NeededDocument() TestDocType {
+	if uc.Direction == structdiff.Narrows {
+		return TestDocTypeFail
+	}
+	return TestDocTypePass
+}
+
+// AcknowledgedChange is an unexercised change which the later version's exception file acknowledges,
+// because no document could show it.
+type AcknowledgedChange struct {
+	Earlier Key
+	Later   Key
 	Change  structdiff.Change
+	Reason  string
 }
 
 // StaleException is an entry of a version's exception file which clears nothing: what it names isn't
@@ -111,12 +141,13 @@ type StaleException struct {
 // NewTestReport creates a new TestReport.
 func NewTestReport() *TestReport {
 	return &TestReport{
-		FailedTests:        make(TestLog),
-		PassedTests:        make(TestLog),
-		ExceptedTests:      make(TestLog),
-		StaleExceptions:    make(map[Key][]StaleException),
-		UnexercisedChanges: make(map[Key][]UnexercisedChange),
-		Summaries:          make(map[Key]*Summary),
+		FailedTests:         make(TestLog),
+		PassedTests:         make(TestLog),
+		ExceptedTests:       make(TestLog),
+		StaleExceptions:     make(map[Key][]StaleException),
+		UnexercisedChanges:  make(map[Key][]UnexercisedChange),
+		AcknowledgedChanges: make(map[Key][]AcknowledgedChange),
+		Summaries:           make(map[Key]*Summary),
 	}
 }
 
@@ -125,6 +156,15 @@ func (r *TestReport) AddSummary(key Key, s *Summary) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Summaries[key] = s
+}
+
+// FailDocumentsWithSeveralReasons returns how many fail documents are rejected for several independent reasons.
+func (r *TestReport) FailDocumentsWithSeveralReasons() int {
+	n := 0
+	for _, s := range r.Summaries {
+		n += len(s.SeveralReasons)
+	}
+	return n
 }
 
 // MissingDocuments returns how many schemas have no pass document, or no fail document.
@@ -139,9 +179,9 @@ func (r *TestReport) MissingDocuments() int {
 }
 
 // HasWarnings reports whether the report has anything --strict fails on: a schema with no pass or no
-// fail document, or a change which no pass document uses.
+// fail document, a fail document with several reasons, or a change which no document shows.
 func (r *TestReport) HasWarnings() bool {
-	return len(r.UnexercisedChanges) > 0 || r.MissingDocuments() > 0
+	return len(r.UnexercisedChanges) > 0 || r.MissingDocuments() > 0 || r.FailDocumentsWithSeveralReasons() > 0
 }
 
 // HasFailures reports whether the report has anything which fails the run: a test which failed, or a
@@ -158,17 +198,28 @@ func (r *TestReport) AddExceptedTest(key Key, spec *Spec) {
 }
 
 // AddStaleException adds an entry of the exception file of the version with the given key which clears nothing.
-func (r *TestReport) AddStaleException(key Key, e Exception, why string) {
+func (r *TestReport) AddStaleException(key Key, e *Exception, why string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.StaleExceptions[key] = append(r.StaleExceptions[key], StaleException{Exception: e, Why: why})
+	r.StaleExceptions[key] = append(r.StaleExceptions[key], StaleException{Exception: *e, Why: why})
 }
 
-// AddUnexercisedChange adds a change in the schema with the given key which no pass document uses.
+// AddUnexercisedChange adds a change in the schema with the given key which no document shows. Workers
+// reach a later version's pairs in any order, so each schema's are kept in order of the earlier version.
 func (r *TestReport) AddUnexercisedChange(key Key, uc *UnexercisedChange) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.UnexercisedChanges[key] = append(r.UnexercisedChanges[key], *uc)
+	slices.SortStableFunc(r.UnexercisedChanges[key], func(a, b UnexercisedChange) int {
+		return strings.Compare(string(a.Earlier), string(b.Earlier))
+	})
+}
+
+// AddAcknowledgedChange adds a change in the schema with the given key which its exception file acknowledges.
+func (r *TestReport) AddAcknowledgedChange(key Key, ac *AcknowledgedChange) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.AcknowledgedChanges[key] = append(r.AcknowledgedChanges[key], *ac)
 }
 
 // AddFailedTest adds a failed test to the report.

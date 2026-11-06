@@ -20,19 +20,26 @@ const ExceptionsFile = "compat-exceptions.yml"
 // Exception clears one document run across versions: the run of Document, between the earlier version
 // Version and the version whose exception file lists it, under Rule. Its directory says which way the
 // document runs, as the rule table has only one run for each rule and type of document.
+//
+// Or it acknowledges a warning: Change names a structural change between those two versions, in the
+// words the warning gives, which no document can show. It then has no Document or Rule.
 type Exception struct {
 	Version  SemVer
 	Document string // relative to the directory of the version it belongs to, such as fail/too-long.json
 	Rule     Rule
+	Change   string
 	Reason   string
 }
 
-func (e Exception) String() string {
+func (e *Exception) String() string {
+	if e.Change != "" {
+		return fmt.Sprintf("version %s, change %s", e.Version.String('.'), e.Change)
+	}
 	return fmt.Sprintf("version %s, %s, %s", e.Version.String('.'), e.Document, e.Rule)
 }
 
 // run returns the kind of run which the exception clears.
-func (e Exception) run() acrossVersionRun {
+func (e *Exception) run() acrossVersionRun {
 	docType := TestDocType(filepath.Dir(filepath.FromSlash(e.Document)))
 	// As in the rule table: no-loosening runs later pass and earlier fail documents, and no-tightening
 	// runs earlier pass and later fail documents.
@@ -45,7 +52,7 @@ func (e Exception) run() acrossVersionRun {
 
 // clears reports whether the exception names the run of the spec, which is one between Version and a
 // later version.
-func (e Exception) clears(spec *Spec) bool {
+func (e *Exception) clears(spec *Spec) bool {
 	v := spec.Earlier.Version()
 	dir := filepath.Base(filepath.Dir(spec.TestInfo.Path))
 	return e.Version == v && e.Rule == spec.Rule && e.Document == dir+"/"+filepath.Base(spec.TestInfo.Path)
@@ -53,7 +60,7 @@ func (e Exception) clears(spec *Spec) bool {
 
 // whyNoRun says why the exception names no run of the pair of its version and the later version: the
 // family's rule doesn't ask for it, or the document isn't there.
-func (e Exception) whyNoRun(ahead Ahead, later Key) string {
+func (e *Exception) whyNoRun(ahead Ahead, later Key) string {
 	run := e.run()
 	if !run.appliesTo(ahead) {
 		return fmt.Sprintf("this family doesn't hold its versions to %s", e.Rule)
@@ -69,12 +76,15 @@ func (e Exception) whyNoRun(ahead Ahead, later Key) string {
 // TargetGone reports whether what the exception names has gone from disk: its earlier version, or its
 // document, given the directory of the later version whose file lists it. Such an entry is stale, and
 // nothing can bring it back, so it may be removed even once it's deployed.
-func (e Exception) TargetGone(laterDir string) bool {
+func (e *Exception) TargetGone(laterDir string) bool {
 	familyDir := filepath.Dir(filepath.Dir(filepath.Dir(laterDir)))
 	earlierDir := filepath.Join(familyDir, e.Version.String(filepath.Separator))
 
 	if schemas, _ := filepath.Glob(filepath.Join(earlierDir, "*"+SchemaSuffix)); len(schemas) == 0 {
 		return true
+	}
+	if e.Change != "" {
+		return false
 	}
 	owner := earlierDir
 	if e.run().fromLater {
@@ -93,14 +103,24 @@ type exceptionEntry struct {
 	Version  string `yaml:"version"`
 	Document string `yaml:"document"`
 	Rule     Rule   `yaml:"rule"`
+	Change   string `yaml:"change"`
 	Reason   string `yaml:"reason"`
 }
 
 // exception checks the entry, and returns the exception it states.
-func (entry exceptionEntry) exception() (Exception, error) {
+func (entry *exceptionEntry) exception() (Exception, error) {
 	v, err := parseVersion("version", entry.Version)
 	if err != nil {
 		return Exception{}, err
+	}
+	if strings.TrimSpace(entry.Reason) == "" {
+		return Exception{}, errors.New("it must give a reason")
+	}
+	if entry.Change != "" {
+		if entry.Document != "" || entry.Rule != "" {
+			return Exception{}, errors.New("an entry for a change names no document or rule")
+		}
+		return Exception{Version: v, Change: entry.Change, Reason: entry.Reason}, nil
 	}
 	if !validExceptionDocument(entry.Document) {
 		return Exception{}, fmt.Errorf("document %q must be a %s file directly in pass or fail, such as "+
@@ -108,9 +128,6 @@ func (entry exceptionEntry) exception() (Exception, error) {
 	}
 	if entry.Rule != RuleNoLoosening && entry.Rule != RuleNoTightening {
 		return Exception{}, fmt.Errorf("rule %q must be %s or %s", entry.Rule, RuleNoLoosening, RuleNoTightening)
-	}
-	if strings.TrimSpace(entry.Reason) == "" {
-		return Exception{}, errors.New("it must give a reason")
 	}
 	return Exception{Version: v, Document: entry.Document, Rule: entry.Rule, Reason: entry.Reason}, nil
 }
@@ -133,15 +150,15 @@ func ParseExceptions(data []byte) ([]Exception, error) {
 	}
 
 	exceptions := make([]Exception, 0, len(f.Exceptions))
-	for i, entry := range f.Exceptions {
-		e, err := entry.exception()
+	for i := range f.Exceptions {
+		e, err := f.Exceptions[i].exception()
 		if err != nil {
 			return nil, fmt.Errorf("entry %d: %w", i+1, err)
 		}
 		if slices.ContainsFunc(exceptions, func(o Exception) bool {
-			return o.Version == e.Version && o.Document == e.Document && o.Rule == e.Rule
+			return o.Version == e.Version && o.Document == e.Document && o.Rule == e.Rule && o.Change == e.Change
 		}) {
-			return nil, fmt.Errorf("entry %d: it names %s twice", i+1, e)
+			return nil, fmt.Errorf("entry %d: it names %s twice", i+1, &e)
 		}
 		exceptions = append(exceptions, e)
 	}

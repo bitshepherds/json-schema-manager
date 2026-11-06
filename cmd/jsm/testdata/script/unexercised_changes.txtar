@@ -1,5 +1,5 @@
-# validate warns about a structural change which may break consumers of the version before,
-# when no pass document uses it, and jsm diff lists every structural change (#45)
+# validate warns about a structural change in the direction the family protects, when no document
+# shows it, and jsm diff lists every structural change (#45, #122)
 
 exec git init -q
 env JSM_REGISTRY_ROOT_DIR=reg
@@ -7,7 +7,7 @@ env JSM_REGISTRY_ROOT_DIR=reg
 # 1.1.0 adds an enum value which no 1.1.0 pass document uses: the compatibility check passes,
 # and validate warns, exiting 0
 exec jsm validate shop_order_1_1_0 -c
-stdout 'Unexercised changes: no pass document uses these'
+stdout 'Unexercised changes: no document shows these'
 stdout '\[WARN\] shop_order_1_1_0.schema.json since shop_order_1_0_0:'
 stdout '! /status: enum adds "refunded" \(widens\)'
 stdout 'Test summary: 4 passed, 0 failed, 1 unexercised change$'
@@ -19,6 +19,8 @@ exec jsm validate all -o json -C
 stdout '"totalUnexercised": 1'
 stdout '"schema": "shop_order_1_1_0"'
 stdout '"earlier": "shop_order_1_0_0"'
+stdout '"later": "shop_order_1_1_0"'
+stdout '"direction": "widens"'
 stdout '"location": "/status"'
 stdout '"effect": "widens"'
 

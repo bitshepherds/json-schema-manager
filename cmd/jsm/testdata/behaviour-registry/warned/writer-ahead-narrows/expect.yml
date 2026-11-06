@@ -1,0 +1,8 @@
+# The same change in a family a narrowing can't harm: no warning.
+promise: unexercised-change-warned
+validate:
+  1.0.0: pass
+  1.1.0: pass
+validateStrict:
+  1.0.0: pass
+  1.1.0: pass

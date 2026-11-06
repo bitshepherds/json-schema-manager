@@ -39,13 +39,17 @@ user-docs/scenarios.md.
 A version's compat-exceptions.yml can list a deliberate break of the rule, with its reason. The report
 shows that run as excepted, and it doesn't fail. An entry which clears nothing is stale, and fails.
 
-These checks are only as strong as the documents, so validate also compares each schema with the
-version before it, and warns about each structural change which may break consumers of that version
-and which none of the schema's pass documents uses: for example, an enum value added with no
-document using it. Add a pass document which uses the change. 'jsm diff' lists every structural
-change between two versions.
+These checks are only as strong as the documents, so validate also compares the same pairs of
+versions structurally, and warns about each change in a direction the family protects which no
+document shows. A writer-ahead family needs a pass document for a change which widens what's accepted,
+such as an enum value added. A reader-ahead family needs a fail document for one which narrows it, a
+family with either ahead needs both, and a family with neither ahead needs none. Where structdiff can't
+tell which way a change goes, it needs the documents for the direction the family protects. A change no
+document can show is acknowledged in compat-exceptions.yml. 'jsm diff' lists every structural change
+between two versions.
 
-It also warns about each schema with no pass document, or no fail document. With --verbose, the
+It also warns about each schema with no pass document, or no fail document, and each fail document
+rejected for several independent reasons, where its family runs documents across versions. With --verbose, the
 report shows how much of each schema its pass documents reach (its properties, enum values, types,
 anyOf and oneOf subschemas, and the paths through each if), and which keywords reject each fail
 document. The JSON report always includes these.
@@ -84,8 +88,8 @@ ALL SCHEMAS
 	cmd.Flags().StringVarP(&idStr, "id", "i", "", "Validate a schema identified by its canonical ID")
 	cmd.Flags().StringVarP(&scopeStr, "search-scope", "s", "", "Validate all schemas identified by JSM Search Scope")
 	cmd.Flags().BoolVar(&strict, "strict", false,
-		"Fail on warnings: a schema with no pass or no fail document, or with a change which may "+
-			"break consumers of the version before it and which none of its pass documents uses")
+		"Fail on warnings: a schema with no pass or no fail document, a fail document rejected for several "+
+			"reasons, or a change in a direction the family protects which no document shows")
 	var watch bool
 	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "Watch for changes and rerun tests")
 

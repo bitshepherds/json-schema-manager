@@ -54,6 +54,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	totalFailed := 0
 	totalExcepted := 0
 	totalStale := 0
+	totalAcknowledged := 0
 
 	for _, k := range keys {
 		keyCol := colWhite
@@ -74,7 +75,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 			statusText = "FAIL"
 			statusCol = colRed
 			keyCol = colRed
-		case summary != nil && summary.MissingDocuments():
+		case summary != nil && summary.HasWarnings():
 			statusText = "WARN"
 			statusCol = colYellow
 		}
@@ -115,6 +116,8 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 			}
 		}
 		tr.writeExceptions(w, excepted, stale)
+		tr.writeAcknowledged(w, r.AcknowledgedChanges[k])
+		totalAcknowledged += len(r.AcknowledgedChanges[k])
 		tr.writeSummary(w, summary)
 	}
 
@@ -128,6 +131,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		format string
 	}{
 		{totalExcepted, ", %d excepted"},
+		{totalAcknowledged, ", %d acknowledged"},
 		{totalStale, ", %d stale " + plural(totalStale, "exception")},
 		{totalUnexercised, ", %d unexercised " + plural(totalUnexercised, "change")},
 		{r.MissingDocuments(), ", %d " + plural(r.MissingDocuments(), "schema") + " without pass or fail documents"},
@@ -174,6 +178,9 @@ func reportKeys(r *schema.TestReport) []schema.Key {
 	for k := range r.StaleExceptions {
 		keysMap[k] = true
 	}
+	for k := range r.AcknowledgedChanges {
+		keysMap[k] = true
+	}
 	return slices.Sorted(maps.Keys(keysMap))
 }
 
@@ -210,6 +217,9 @@ func (tr *TextReporter) writeSummary(w io.Writer, s *schema.Summary) {
 	if len(missing) > 0 {
 		_, _ = fmt.Fprintf(w, "  %s no %s documents\n", tr.cs(colYellow, "!"), strings.Join(missing, " or "))
 	}
+	for _, path := range slices.Sorted(maps.Keys(s.SeveralReasons)) {
+		_, _ = fmt.Fprintf(w, "  %s %s\n", tr.cs(colYellow, "!"), severalReasonsWarning(path, s.SeveralReasons[path]))
+	}
 	if !tr.Verbose {
 		return
 	}
@@ -231,7 +241,16 @@ func (tr *TextReporter) writeSummary(w io.Writer, s *schema.Summary) {
 	}
 }
 
-// writeUnexercised writes the changes which no pass document uses, and returns how many there are.
+// severalReasonsWarning says that the fail document at path is rejected for reasons at several locations.
+func severalReasonsWarning(path string, locations []string) string {
+	return fmt.Sprintf(
+		"%s is rejected for several reasons, at %s: split it, as one reason can hide a change to another",
+		path,
+		strings.Join(locations, ", "),
+	)
+}
+
+// writeUnexercised writes the changes which need a document, and returns how many there are.
 func (tr *TextReporter) writeUnexercised(w io.Writer, r *schema.TestReport, divider string) int {
 	keys := make([]schema.Key, 0, len(r.UnexercisedChanges))
 	for k := range r.UnexercisedChanges {
@@ -243,22 +262,42 @@ func (tr *TextReporter) writeUnexercised(w io.Writer, r *schema.TestReport, divi
 	slices.Sort(keys)
 
 	_, _ = fmt.Fprintf(w, "%s\n", divider)
-	_, _ = fmt.Fprintln(w, tr.cs(colYellow, "Unexercised changes: no pass document uses these, so the compatibility "+
-		"check cannot tell whether they break consumers of the version before."))
+	_, _ = fmt.Fprintln(w, tr.cs(colYellow, "Unexercised changes: no document shows these in the direction this "+
+		"family protects, so the checks cannot tell whether they break anyone."))
 
 	total := 0
 	for _, k := range keys {
 		ucs := r.UnexercisedChanges[k]
 		total += len(ucs)
-		_, _ = fmt.Fprintf(w, "%s %s since %s:\n",
-			tr.cs(colYellow, "[WARN]"), tr.cs(colWhite, string(k)+schema.SchemaSuffix), ucs[0].Earlier)
-		for _, uc := range ucs {
-			_, _ = fmt.Fprintf(w, "  %s %s (%s)\n", tr.cs(colYellow, "!"), uc.Change.String(), uc.Change.Effect)
+		var earlier schema.Key
+		for i := range ucs {
+			uc := &ucs[i]
+			if uc.Earlier != earlier {
+				earlier = uc.Earlier
+				_, _ = fmt.Fprintf(w, "%s %s since %s:\n",
+					tr.cs(colYellow, "[WARN]"), tr.cs(colWhite, string(k)+schema.SchemaSuffix), earlier)
+			}
+			_, _ = fmt.Fprintf(w, "  %s %s (%s): needs a %s document\n",
+				tr.cs(colYellow, "!"), uc.Change.String(), uc.Change.Effect, uc.NeededDocument())
 		}
 	}
-	_, _ = fmt.Fprintln(w, "Add a pass document which uses each change. If the earlier version rejects it, "+
-		"the change breaks its consumers and needs a new major version.")
+	_, _ = fmt.Fprintf(
+		w,
+		"Add a document which uses each change: if the rule then fails, its failure says what to do. "+
+			"If no document can show a change, acknowledge it in %s.\n",
+		schema.ExceptionsFile,
+	)
 	return total
+}
+
+// writeAcknowledged writes the changes a schema's exception file acknowledges.
+func (tr *TextReporter) writeAcknowledged(w io.Writer, acknowledged []schema.AcknowledgedChange) {
+	for i := range acknowledged {
+		ac := &acknowledged[i]
+		_, _ = fmt.Fprintf(w, "  %s %s since %s (acknowledged):\n",
+			tr.cs(colYellow, "~"), ac.Change.String(), ac.Earlier)
+		_, _ = fmt.Fprintf(w, "    reason: %s\n", ac.Reason)
+	}
 }
 
 func plural(n int, word string) string {

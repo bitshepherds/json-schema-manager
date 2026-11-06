@@ -242,8 +242,10 @@ func TestReporters_UnexercisedChanges(t *testing.T) {
 	var text bytes.Buffer
 	require.NoError(t, (&TextReporter{}).Write(&text, r))
 	out := text.String()
-	assert.Contains(t, out, "[WARN] d_f_1_1_0.schema.json since d_f_1_0_0:\n  ! /s: enum adds \"x\" (widens)\n"+
-		"[WARN] d_f_1_2_0.schema.json since d_f_1_1_0:\n  ! /a: removes every constraint (widens)\n")
+	assert.Contains(t, out, "[WARN] d_f_1_1_0.schema.json since d_f_1_0_0:\n"+
+		"  ! /s: enum adds \"x\" (widens): needs a pass document\n"+
+		"[WARN] d_f_1_2_0.schema.json since d_f_1_1_0:\n"+
+		"  ! /a: removes every constraint (widens): needs a pass document\n")
 	assert.Contains(t, out, "Test summary: 0 passed, 0 failed, 2 unexercised changes")
 
 	var js bytes.Buffer
@@ -330,7 +332,8 @@ func TestJUnitReporter(t *testing.T) {
     </testcase>
     <testcase name="pass/b.json" classname="d_f_1_1_0.schema.json"></testcase>`, "cases are sorted, and text escaped")
 	assert.Contains(t, out, `<testsuite name="d_f_1_2_0.schema.json" tests="0" failures="0">
-    <system-out>WARN unexercised change since d_f_1_1_0: /s: enum adds &#34;x&#34; (widens)&#xA;</system-out>`)
+    <system-out>WARN unexercised change since d_f_1_1_0: /s: enum adds &#34;x&#34; (widens): `+
+		`needs a pass document&#xA;</system-out>`)
 	assert.Contains(t, out, `<system-out>WARN no fail documents&#xA;</system-out>`)
 	assert.Contains(t, out, `<system-out>WARN no pass documents&#xA;</system-out>`)
 	require.NoError(t, xml.Unmarshal(buf.Bytes(), new(junitTestSuites)), "the report is well-formed XML")
@@ -395,4 +398,84 @@ func TestSummaryCountsInheritedDocumentsInReports(t *testing.T) {
 	require.NoError(t, (&JUnitReporter{Strict: true}).Write(&buf, r))
 	assert.NotContains(t, buf.String(), "no pass documents")
 	assert.Contains(t, buf.String(), "no fail documents")
+}
+
+func TestReportersShowAcknowledgedChanges(t *testing.T) {
+	t.Parallel()
+
+	r := schema.NewTestReport()
+	r.AddAcknowledgedChange("d_f_1_1_0", &schema.AcknowledgedChange{
+		Earlier: "d_f_1_0_0",
+		Later:   "d_f_1_1_0",
+		Change: structdiff.Change{
+			Location: "/a",
+			Keyword:  "maxLength",
+			Effect:   structdiff.Widens,
+			Detail:   "removes the limit of 5",
+		},
+		Reason: "moved into allOf",
+	})
+
+	var text bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&text, r))
+	assert.Contains(t, text.String(),
+		"/a: maxLength removes the limit of 5 since d_f_1_0_0 (acknowledged):\n    reason: moved into allOf\n")
+	assert.Contains(t, text.String(), "1 acknowledged")
+
+	var js bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&js, r))
+	assert.Contains(t, js.String(), `"acknowledgedChanges": [`)
+	assert.Contains(t, js.String(), `"reason": "moved into allOf"`)
+}
+
+func TestReportersShowFailDocumentsWithSeveralReasons(t *testing.T) {
+	t.Parallel()
+
+	r := schema.NewTestReport()
+	r.AddSummary("d_f_1_0_0", &schema.Summary{
+		PassDocs: 1, FailDocs: 1,
+		SeveralReasons: map[string][]string{"fail/two.json": {"/a", "/b"}},
+	})
+	const want = "fail/two.json is rejected for several reasons, at /a, /b"
+
+	var text bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&text, r))
+	assert.Contains(t, text.String(), "[WARN]")
+	assert.Contains(t, text.String(), want)
+
+	var js bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&js, r))
+	assert.Contains(t, js.String(), `"severalReasons"`)
+
+	var junit bytes.Buffer
+	require.NoError(t, (&JUnitReporter{}).Write(&junit, r))
+	assert.Contains(t, junit.String(), want)
+}
+
+func TestReportersShowNarrowingNeedsFailDocument(t *testing.T) {
+	t.Parallel()
+
+	r := schema.NewTestReport()
+	r.AddUnexercisedChange("d_f_1_2_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_1_0", Later: "d_f_1_2_0", Direction: structdiff.Widens,
+		Change: structdiff.Change{Location: "/w", Effect: structdiff.Alters, Detail: "w"},
+	})
+	r.AddUnexercisedChange("d_f_1_2_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_0_0", Later: "d_f_1_2_0", Direction: structdiff.Narrows,
+		Change: structdiff.Change{Location: "/n", Effect: structdiff.Alters, Detail: "n"},
+	})
+
+	var text bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&text, r))
+	assert.Contains(
+		t,
+		text.String(),
+		"[WARN] d_f_1_2_0.schema.json since d_f_1_0_0:\n  ! /n: n (alters): needs a fail document\n"+
+			"[WARN] d_f_1_2_0.schema.json since d_f_1_1_0:\n  ! /w: w (alters): needs a pass document\n",
+	)
+
+	var js bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&js, r))
+	assert.Contains(t, js.String(), `"later": "d_f_1_2_0"`)
+	assert.Contains(t, js.String(), `"direction": "narrows"`)
 }

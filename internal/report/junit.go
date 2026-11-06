@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 
@@ -14,8 +15,9 @@ import (
 // JUnitReporter implements schema.Reporter for JUnit XML output, which CI systems show as test results.
 // Each schema is a test suite, and each test document run against it a test case.
 //
-// JUnit has no warnings. A schema's warnings (no pass or no fail document, and changes which no pass
-// document uses) are written to its suite's system-out, or, if Strict, as failing test cases, so the
+// JUnit has no warnings. A schema's warnings (no pass or no fail document, a fail document with several
+// reasons, and changes which no document shows) are written to its suite's system-out, or, if Strict,
+// as failing test cases, so the
 // report fails when jsm validate --strict does. A run an exception names is a skipped test case, whose
 // message gives the reason, and a stale exception is a failing one.
 type JUnitReporter struct {
@@ -172,10 +174,15 @@ func schemaWarnings(r *schema.TestReport, k schema.Key) []string {
 		if s.MissingFailDocuments() {
 			warnings = append(warnings, "no fail documents")
 		}
+		for _, path := range slices.Sorted(maps.Keys(s.SeveralReasons)) {
+			warnings = append(warnings, severalReasonsWarning(path, s.SeveralReasons[path]))
+		}
 	}
-	for _, uc := range r.UnexercisedChanges[k] {
-		warnings = append(warnings, fmt.Sprintf("unexercised change since %s: %s (%s)",
-			uc.Earlier, uc.Change.String(), uc.Change.Effect))
+	ucs := r.UnexercisedChanges[k]
+	for i := range ucs {
+		uc := &ucs[i]
+		warnings = append(warnings, fmt.Sprintf("unexercised change since %s: %s (%s): needs a %s document",
+			uc.Earlier, uc.Change.String(), uc.Change.Effect, uc.NeededDocument()))
 	}
 	return warnings
 }

@@ -65,8 +65,8 @@ for local troubleshooting or manual overrides.
 	cmd.Flags().BoolVar(&skipTests, "skip-tests", false,
 		"Build without first running the schemas' tests")
 	cmd.Flags().BoolVar(&strict, "strict", false,
-		"Fail on warnings: a schema with no pass or no fail document, or with a change which may "+
-			"break consumers of the version before it and which none of its pass documents uses")
+		"Fail on warnings: a schema with no pass or no fail document, a fail document rejected for several "+
+			"reasons, or a change in a direction the family protects which no document shows")
 	cmd.MarkFlagsMutuallyExclusive("skip-tests", "strict")
 
 	return cmd

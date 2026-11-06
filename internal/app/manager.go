@@ -757,8 +757,9 @@ func lockedExceptionChanges(path string, deployed []schema.Exception) []string {
 	}
 
 	var refused []string
-	for _, e := range deployed {
-		if !slices.Contains(current, e) && !e.TargetGone(versionDir) {
+	for i := range deployed {
+		e := &deployed[i]
+		if !slices.Contains(current, *e) && !e.TargetGone(versionDir) {
 			refused = append(refused, fmt.Sprintf("%s: the entry for %s can't be edited or removed", path, e))
 		}
 	}

@@ -53,7 +53,7 @@ jsm build-dist [environment] [flags]
       --collapse     Inline external $ref dependencies into each schema's $defs block
   -h, --help         help for build-dist
       --skip-tests   Build without first running the schemas' tests
-      --strict       Fail on warnings: a schema with no pass or no fail document, or with a change which may break consumers of the version before it and which none of its pass documents uses
+      --strict       Fail on warnings: a schema with no pass or no fail document, a fail document rejected for several reasons, or a change in a direction the family protects which no document shows
 ```
 
 ### Options inherited from parent commands

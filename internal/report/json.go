@@ -74,6 +74,8 @@ type jsonSummary struct {
 	Total                  int                 `json:"total"`
 	Points                 []coverage.Point    `json:"points"`
 	FailKeywords           map[string][]string `json:"failKeywords"` // fail document path: the keywords which reject it
+	// SeveralReasons gives, for a fail document's path, where its independent reasons are.
+	SeveralReasons map[string][]string `json:"severalReasons,omitempty"`
 }
 
 func newJSONSummary(s *schema.Summary) *jsonSummary {
@@ -91,25 +93,42 @@ func newJSONSummary(s *schema.Summary) *jsonSummary {
 		Total:                  len(s.Coverage),
 		Points:                 points,
 		FailKeywords:           s.FailKeywords,
+		SeveralReasons:         s.SeveralReasons,
 	}
 }
 
 // jsonUnexercisedChange is a change which no pass document of the schema uses.
 type jsonUnexercisedChange struct {
 	Schema   schema.Key        `json:"schema"`
-	Earlier  schema.Key        `json:"earlier"` // the version before the schema
+	Earlier  schema.Key        `json:"earlier"`
+	Later    schema.Key        `json:"later"`
+	Location string            `json:"location"`
+	Keyword  string            `json:"keyword,omitempty"`
+	Effect   structdiff.Effect `json:"effect"`
+	// Direction is the way which needs evidence: widens needs a pass document, and narrows a fail document.
+	Direction structdiff.Effect `json:"direction"`
+	Detail    string            `json:"detail"`
+}
+
+// jsonAcknowledgedChange is a change a schema's exception file acknowledges, as no document can show it.
+type jsonAcknowledgedChange struct {
+	Schema   schema.Key        `json:"schema"`
+	Earlier  schema.Key        `json:"earlier"`
+	Later    schema.Key        `json:"later"`
 	Location string            `json:"location"`
 	Keyword  string            `json:"keyword,omitempty"`
 	Effect   structdiff.Effect `json:"effect"`
 	Detail   string            `json:"detail"`
+	Reason   string            `json:"reason"`
 }
 
 // jsonStaleException is an entry of a schema's exception file which clears nothing, and so fails the run.
 type jsonStaleException struct {
 	Schema   schema.Key  `json:"schema"` // the later version, whose file lists it
 	Version  string      `json:"version"`
-	Document string      `json:"document"`
-	Rule     schema.Rule `json:"rule"`
+	Document string      `json:"document,omitempty"`
+	Rule     schema.Rule `json:"rule,omitempty"`
+	Change   string      `json:"change,omitempty"`
 	Reason   string      `json:"reason"`
 	Why      string      `json:"why"` // why it's stale
 }
@@ -126,9 +145,10 @@ type jsonOutput struct {
 		TotalUnexercised int `json:"totalUnexercised"`
 		TotalMissingDocs int `json:"totalMissingDocuments"`
 	} `json:"stats"`
-	Results            map[schema.Key]jsonSchemaResults `json:"results"`
-	UnexercisedChanges []jsonUnexercisedChange          `json:"unexercisedChanges"`
-	StaleExceptions    []jsonStaleException             `json:"staleExceptions"`
+	Results             map[schema.Key]jsonSchemaResults `json:"results"`
+	UnexercisedChanges  []jsonUnexercisedChange          `json:"unexercisedChanges"`
+	AcknowledgedChanges []jsonAcknowledgedChange         `json:"acknowledgedChanges"`
+	StaleExceptions     []jsonStaleException             `json:"staleExceptions"`
 }
 
 func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
@@ -154,6 +174,7 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 	out.Stats.TotalMissingDocs = r.MissingDocuments()
 
 	out.UnexercisedChanges = unexercisedChanges(r)
+	out.AcknowledgedChanges = acknowledgedChanges(r)
 	out.Stats.TotalUnexercised = len(out.UnexercisedChanges)
 
 	out.StaleExceptions = staleExceptions(r)
@@ -207,6 +228,7 @@ func staleExceptions(r *schema.TestReport) []jsonStaleException {
 				Version:  s.Exception.Version.String('.'),
 				Document: s.Exception.Document,
 				Rule:     s.Exception.Rule,
+				Change:   s.Exception.Change,
 				Reason:   s.Exception.Reason,
 				Why:      s.Why,
 			})
@@ -225,14 +247,40 @@ func unexercisedChanges(r *schema.TestReport) []jsonUnexercisedChange {
 
 	out := []jsonUnexercisedChange{}
 	for _, k := range keys {
-		for _, uc := range r.UnexercisedChanges[k] {
+		ucs := r.UnexercisedChanges[k]
+		for i := range ucs {
+			uc := &ucs[i]
 			out = append(out, jsonUnexercisedChange{
+				Schema:    k,
+				Earlier:   uc.Earlier,
+				Later:     uc.Later,
+				Location:  uc.Change.Location,
+				Keyword:   uc.Change.Keyword,
+				Effect:    uc.Change.Effect,
+				Direction: uc.Direction,
+				Detail:    uc.Change.Detail,
+			})
+		}
+	}
+	return out
+}
+
+// acknowledgedChanges lists the changes exception files acknowledge, ordered by schema.
+func acknowledgedChanges(r *schema.TestReport) []jsonAcknowledgedChange {
+	out := []jsonAcknowledgedChange{}
+	for _, k := range slices.Sorted(maps.Keys(r.AcknowledgedChanges)) {
+		acs := r.AcknowledgedChanges[k]
+		for i := range acs {
+			ac := &acs[i]
+			out = append(out, jsonAcknowledgedChange{
 				Schema:   k,
-				Earlier:  uc.Earlier,
-				Location: uc.Change.Location,
-				Keyword:  uc.Change.Keyword,
-				Effect:   uc.Change.Effect,
-				Detail:   uc.Change.Detail,
+				Earlier:  ac.Earlier,
+				Later:    ac.Later,
+				Location: ac.Change.Location,
+				Keyword:  ac.Change.Keyword,
+				Effect:   ac.Change.Effect,
+				Detail:   ac.Change.Detail,
+				Reason:   ac.Reason,
 			})
 		}
 	}

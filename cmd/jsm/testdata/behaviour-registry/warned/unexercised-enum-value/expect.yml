@@ -1,9 +1,9 @@
 # 1.1.0 adds an enum value no pass document uses. The documents show no break, so validate passes,
-# and warns, which --strict turns into a failure.
+# and warns, which --strict turns into a failure. Validating 1.0.0 compares the same pair, so it warns too.
 promise: unexercised-change-warned
 validate:
   1.0.0: pass
   1.1.0: pass
 validateStrict:
-  1.0.0: pass
+  1.0.0: fail
   1.1.0: fail

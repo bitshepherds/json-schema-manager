@@ -76,3 +76,38 @@ func TestSanthoshCompiler_ExternalRef(t *testing.T) {
 	require.ErrorContains(t, err,
 		"$ref https://geojson.org/schema/Point.json is external, and external $refs are not supported")
 }
+
+func TestFaultLocations(t *testing.T) {
+	t.Parallel()
+
+	const id = "https://example.com/s.schema.json"
+	c := NewSanthoshCompiler()
+	require.NoError(t, c.AddSchema(id, map[string]any{
+		"properties": map[string]any{
+			"status": map[string]any{"enum": []any{"paid"}, "type": "string", "maxLength": 2.0},
+			"total":  map[string]any{"type": "number"},
+			"choice": map[string]any{"oneOf": []any{
+				map[string]any{"properties": map[string]any{"a": map[string]any{"type": "string"}}},
+				map[string]any{"properties": map[string]any{"b": map[string]any{"type": "string"}}},
+			}},
+		},
+		"anyOf": []any{
+			map[string]any{"properties": map[string]any{"x": map[string]any{"type": "string"}}},
+			map[string]any{"properties": map[string]any{"y": map[string]any{"type": "string"}}},
+		},
+	}))
+	v, err := c.Compile(id)
+	require.NoError(t, err)
+
+	err = v.Validate(map[string]any{"status": "long", "total": "two"})
+	assert.Equal(t, []string{"/status", "/total"}, FaultLocations(err), "two keywords at /status are one location")
+
+	err = v.Validate(map[string]any{"x": 1.0, "y": 1.0})
+	assert.Equal(t, []string{"/"}, FaultLocations(err), "an anyOf counts once, at its own location")
+
+	err = v.Validate(map[string]any{"choice": map[string]any{"a": 1.0, "b": 1.0}})
+	assert.Equal(t, []string{"/choice"}, FaultLocations(err), "so does a oneOf")
+
+	assert.Nil(t, FaultLocations(errors.New("other")))
+	assert.Nil(t, FaultLocations(nil))
+}

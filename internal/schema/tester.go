@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bitshepherds/json-schema-manager/internal/coverage"
+	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 	"github.com/bitshepherds/json-schema-manager/internal/validator"
 )
 
@@ -31,6 +32,8 @@ type Tester struct {
 
 	mu       sync.Mutex
 	ranPairs map[versionPair]bool // the pairs this run has already taken on
+	// comparedPairs are the pairs whose structural changes this run has already looked at.
+	comparedPairs map[versionPair]bool
 }
 
 // NewTester creates a new tester for the given registry.
@@ -41,6 +44,7 @@ func NewTester(r *Registry) *Tester {
 		stopOnFirstError: true,
 		numWorkers:       runtime.GOMAXPROCS(0),
 		ranPairs:         make(map[versionPair]bool),
+		comparedPairs:    make(map[versionPair]bool),
 	}
 }
 
@@ -210,35 +214,210 @@ func (t *Tester) processSearchResult(
 	return false
 }
 
-// findUnexercisedChanges compares the schema with the version before it in its major family, and
-// adds to the report each structural change which may make that version reject documents the
-// schema accepts, and which none of the schema's pass documents uses.
+// findUnexercisedChanges compares the pairs the schema is part of, as the rule's document runs do, and
+// adds to the report each change in a direction its family protects with no document to show it. A
+// family with no pairs protects nothing.
 func (t *Tester) findUnexercisedChanges(k Key) error {
 	s, err := t.registry.GetSchemaByKey(k)
 	if err != nil {
 		return err
 	}
-	earlierKeys, err := s.MajorFamilyEarlierSchemas()
-	if err != nil || len(earlierKeys) == 0 {
+	decl, err := t.registry.FamilyDeclaration(k)
+	if err != nil {
 		return err
 	}
-	// The earlier versions are in version order, so the last is the one before s
-	earlierKey := earlierKeys[len(earlierKeys)-1]
-	earlier, err := t.registry.GetSchemaByKey(earlierKey)
+	ahead := decl.Facts.EffectiveAhead()
+	if ahead == AheadNeither {
+		return nil
+	}
+	earlier, later, err := t.otherVersions(s)
+	if err != nil {
+		return err
+	}
+	for _, p := range pairsOf(s, earlier, later) {
+		if !t.claimComparison(versionPair{p[0].Key(), p[1].Key()}) {
+			continue
+		}
+		if cErr := t.comparePair(p[0], p[1], ahead); cErr != nil {
+			return cErr
+		}
+	}
+	return nil
+}
+
+// comparePair adds to the report the unexercised changes between the pair, and each of the later
+// version's exception entries for the pair which acknowledges a change that needs no acknowledging. A
+// change the later version carries over from the version before it belongs to that version.
+func (t *Tester) comparePair(earlier, later *Schema, ahead Ahead) error {
+	changes, err := compareVersions(earlier, later)
+	if err != nil {
+		return err
+	}
+	between, err := t.versionsAfter(earlier, later)
+	if err != nil {
+		return err
+	}
+	carried, err := carriedChanges(earlier, between)
+	if err != nil {
+		return err
+	}
+	evidence, err := newChangeEvidence(earlier, later, between)
+	if err != nil {
+		return err
+	}
+	exceptions, err := later.Exceptions()
 	if err != nil {
 		return err
 	}
 
-	changes, err := Diff(earlier, s)
-	if err != nil {
-		return err
+	acknowledged := make(map[string]bool)
+	for i := range changes {
+		if !slices.Contains(carried, carryKey(&changes[i])) {
+			t.warnOfChange(&changes[i], earlier.Key(), later.Key(), evidence.missing(&changes[i], ahead), exceptions,
+				acknowledged)
+		}
 	}
-	for _, sc := range changes {
-		if sc.Change.MayBreak() && len(sc.UsedBy) == 0 {
-			t.report.AddUnexercisedChange(k, &UnexercisedChange{Earlier: earlierKey, Change: sc.Change})
+
+	for i := range exceptions {
+		e := &exceptions[i]
+		if e.Change != "" && e.Version == earlier.Key().Version() && !acknowledged[e.Change] {
+			t.report.AddStaleException(later.Key(), e, fmt.Sprintf(
+				"no change between %s and %s by that description needs acknowledging", earlier.Key(), later.Key()))
 		}
 	}
 	return nil
+}
+
+// warnOfChange adds to the report a change no document shows in the directions missing, unless an
+// exception acknowledges it, when it notes that in acknowledged.
+func (t *Tester) warnOfChange(
+	change *structdiff.Change,
+	earlier, later Key,
+	missing []structdiff.Effect,
+	exceptions []Exception,
+	acknowledged map[string]bool,
+) {
+	if len(missing) == 0 {
+		return
+	}
+	if e := exceptionForChange(exceptions, earlier.Version(), change); e != nil {
+		acknowledged[e.Change] = true
+		t.report.AddAcknowledgedChange(later, &AcknowledgedChange{
+			Earlier: earlier, Later: later, Change: *change, Reason: e.Reason,
+		})
+		return
+	}
+	for _, direction := range missing {
+		t.report.AddUnexercisedChange(later, &UnexercisedChange{
+			Earlier: earlier, Later: later, Direction: direction, Change: *change,
+		})
+	}
+}
+
+// exceptionForChange returns the entry which acknowledges the change from the earlier version, if any.
+func exceptionForChange(exceptions []Exception, earlier SemVer, change *structdiff.Change) *Exception {
+	i := slices.IndexFunc(exceptions, func(e Exception) bool {
+		return e.Version == earlier && e.Change == change.String()
+	})
+	if i < 0 {
+		return nil
+	}
+	return &exceptions[i]
+}
+
+// protectedDirections returns the directions in which a change with the given effect needs evidence,
+// in a family with the given party ahead. A writer ahead of its reader is protected from widening, and
+// a reader ahead of its writer from narrowing. A change which could go either way, needs evidence in
+// whichever direction the family protects.
+func protectedDirections(ahead Ahead, effect structdiff.Effect) []structdiff.Effect {
+	var out []structdiff.Effect
+	if (ahead == AheadWriter || ahead == AheadEither) && effect != structdiff.Narrows {
+		out = append(out, structdiff.Widens)
+	}
+	if (ahead == AheadReader || ahead == AheadEither) && effect != structdiff.Widens {
+		out = append(out, structdiff.Narrows)
+	}
+	return out
+}
+
+// changeEvidence is what can show a change between a pair: the documents of each version after the
+// earlier one, up to the later one, since all of them run on the earlier version where the rule asks.
+type changeEvidence struct {
+	pass, fail   []TestInfo
+	older, newer structdiff.Validates
+}
+
+func newChangeEvidence(earlier, later *Schema, between []*Schema) (*changeEvidence, error) {
+	ev := &changeEvidence{older: earlier.subschemaValidates(), newer: later.subschemaValidates()}
+	for _, s := range between {
+		pass, err := s.TestDocuments(TestDocTypePass)
+		if err != nil {
+			return nil, err
+		}
+		fail, err := s.TestDocuments(TestDocTypeFail)
+		if err != nil {
+			return nil, err
+		}
+		ev.pass = append(ev.pass, pass...)
+		ev.fail = append(ev.fail, fail...)
+	}
+	return ev, nil
+}
+
+// missing returns the directions the family protects in which no document shows the change.
+func (ev *changeEvidence) missing(change *structdiff.Change, ahead Ahead) []structdiff.Effect {
+	var out []structdiff.Effect
+	for _, direction := range protectedDirections(ahead, change.Effect) {
+		shown := slices.ContainsFunc(ev.pass, func(doc TestInfo) bool {
+			return change.UsedBy(doc.Unmarshalled, ev.older)
+		})
+		if direction == structdiff.Narrows {
+			shown = slices.ContainsFunc(ev.fail, func(doc TestInfo) bool {
+				return change.NarrowedBy(doc.Unmarshalled, ev.older, ev.newer)
+			})
+		}
+		if !shown {
+			out = append(out, direction)
+		}
+	}
+	return out
+}
+
+// versionsAfter returns the versions in later's major after earlier, up to and including later, in
+// version order.
+func (t *Tester) versionsAfter(earlier, later *Schema) ([]*Schema, error) {
+	keys, err := later.MajorFamilyEarlierSchemas()
+	if err != nil {
+		return nil, err
+	}
+	keys = keys[slices.Index(keys, earlier.Key())+1:]
+	versions, err := t.schemas(keys)
+	if err != nil {
+		return nil, err
+	}
+	return append(versions, later), nil
+}
+
+// carriedChanges returns the changes from earlier to the version before the last of between, each as a
+// carryKey. There are none if that version is earlier itself.
+func carriedChanges(earlier *Schema, between []*Schema) ([]string, error) {
+	if len(between) < 2 {
+		return nil, nil
+	}
+	changes, err := compareVersions(earlier, between[len(between)-2])
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, len(changes))
+	for i := range changes {
+		keys[i] = carryKey(&changes[i])
+	}
+	return keys, nil
+}
+
+// carryKey says what makes a change the same one between two pairs.
+func carryKey(change *structdiff.Change) string {
+	return string(change.Effect) + " " + change.String()
 }
 
 // inheritedDocuments counts the documents s inherits from the earlier versions in its major.
@@ -289,13 +468,6 @@ func (t *Tester) summarise(s *Schema, decl *FamilyDeclaration, ri RenderInfo, sp
 	}
 
 	id := string(s.CanonicalID(t.registry.config.ProductionEnvConfig()))
-	validates := func(pointer string, v any) (bool, bool) {
-		sub, cErr := t.registry.compiler.Compile(id + "#" + pointer)
-		if cErr != nil {
-			return false, false
-		}
-		return sub.Validate(v) == nil, true
-	}
 	docs := make([]any, len(passDocs))
 	for i := range passDocs {
 		docs[i] = passDocs[i].Unmarshalled
@@ -306,12 +478,18 @@ func (t *Tester) summarise(s *Schema, decl *FamilyDeclaration, ri RenderInfo, sp
 		FailDocs:          len(failDocs),
 		InheritedPassDocs: inheritedPass,
 		InheritedFailDocs: inheritedFail,
-		Coverage:          coverage.Measure(ri.Unmarshalled, docs, validates),
+		Coverage:          coverage.Measure(ri.Unmarshalled, docs, s.subschemaValidates()),
 		FailKeywords:      make(map[string][]string),
+		SeveralReasons:    make(map[string][]string),
 	}
 	for _, doc := range failDocs {
-		if keywords := validator.FailedKeywords(ri.Validator.Validate(doc.Unmarshalled), id); keywords != nil {
+		verr := ri.Validator.Validate(doc.Unmarshalled)
+		if keywords := validator.FailedKeywords(verr, id); keywords != nil {
 			summary.FailKeywords[doc.Path] = keywords
+		}
+		// Across versions, one reason can hide the loss of another. A family with no pairs has no such run.
+		if faults := validator.FaultLocations(verr); len(faults) > 1 && decl.Facts.EffectiveAhead() != AheadNeither {
+			summary.SeveralReasons[doc.Path] = faults
 		}
 	}
 	t.report.AddSummary(s.Key(), summary)
@@ -378,7 +556,7 @@ func (t *Tester) runSpecs(ctx context.Context, specs []Spec) error {
 		if spec.Run(ri.Validator) == nil {
 			t.report.AddPassedTest(spec.ReportKey(), spec)
 			if spec.Exception != nil {
-				t.report.AddStaleException(spec.ReportKey(), *spec.Exception,
+				t.report.AddStaleException(spec.ReportKey(), spec.Exception,
 					"that run doesn't fail, so there's nothing to except")
 			}
 			continue
@@ -496,9 +674,9 @@ func (t *Tester) reportExceptionsWithoutPairs(s *Schema, decl *FamilyDeclaration
 	for _, e := range exceptions {
 		switch {
 		case decl.Facts.EffectiveAhead() == AheadNeither:
-			t.report.AddStaleException(s.Key(), e, "this family runs no documents across versions")
+			t.report.AddStaleException(s.Key(), &e, "this family runs no documents across versions")
 		case !slices.ContainsFunc(earlier, func(o *Schema) bool { return o.Key().Version() == e.Version }):
-			t.report.AddStaleException(s.Key(), e, fmt.Sprintf("there is no earlier version %s in this major",
+			t.report.AddStaleException(s.Key(), &e, fmt.Sprintf("there is no earlier version %s in this major",
 				e.Version.String('.')))
 		}
 	}
@@ -513,12 +691,12 @@ func (t *Tester) applyExceptions(runs []Spec, earlier, later *Schema, decl *Fami
 		return err
 	}
 	for _, e := range exceptions {
-		if e.Version != earlier.Key().Version() {
+		if e.Version != earlier.Key().Version() || e.Change != "" {
 			continue
 		}
 		i := slices.IndexFunc(runs, func(spec Spec) bool { return e.clears(&spec) })
 		if i < 0 {
-			t.report.AddStaleException(later.Key(), e, e.whyNoRun(decl.Facts.EffectiveAhead(), later.Key()))
+			t.report.AddStaleException(later.Key(), &e, e.whyNoRun(decl.Facts.EffectiveAhead(), later.Key()))
 			continue
 		}
 		runs[i].Exception = &e
@@ -542,6 +720,17 @@ func pairRuns(earlier, later *Schema, decl *FamilyDeclaration) ([]Spec, error) {
 		}
 	}
 	return specs, nil
+}
+
+// claimComparison reports whether this run is the first to look at the pair's structural changes.
+func (t *Tester) claimComparison(p versionPair) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.comparedPairs[p] {
+		return false
+	}
+	t.comparedPairs[p] = true
+	return true
 }
 
 // claimPair reports whether this run is the first to take on the pair.

@@ -222,18 +222,44 @@ If a break is deliberate, or is between versions already deployed, list that one
 
 #### Unexercised changes
 
-The check on later `pass` documents is only as strong as those documents. If a minor version adds an enum value, and no `pass` document uses it, every document still passes the earlier version, and the check cannot see that consumers on the earlier version would reject the new value.
+The checks across versions are only as strong as the documents. If a minor version of a writer-ahead family adds an enum value, and no `pass` document uses it, every document still passes the earlier version, and the check cannot see that readers on the earlier version would reject the new value.
 
-So `jsm validate` also compares each version with the version before it, and warns about each structural change which may make that version reject documents the new one accepts, and which none of the new version's `pass` documents uses:
+So `jsm validate` also compares the same pairs of versions structurally, each version with every earlier one in its major, however you selected them. It warns about each change in a direction the family protects which no document shows, under the later version:
 
 ```
 [WARN] shop_order_1_1_0.schema.json since shop_order_1_0_0:
-  ! /status: enum adds "refunded" (widens)
+  ! /status: enum adds "refunded" (widens): needs a pass document
 ```
 
-Add a `pass` document which uses the change. If the earlier version rejects it, the check fails, and the change needs a new major version.
+Which changes need a document follows the family's [scenario](./scenarios.md#the-scenarios):
 
-`jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each. Changes which only narrow what a schema accepts, such as a property becoming required or a limit tightened, are not warned about. They are safe for consumers on the earlier version when the provider moves first, but they can break a family where readers move first or documents are kept: see [Schema Family Scenarios](./scenarios.md). The comparison is structural, and follows local `$ref`s; for a change where it cannot tell which values matter, such as an `anyOf` alternative added, any `pass` document with a value at that location counts as using it.
+| Who can be ahead | A change that widens | A change that narrows | A change it can't judge (`alters`) |
+| --- | --- | --- | --- |
+| Writer | `pass` document | Nothing | `pass` document |
+| Reader | Nothing | `fail` document | `fail` document |
+| Either | `pass` document | `fail` document | Both |
+| Neither | Nothing | Nothing | Nothing |
+
+A document shows a change if it has a value at the change's location that:
+
+- for a `pass` document, the earlier version rejects. A value both versions accept shows nothing. Where the change has a precise test, such as an enum value added, that test decides; otherwise the real validator judges the earlier version's subschema at that location.
+- for a `fail` document, the earlier version's subschema at that location accepts, and the later version's rejects.
+
+Documents of any version after the earlier one, up to the later one, count. A change which a version carries over unchanged from the version before it warns only under the version that made it.
+
+Add the document. If the rule then fails, the failure says what to do. If no document can show the change, such as a `maxLength` moved into an `allOf`, [acknowledge it](./scenarios.md#acknowledging-a-warning-no-document-can-clear) in `compat-exceptions.yml`.
+
+**It's good practice to add a `fail` document for a new constraint in a writer-ahead family too**, though nothing warns if you don't. Making `customerId` required is safe there, so it needs no document. But a `fail` document with no `customerId` runs on every later version, so a later version dropping the requirement then fails outright, rather than only warning. The same goes for a `pass` document for a new option in a reader-ahead family.
+
+**A `fail` document should hold one fault.** Where a family runs documents across versions, a document rejected for several independent reasons can hide a change to one of them, so `validate` warns, naming the locations. An `anyOf` or `oneOf` counts once however its arms fail.
+
+`jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each.
+
+**What the comparison can tell.** It's structural, and it doesn't try to prove one schema contains another.
+
+- It follows local `$ref`s, and from draft 2019-09 on, compares the keywords beside one too. It compares `patternProperties`, `format` where the validator asserts it (with `assertFormat`, or in a draft before 2019-09) and a change of `$schema`.
+- `allOf` and `anyOf` keep a change's direction, and `not` flips it. Reordering arms is no change.
+- Where it cannot tell which way a change goes, it says `alters`: a change inside `oneOf`, `if`, `then` or `else`, or to a `pattern`. The exception is a `oneOf` whose arms can't overlap: every pair has different `type`s (`integer` and `number` do overlap), or different `const`s on the same required property. Those keep exact labels.
 
 #### Coverage
 
@@ -255,7 +281,7 @@ With `--verbose`, the report also shows how many documents a schema inherits, ho
 
 The points are the properties a schema declares, its enum values, the types of a `type` list, its `anyOf` and `oneOf` subschemas, and the two paths through each `if`. The JSON report (`--output json`) always includes this, under each schema's `summary`, with `inheritedPassDocuments` and `inheritedFailDocuments`.
 
-The warnings, for unexercised changes and for missing documents, do not change the exit code unless you add `--strict`, which makes `jsm validate` exit `1` on any warning.
+The warnings, for unexercised changes, for missing documents and for `fail` documents with several reasons, do not change the exit code unless you add `--strict`, which makes `jsm validate` exit `1` on any warning.
 
 By default, `jsm validate` stops at the first failing test. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, `--output junit` for a JUnit XML report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
 

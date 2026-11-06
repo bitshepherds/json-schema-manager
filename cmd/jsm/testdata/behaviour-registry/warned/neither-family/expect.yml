@@ -1,0 +1,9 @@
+# A family with neither side ahead protects no direction, so a widening needs no document. Its versions each
+# need their own documents, so 1.1.0 has them.
+promise: unexercised-change-warned
+validate:
+  1.0.0: pass
+  1.1.0: pass
+validateStrict:
+  1.0.0: pass
+  1.1.0: pass

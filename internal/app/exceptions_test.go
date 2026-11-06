@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitshepherds/json-schema-manager/internal/repo"
+	"github.com/bitshepherds/json-schema-manager/internal/schema"
 )
 
 // These tests run the whole CLI on the exception families of the behaviour registry.
@@ -580,4 +581,29 @@ func TestCheckChangesStopsIfDeployedExceptionsCantBeRead(t *testing.T) {
 	}
 	m := NewCLIManager(slog.New(slog.DiscardHandler), registry, nil, gitter, nil, io.Discard)
 	require.ErrorContains(t, m.CheckChanges(context.Background(), "prod"), "git failed")
+}
+
+func TestLockedExceptionChangesLocksAnEntryForAChange(t *testing.T) {
+	t.Parallel()
+
+	const entry = `exceptions:
+  - version: 1.0.0
+    change: "/a: x"
+    reason: moved
+`
+	family := t.TempDir()
+	dir := filepath.Join(family, "1", "1", "0")
+	earlierDir := filepath.Join(family, "1", "0", "0")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.MkdirAll(earlierDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(earlierDir, "d_f_1_0_0"+schema.SchemaSuffix), nil, 0o600))
+	path := filepath.Join(dir, schema.ExceptionsFile)
+	deployed, err := schema.ParseExceptions([]byte(entry))
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(path, []byte(entry), 0o600))
+	assert.Empty(t, lockedExceptionChanges(path, deployed))
+
+	require.NoError(t, os.WriteFile(path, []byte(strings.ReplaceAll(entry, "/a: x", "/a: y")), 0o600))
+	assert.Len(t, lockedExceptionChanges(path, deployed), 1)
 }
