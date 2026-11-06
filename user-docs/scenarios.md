@@ -1,0 +1,314 @@
+# Schema Family Scenarios <!-- omit in toc -->
+
+- [What JSM does today](#what-jsm-does-today)
+- [Words used on this page](#words-used-on-this-page)
+- [The four facts](#the-four-facts)
+- [The scenarios](#the-scenarios)
+  - [1. Provider moves first](#1-provider-moves-first)
+  - [2. Consumer moves first](#2-consumer-moves-first)
+  - [3. Config files](#3-config-files)
+  - [4. Stored data, one schema for all](#4-stored-data-one-schema-for-all)
+  - [5. Stored data, each document names its version](#5-stored-data-each-document-names-its-version)
+  - [6. Retained streams](#6-retained-streams)
+  - [7. Uncoordinated parties](#7-uncoordinated-parties)
+  - [8. Lock-step](#8-lock-step)
+  - [9. A format someone else owns](#9-a-format-someone-else-owns)
+- [Declaring a family's scenario](#declaring-a-familys-scenario)
+- [The rule](#the-rule)
+- [What the checks can and cannot show](#what-the-checks-can-and-cannot-show)
+- [How to choose a scenario](#how-to-choose-a-scenario)
+- [Terms from other schema registries](#terms-from-other-schema-registries)
+
+A schema family's versions change over time, and whether a change is safe depends on how the family is used. Adding a value to a list of allowed order statuses breaks a service that receives order events and has not upgraded yet, but adding an option to a settings file harms nobody when a newer tool reads the file. Making a field required is safe for that same service, but in a database it locks out every record saved before the field existed.
+
+This page describes the common ways schemas are used, what can go wrong in each, and what JSM checks for each. Each family serves one of these scenarios.
+
+> [!IMPORTANT]
+>
+> Much of this page describes where JSM is going, not where it is. Anything JSM does not do yet is marked **Not yet built**, with the issue that builds it. Start with [What JSM does today](#what-jsm-does-today).
+
+## What JSM does today
+
+- Within a major, later `pass` documents run on earlier versions, from `validate`, `check-consumer` and `build-dist`. Patch and minor are treated alike.
+- Earlier documents never run on later versions, except as copies, because `create-schema-version` copies a version's whole directory on every bump.
+- `fail` documents never cross versions, and no document crosses a major.
+- `validate` warns about a change that widens what the version before accepts, or that it cannot judge, when none of the version's `pass` documents uses the change. See [Unexercised changes](./developing-schemas.md#unexercised-changes).
+
+So scenario 1 is partly served, by `pass` documents only, and no other scenario has checks of its own. There is no per-family declaration yet, so every family gets the same checks, whichever scenario it serves.
+
+Two things follow until the rest is built:
+
+- **Keep the copies.** The copied documents are the only way earlier documents reach a later version: a copied `pass` document catches a tightening, and a copied `fail` document catches a loosening. Nothing stops a copy being edited or deleted, so this protection is only as good as your care with them.
+- **Expect false alarms outside scenario 1.** The check on later `pass` documents runs on every family, so it can fail a change that is harmless in that family's scenario. `jsm validate --skip-compatible` leaves it out, and `jsm build-dist --skip-tests` leaves out all the tests.
+
+**Not yet built**, besides what each scenario below lists:
+
+- A new version carries only the documents for what it changes, so the copies stop ([#120]).
+- A family declares a deliberate exception to a check, with a reason ([#121]).
+- The warnings about unexercised changes follow the family's scenario ([#122]).
+- `check-consumer` follows the family's scenario ([#123]).
+
+## Words used on this page
+
+- **Writer** and **reader**: whoever produces a document, and whoever validates it. The rest of these docs often say provider and consumer, for the same roles in a message flow. A writer can also be a person editing a file, or a service that saved a record years ago.
+- **Ahead**: on a newer version of the schema than the other side. In a major version, a writer on `1.3.0` is ahead of a reader on `1.1.0`.
+- **Loosening**: a later version accepts something an earlier one rejected. Raising a `maxLength` from 10 to 20 is a loosening.
+- **Tightening**: a later version rejects something an earlier one accepted. Lowering that `maxLength` from 20 to 10 is a tightening.
+
+## The four facts
+
+Four facts about a family decide what can break it.
+
+1. **Who can be ahead?** Which versions can meet: a writer on a newer version than its reader, a reader on a newer version than its writer, either, or neither.
+2. **How long do documents outlive their writer?** A moment, a retention period, or indefinitely. This sets how far back the checks reach, whether a major bump needs migration, and whether a version may ever be deleted.
+3. **Does the reader pick the schema from the document?** If each document names its version and is validated against that version, versions needn't be compatible with each other.
+4. **Does the schema prescribe or describe?** A prescriptive schema sets the rules, and you choose when they change. A descriptive schema records a format someone else owns, and they change it without asking.
+
+## The scenarios
+
+Nine scenarios name the common combinations of those facts.
+
+| # | Scenario | Example | Who can be ahead | Documents live |
+| --- | --- | --- | --- | --- |
+| 1 | [Provider moves first](#1-provider-moves-first) | Events from a service, API responses, a CLI's JSON output | Writer | A moment |
+| 2 | [Consumer moves first](#2-consumer-moves-first) | API request bodies, partners submitting to one service | Reader | A moment |
+| 3 | [Config files](#3-config-files) | A tool's settings file | Reader | Indefinitely |
+| 4 | [Stored data, one schema for all](#4-stored-data-one-schema-for-all) | A database of mixed versions, validated on read | Reader | Indefinitely |
+| 5 | [Stored data, each document names its version](#5-stored-data-each-document-names-its-version) | Documents carrying a version tag | Neither, for validation | Indefinitely |
+| 6 | [Retained streams](#6-retained-streams) | Replayable event logs, dead-letter queues | Either | A retention period |
+| 7 | [Uncoordinated parties](#7-uncoordinated-parties) | Several providers on a bus, syncing mobile clients, a published standard | Either | Varies |
+| 8 | [Lock-step](#8-lock-step) | Both sides released together | Neither | A moment |
+| 9 | [A format someone else owns](#9-a-format-someone-else-owns) | A third party's API response or file format | Reader, catching up | Varies |
+
+An API operation is both scenario 1 and scenario 2, so its request and its response are separate families.
+
+Each scenario below ends with what JSM checks for it. [The rule](#the-rule) says what each check proves.
+
+### 1. Provider moves first
+
+A distributed system evolves component by component: a lagging consumer on the same major still accepts the new messages from an updated provider. The schema must stay open, or nothing can be added in a minor. Making a field required is safe, because it strengthens what consumers are promised.
+
+**Worked example: an `order-placed` event.**
+
+- **Who writes:** the Orders service, which publishes each event to a message bus.
+- **Who reads:** the Billing and Shipping services, each released on its own timetable, and each validating against the version it was built with.
+- **The change:** version `1.1.0` adds `"refunded"` to the allowed values of `status`.
+- **What breaks without the check:** Orders deploys, and sends its first refunded order. Billing, still on `1.0.0`, rejects the event, so a refund goes unprocessed.
+- **What stays safe:** adding an optional `giftMessage` property, since an open `1.0.0` already accepts it. Making `customerId` required, since every event Billing now receives has what it already allowed.
+
+**What JSM checks:** a writer-ahead family needs no loosening.
+
+- Today: later `pass` documents run on earlier versions, so a `1.1.0` `pass` document with `"status": "refunded"` fails on `1.0.0`. If no `pass` document uses the new value, `validate` warns instead.
+- **Not yet built** ([#119]): earlier `fail` documents run on later versions, so a `1.0.0` `fail` document with `"status": "refunded"` catches the change even when no `1.1.0` document uses the value.
+
+### 2. Consumer moves first
+
+Old clients' documents still pass, so new rules can't apply to them within a major.
+
+**Worked example: a `create-refund` API request body.**
+
+- **Who writes:** partners' systems, which each integrate with the API and change on their own timetables.
+- **Who reads:** the Payments service, which deploys a new version of the schema before any partner adopts it.
+- **The change:** version `1.1.0` makes `reason` required.
+- **What breaks without the check:** Payments deploys, and every partner's request that worked yesterday is refused, because none of them sends `reason` yet.
+- **What stays safe:** adding `"store-credit"` to the allowed values of `refundMethod`, or adding an optional property to a closed schema. Partners who don't use them are unaffected, and Payments is ready for those who do.
+
+**What JSM checks:** a reader-ahead family needs no tightening.
+
+- Today: no check of its own. A copied `1.0.0` `pass` document fails on `1.1.0`, as long as the copy is kept. The check on later `pass` documents also runs, and raises a false alarm on the harmless `"store-credit"` change, since `1.0.0` rejects a `pass` document that uses it.
+- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, and later `pass` documents stop running on earlier versions.
+
+### 3. Config files
+
+Old files load after a tool upgrade. Schemas are often closed to catch typos, so a new option is an allowed loosening.
+
+**Worked example: `deployer.yml`, the settings file of a deployment tool.**
+
+- **Who writes:** the people in each team using the tool, who edit the file by hand and keep it in their repositories for years.
+- **Who reads:** the tool, on whichever release each team has upgraded to. The schema is closed with `"additionalProperties": false`, so a mistyped option is an error rather than silently ignored.
+- **The change:** version `1.1.0` renames the option `timeout` to `timeoutSeconds`.
+- **What breaks without the check:** a team upgrades the tool, and a settings file that has worked for three years no longer loads.
+- **What stays safe:** adding a new option, `parallel`. A file using it would be rejected by `1.0.0`, but that needs an older tool reading a newer file, and this check doesn't promise that. A `fail` document with the typo `paralel` should still be rejected by both versions.
+
+**What JSM checks:** a reader-ahead family needs no tightening.
+
+- Today: no check of its own. A copied `1.0.0` `pass` document that uses `timeout` fails on `1.1.0`, as long as the copy is kept. The check on later `pass` documents also runs, and raises a false alarm on the harmless `parallel` option.
+- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, and later `pass` documents stop running on earlier versions.
+- **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version, since files written against it may live indefinitely.
+
+### 4. Stored data, one schema for all
+
+Every old document stays valid, however old. A major bump doesn't make old data vanish, so it needs migration.
+
+**Worked example: customer profiles in a document database.**
+
+- **Who writes:** every release of the Accounts service there has ever been, saving profiles over many years. The profiles carry no version.
+- **Who reads:** the current release of the Accounts service, which validates each profile against the newest schema as it loads it.
+- **The change:** version `1.4.0` makes `email` required.
+- **What breaks without the check:** a customer who signed up in 2019, before the service collected email addresses, can no longer log in, because their profile is rejected as it loads.
+- **What stays safe:** adding an optional `preferredLanguage` property. Old profiles without it still pass.
+- **A major bump:** moving `email` to required in `2.0.0` doesn't solve this. The 2019 profile is still in the database, and the Accounts service must migrate it, with code you write, before `2.0.0` can read it.
+
+**What JSM checks:** a reader-ahead family needs no tightening.
+
+- Today: no check of its own. A copied `1.3.0` `pass` document with no `email` fails on `1.4.0`, as long as the copy is kept.
+- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, and later `pass` documents stop running on earlier versions.
+- **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version, and `validate` requires a migration statement for each new major. JSM records the statement. The migration is your code, and JSM tests no data.
+
+### 5. Stored data, each document names its version
+
+Documents are a mix of versions, each validated against its own. No version may ever be deleted, and the reader or migration code must handle each one.
+
+**Worked example: an archive of issued invoices.**
+
+- **Who writes:** the Invoicing service, which adds `"schemaVersion": "1.2.0"` to each invoice as it issues it. Invoices are never changed afterwards.
+- **Who reads:** the audit tool, which reads the version from each invoice and validates the invoice against that version.
+- **The change:** version `1.3.0` makes `taxNumber` required, and a tidy-up deletes version `1.2.0` from the registry, since nothing issues invoices with it any more.
+- **What breaks without the check:** the audit tool meets an invoice from 2022 that names `1.2.0`, and has no schema to validate it with. Making `taxNumber` required harms nothing: no `1.2.0` invoice is ever validated against `1.3.0`.
+
+**What JSM checks:** a family whose reader picks the schema from the document behaves as `neither`, so only each version's own documents run.
+
+- Today: each version's own documents run. The check on later `pass` documents also runs, and can raise false alarms, since these versions never need to agree.
+- **Not yet built** ([#119]): later `pass` documents stop running on earlier versions.
+- **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version.
+
+### 6. Retained streams
+
+Scenario 1, plus new consumers reading old events. Retention can limit how far back the checks go.
+
+**Worked example: a `payment-taken` event log kept for 30 days.**
+
+- **Who writes:** the Payments service.
+- **Who reads:** the Fraud service, which may lag behind the writer on an older version, and a new Analytics service, built against the newest version, which replays the log from its oldest event.
+- **The change:** version `1.3.0` makes `currency` required. Scenario 1 would allow this, and Fraud is unaffected.
+- **What breaks without the check:** Analytics starts up and replays events written three weeks ago under `1.2.0`. Those events have no `currency`, so Analytics rejects them. Adding a value to an enum breaks the other side: Fraud rejects the new value, as in scenario 1.
+- **What retention changes:** once 30 days have passed since the last `1.0.0` event was written, no such event remains, so `1.0.0` no longer constrains later versions.
+
+**What JSM checks:** an either family needs no loosening and no tightening.
+
+- Today: later `pass` documents run on earlier versions, which is half of what it needs. Copied earlier documents cover some of the rest, as long as they are kept.
+- **Not yet built** ([#119]): earlier `fail` documents run on later versions, earlier `pass` documents run on later versions, and later `fail` documents run on earlier versions.
+- **Not yet built** ([#124]): the family declares its oldest live version, `oldestLive`, and moves it forward by a reviewed change. Older versions then take no part in the checks, and `check-changes` allows deleting them. JSM uses no clock, so results are repeatable. Until this is built, a retention family is checked against all the history in its major.
+
+### 7. Uncoordinated parties
+
+Nobody controls upgrade order, so few changes are safe in a minor.
+
+**Worked example: notes synced between mobile app installs.**
+
+- **Who writes:** each install of the app, on whichever release its owner has updated to.
+- **Who reads:** every other install on the same account, also on whichever release its owner has updated to.
+- **The change:** version `1.1.0` adds `"pinned"` to the allowed values of `state`, and makes `updatedAt` required.
+- **What breaks without the check:** both directions fail. A phone on the new release syncs a pinned note to a tablet on the old one, which rejects it. The tablet syncs a note with no `updatedAt` to the phone, which rejects that too.
+- **What stays safe:** a new description, and little else. See [why "either" is only as strong as its samples](#either-is-only-as-strong-as-its-samples).
+
+**What JSM checks:** an either family needs no loosening and no tightening.
+
+- Today: later `pass` documents run on earlier versions, which is half of what it needs. Copied earlier documents cover some of the rest, as long as they are kept.
+- **Not yet built** ([#119]): earlier `fail` documents run on later versions, earlier `pass` documents run on later versions, and later `fail` documents run on earlier versions.
+
+### 8. Lock-step
+
+Only each version's own documents matter, and cross-version checks would be noise.
+
+**Worked example: a plan file passed between two steps of a batch job.**
+
+- **Who writes:** the job's Planner step, which writes `plan.json`.
+- **Who reads:** the job's Executor step, which reads `plan.json` and discards it. Both steps ship in one container image, so they are always on the same version.
+- **The change:** version `1.1.0` renames `steps` to `tasks`. No reader on `1.0.0` can ever meet a `1.1.0` document, so this harms nobody.
+- **What breaks without the check:** the check that matters here is each version against its own documents. If `1.1.0` requires a misspelt `taks`, it rejects every real plan, and its own `pass` document shows that before the job fails in production.
+
+**What JSM checks:** a neither family runs only each version's own documents.
+
+- Today: each version's own documents run. The check on later `pass` documents also runs, and raises a false alarm on the rename.
+- **Not yet built** ([#119]): later `pass` documents stop running on earlier versions.
+
+### 9. A format someone else owns
+
+A new version records a change that has already happened. A failed check means "the real format has changed, and here's how", not "you made a mistake, don't ship". Test documents are captured samples, and old samples usually still need to pass. Choosing a major bump changes nothing, because the documents already exist.
+
+**Worked example: a shipping carrier's tracking webhook.**
+
+- **Who writes:** the carrier, a separate company, which changes the format when it chooses and may not say so.
+- **Who reads:** your Tracking service, which receives each webhook and validates it. Its schema describes what the carrier sends.
+- **The change:** the carrier starts sending `"status": "held-at-customs"`. You capture a real message as a `pass` document for version `1.1.0`, and add the value to the schema.
+- **What breaks without the check:** while drafting `1.1.0`, you rewrite the `status` list from recent samples and drop `"out-for-delivery"`, which they happen not to show. The carrier still sends it, and the Tracking service rejects every parcel on its last leg. A captured `1.0.0` sample with that status would have shown this.
+
+**What JSM checks:** this family follows reader-ahead. The schema is descriptive, which changes the wording of a failure but not which documents run.
+
+- Today: no check of its own. A copied `1.0.0` sample that uses `"out-for-delivery"` fails on `1.1.0`, as long as the copy is kept. The check on later `pass` documents also runs, and raises a false alarm on the new sample, since `1.0.0` rejects it. That alarm tells you only what you already know.
+- **Not yet built** ([#119]): earlier `pass` documents run on later versions, later `fail` documents run on earlier versions, later `pass` documents stop running on earlier versions, and a failure says the real format has changed rather than that you made a mistake.
+
+## Declaring a family's scenario
+
+**Not yet built** ([#118]): a family has no declaration today. This section is what's planned.
+
+A family names its scenario in a required file, `family.yml`, in the family's directory:
+
+```yaml
+scenario: provider-first
+```
+
+The names a family declares, in order: `provider-first`, `consumer-first`, `config-file`, `stored-one-schema`, `stored-self-naming`, `retained-stream`, `uncoordinated`, `lock-step` and `third-party-format`. A family's scenario is fixed once it's deployed: a changed scenario means a new family.
+
+The other facts bear on the rule like this. A reader that picks its schema from the document means no cross-version runs, so that family behaves as `neither`. `describes` changes the wording of failures, not which documents run. How long documents live affects the version lifecycle: a retention family declares its oldest live version, and moves it forward by a reviewed change.
+
+Of the nine, only scenario 5 has a reader that picks its schema from the document, and only scenario 9 describes a format rather than prescribing one.
+
+## The rule
+
+A writer ahead of its reader needs **no loosening**: a later version accepts nothing an earlier one rejects. A reader ahead of its writer needs **no tightening**: a later version rejects nothing an earlier one accepts.
+
+Which documents prove that depends on which versions can meet, within a major:
+
+| Document run | Proves | Writer ahead | Reader ahead | Either | Neither |
+| --- | --- | --- | --- | --- | --- |
+| Later pass on earlier version | No loosening | Yes | No | Yes | No |
+| Earlier fail on later version | No loosening | Yes | No | Yes | No |
+| Earlier pass on later version | No tightening | No | Yes | Yes | No |
+| Later fail on earlier version | No tightening | No | Yes | Yes | No |
+| Own documents on own version | The version behaves as intended | Yes | Yes | Yes | Yes |
+
+**Not yet built** ([#119]): the table above doesn't decide what runs yet. Today, in every family, whatever its scenario, only two of these rows run: later pass on earlier version, and own documents on own version.
+
+## What the checks can and cannot show
+
+### Checks only sample
+
+Documents sample behaviour. A check that passes shows that none of your documents exposed a break, not that no break exists.
+
+A fail document can be rejected by a later version for a different reason, which hides a loosening, so each fail document should hold one fault. Take a `1.0.0` `fail` document, `{"status": "refunded", "quantity": "two"}`, which has both a status and a quantity that `1.0.0` rejects. If `1.1.0` allows `"refunded"`, the document is still rejected, because of its quantity, and the loosening goes unseen. Split it into two documents, and the one with only the status catches it.
+
+Today this applies to copied `fail` documents, the only ones that reach a later version. **Not yet built** ([#119]): earlier `fail` documents run on later versions.
+
+### "Either" is only as strong as its samples
+
+Adding a typed optional property to an open schema is strictly a tightening, and passes only if no document uses the wrong type there.
+
+Take an open `1.0.0` with no `nickname` property. It accepts `{"nickname": 42}`, since an open schema allows any extra property. If `1.1.0` adds `nickname` with `"type": "string"`, it rejects that document. In an either family this is a real tightening, and the checks pass unless one of your documents happens to have a number there.
+
+## How to choose a scenario
+
+Answer these in order, and stop at the first that fits. If an API operation brought you here, take its request and its response separately, as they are two families.
+
+1. **Does another organisation own the format, so your schema only records it?** Scenario 9, [a format someone else owns](#9-a-format-someone-else-owns).
+2. **Does each document name its own version, with the reader validating it against that version?** Scenario 5, [stored data, each document names its version](#5-stored-data-each-document-names-its-version).
+3. **Are writer and reader always released together, with no documents kept beyond the release?** Scenario 8, [lock-step](#8-lock-step).
+4. **Do documents stay around for good, and are they read by newer code?** If people edit them as settings, scenario 3, [config files](#3-config-files). If they are saved records, scenario 4, [stored data, one schema for all](#4-stored-data-one-schema-for-all).
+5. **Are documents kept for a set period, and can they be read again?** Scenario 6, [retained streams](#6-retained-streams).
+6. **Otherwise, documents are read and gone, so who upgrades first?**
+   - The writer, always: scenario 1, [provider moves first](#1-provider-moves-first).
+   - The reader, always: scenario 2, [consumer moves first](#2-consumer-moves-first).
+   - Nobody controls it, or you can't tell: scenario 7, [uncoordinated parties](#7-uncoordinated-parties).
+
+## Terms from other schema registries
+
+Writer-ahead is what Confluent Schema Registry calls FORWARD_TRANSITIVE, and reader-ahead is BACKWARD_TRANSITIVE, bounded by the major, and tested by documents rather than by comparing schemas. In the same terms, either is FULL_TRANSITIVE, and neither is NONE.
+
+[#118]: https://github.com/bitshepherds/json-schema-manager/issues/118
+[#119]: https://github.com/bitshepherds/json-schema-manager/issues/119
+[#120]: https://github.com/bitshepherds/json-schema-manager/issues/120
+[#121]: https://github.com/bitshepherds/json-schema-manager/issues/121
+[#122]: https://github.com/bitshepherds/json-schema-manager/issues/122
+[#123]: https://github.com/bitshepherds/json-schema-manager/issues/123
+[#124]: https://github.com/bitshepherds/json-schema-manager/issues/124

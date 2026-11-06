@@ -80,7 +80,7 @@ Generators name a type after the schema's `title`, or, without one, after its `$
 
 ## Unknown properties
 
-json-schema-to-typescript adds an index signature, `[k: string]: unknown`, to each object which allows additional properties, which is the JSON Schema default. That suits how JSM expects consumers to behave: ignore the properties they do not know, so that providers can add properties in a minor version. See [Compatibility runs one way](./developing-schemas.md#compatibility-runs-one-way-providers-first).
+json-schema-to-typescript adds an index signature, `[k: string]: unknown`, to each object which allows additional properties, which is the JSON Schema default. That suits how JSM expects consumers to behave: ignore the properties they do not know, so that providers can add properties in a minor version. See [Compatibility when the provider moves first](./developing-schemas.md#compatibility-when-the-provider-moves-first), and [Schema Family Scenarios](./scenarios.md) for the other ways a family can be used.
 
 Do not set `"additionalProperties": false` just to get tighter types, since it means a new property is a breaking change.
 

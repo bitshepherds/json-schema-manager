@@ -40,6 +40,7 @@ In CI, run the checks on every pull request. Each exits non-zero when a test or 
 See the user docs:
 
 - [Developing Schemas](./user-docs/developing-schemas.md): the workflow, CI, exit codes, and how JSM checks compatibility.
+- [Schema Family Scenarios](./user-docs/scenarios.md): the common ways schemas are used, what can break in each, and what JSM checks for each.
 - [Registry](./user-docs/registry.md): how a registry is laid out and configured.
 - [Generating Typed Models](./user-docs/generating-models.md): TypeScript, Go and other models from the registry's schemas.
 - [Referring to JSM Schemas from AsyncAPI and OpenAPI](./user-docs/api-documents.md): message and body schemas for API documents.

@@ -92,7 +92,7 @@ JSON Schema Manager addresses this by forcing the creation of a **family** of ve
 - use a MINOR version change when adding new features in a backward-compatible manner
 - use a PATCH version change when making non-breaking non-feature changes, such as improving a description.
 
-A new minor or patch version must accept nothing that an earlier version of the same major would reject, since consumers on the earlier version still check against it. JSM tests this. See [Compatibility runs one way](./developing-schemas.md#compatibility-runs-one-way-providers-first).
+What a new minor or patch version must promise depends on how the family is used: see [Schema Family Scenarios](./scenarios.md). In a writer-ahead family, where the provider moves first, it must accept nothing that an earlier version of the same major would reject, since consumers on the earlier version still check against it. JSM tests this today with `pass` documents only, so it finds only what they show. See [Compatibility when the provider moves first](./developing-schemas.md#compatibility-when-the-provider-moves-first).
 
 For example, consider a customer schema:
 

@@ -16,7 +16,7 @@
   - [Test results in CI](#test-results-in-ci)
   - [Git history in CI](#git-history-in-ci)
 - [Why semantic versioning?](#why-semantic-versioning)
-  - [Compatibility runs one way: providers first](#compatibility-runs-one-way-providers-first)
+  - [Compatibility when the provider moves first](#compatibility-when-the-provider-moves-first)
   - [Innocuous changes which are actually breaking](#innocuous-changes-which-are-actually-breaking)
     - [Adding enum values](#adding-enum-values)
     - [Relaxing a constraint](#relaxing-a-constraint)
@@ -97,6 +97,8 @@ A schema family is a collection of different versions of the same schema which v
 - a message in an event driven architecture
 - an API request or response body
 - any other JSON, YAML, or TOML document.
+
+These are used in different ways, and what can break a family depends on which: see [Schema Family Scenarios](./scenarios.md).
 
 It is identified by a domain path and a family name. To create the first schema:
 
@@ -194,7 +196,7 @@ Since the new version is a copy of the one you give, you will usually give the n
 
 Each schema is tested against its own test documents: every document in its `pass` directory must be accepted, and every document in its `fail` directory must be rejected.
 
-`jsm validate` also checks compatibility: each version's `pass` documents must be accepted by every earlier version with the same major version. This catches a minor or patch version which would break consumers still using an earlier version. See [Compatibility runs one way](#compatibility-runs-one-way-providers-first). Use `--skip-compatible` to leave this check out while iterating.
+`jsm validate` also checks compatibility: each version's `pass` documents must be accepted by every earlier version with the same major version. This catches a minor or patch version which would break consumers still using an earlier version. See [Compatibility when the provider moves first](#compatibility-when-the-provider-moves-first). Use `--skip-compatible` to leave this check out while iterating.
 
 #### Unexercised changes
 
@@ -209,7 +211,7 @@ So `jsm validate` also compares each version with the version before it, and war
 
 Add a `pass` document which uses the change. If the earlier version rejects it, the compatibility check fails, and the change needs a new major version.
 
-`jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each. Changes which only narrow what a schema accepts, such as a property becoming required or a limit tightened, are safe for consumers on the earlier version, and are not warned about. The comparison is structural, and follows local `$ref`s; for a change where it cannot tell which values matter, such as an `anyOf` alternative added, any `pass` document with a value at that location counts as using it.
+`jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each. Changes which only narrow what a schema accepts, such as a property becoming required or a limit tightened, are not warned about. They are safe for consumers on the earlier version when the provider moves first, but they can break a family where readers move first or documents are kept: see [Schema Family Scenarios](./scenarios.md). The comparison is structural, and follows local `$ref`s; for a change where it cannot tell which values matter, such as an `anyOf` alternative added, any `pass` document with a value at that location counts as using it.
 
 #### Coverage
 
@@ -364,7 +366,7 @@ Over time, the provider may want to change the contract. However, consumers will
 
 `<major>.<minor>.<patch>` e.g. `1.2.3`
 
-JSON Schema Manager explicitly tests that supposedly non-breaking changes to a schema are genuinely non-breaking. This allows you to prevent accidentally breaking consumers when you deploy a new version of a provider.
+JSON Schema Manager uses your test documents to look for changes which would break consumers, before you deploy a new version of a provider. Documents only sample what a schema does, so a check which passes shows that none of them exposed a break, not that no break exists. Which changes break a family also depends on how it is used: see [Schema Family Scenarios](./scenarios.md).
 
 JSON Schema Manager interprets semantic versioning as follows:
 
@@ -372,15 +374,24 @@ JSON Schema Manager interprets semantic versioning as follows:
 - **minor** version changes signal non-breaking feature changes which can be deployed by the provider without breaking a consumer who is using a JSON Schema with an earlier variant of the same major version. Typically, this might include adding new optional properties to a schema. For example, if the consumer is checking against version `1.2.3`, it should be safe for the provider to start sending messages conforming to version `1.3.0`.
 - **patch** version changes signal adjustments to the schema which have no new features, are non-breaking, but represent a change nevertheless. For example, adding a description to a property.
 
-## Compatibility runs one way: providers first
+## Compatibility when the provider moves first
 
-Each schema family describes data flowing one way, from a provider to its consumers. When the contract changes, the provider always moves first: it starts sending documents which conform to the new version, while its consumers are still checking against an earlier one. Consumers catch up later, in their own time.
+JSM's compatibility check today is the model for one way of using a schema: a writer-ahead family, where data flows from a provider to its consumers, and the provider moves first. It starts sending documents which conform to the new version, while its consumers are still checking against an earlier one. Consumers catch up later, in their own time. That is scenario 1 of the [Schema Family Scenarios](./scenarios.md), which describes the others, and what JSM does and doesn't do yet for each.
 
-So JSM checks compatibility in that one direction. For every minor or patch version, its `pass` documents must be accepted by each earlier version with the same major version. If they are not, a consumer still on the earlier version would reject what the provider now sends, and `jsm validate` fails, naming the earlier version which rejected the document.
+For such a family, JSM checks compatibility in that one direction. For every minor or patch version, its `pass` documents must be accepted by each earlier version with the same major version. If they are not, a consumer still on the earlier version would reject what the provider now sends, and `jsm validate` fails, naming the earlier version which rejected the document. Today this check runs on every family, whichever scenario it serves.
 
-JSM does not check the other way, that documents valid under an earlier version are accepted by a newer one. Consumers should follow the robustness principle: be strict in what you send, and tolerant in what you accept. A consumer which upgrades to a newer schema ignores the fields it does not need, rather than rejecting documents from a provider which has not changed yet. Since providers move first, that case does not arise in a minor version.
+JSM does not check the other way, that documents valid under an earlier version are accepted by a newer one, except through the copies `jsm create-schema-version` makes. So this model does not protect:
 
-If a change does need consumers to move first, for example because a newer version would reject documents which the current one accepts, it is a breaking change. Make it a new major version, run the old and new major versions side by side, and give consumers a deprecation window to move to the new one before the provider stops sending the old.
+- a consumer which upgrades before its provider does, and rejects what the provider still sends;
+- a client whose requests a newly upgraded service now refuses;
+- a new consumer replaying events kept from earlier versions;
+- stored data or config files, read long after they were written.
+
+If any of those describes your family, it serves a different [scenario](./scenarios.md).
+
+In a writer-ahead family, consumers should follow the robustness principle: be strict in what you send, and tolerant in what you accept. A consumer which ignores the fields it does not need can stay on its version while a provider adds new ones. That covers additions only. It does not help a consumer which upgrades to a version that requires a new field, when the provider has not started sending it.
+
+So in a writer-ahead family, if a change needs consumers to move first, for example because a newer version would reject documents which the current one accepts, treat it as a breaking change. Make it a new major version, run the old and new major versions side by side, and give consumers a deprecation window to move to the new one before the provider stops sending the old.
 
 ## Innocuous changes which are actually breaking
 
