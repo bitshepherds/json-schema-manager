@@ -416,6 +416,8 @@ Documents sample behaviour. A check that passes shows that none of your document
 
 A fail document can be rejected by a later version for a different reason, which hides a loosening, so each fail document should hold one fault. Take a `1.0.0` `fail` document, `{"status": "refunded", "quantity": "two"}`, which has both a status and a quantity that `1.0.0` rejects. If `1.1.0` allows `"refunded"`, the document is still rejected, because of its quantity, and the loosening goes unseen. Split it into two documents, and the one with only the status catches it.
 
+JSM doesn't generate documents of its own to look for these gaps. Your documents and the [unexercised-change warnings](#unexercised-change-warned) are what cover them.
+
 ### "Either" is only as strong as its samples
 
 Adding a typed optional property to an open schema is strictly a tightening, and passes only if no document uses the wrong type there.
