@@ -218,6 +218,8 @@ Each schema is tested against its own test documents: every document in its `pas
 
 `jsm validate` also checks each version against every other version with the same major version. Which documents run across versions depends on the scenario the family [declares](./scenarios.md#declaring-a-familys-scenario), as [the rule](./scenarios.md#the-rule) says. The same pairs run however you select a version, so validating an earlier version also shows a later version that breaks it, and the failure appears under the later version. In a family where the provider moves first, see [Compatibility when the provider moves first](#compatibility-when-the-provider-moves-first).
 
+If a break is deliberate, or is between versions already deployed, list that one run in the later version's `compat-exceptions.yml`, with a reason: see [Deliberate exceptions](./scenarios.md#deliberate-exceptions). The report shows it as excepted, and it doesn't fail.
+
 #### Unexercised changes
 
 The check on later `pass` documents is only as strong as those documents. If a minor version adds an enum value, and no `pass` document uses it, every document still passes the earlier version, and the check cannot see that consumers on the earlier version would reject the new value.
@@ -295,7 +297,7 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 | Code | Meaning |
 |------|---------|
 | `0`  | The command succeeded, and every test and check passed. |
-| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), `check-changes` found a deployed schema modified, or `check-consumer` found a listed version missing or broken by a later one. With `--strict`, a warning also exits `1`. The report says which. |
+| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), or an entry in a `compat-exceptions.yml` is stale, `check-changes` found a deployed schema or exception modified, or `check-consumer` found a listed version missing or broken by a later one. With `--strict`, a warning also exits `1`. The report says which. |
 | `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
 | `130` | JSM was interrupted, by Ctrl+C (SIGINT), before it finished. |
 | `143` | JSM was stopped by SIGTERM, for example when a CI job times out, before it finished. |
@@ -348,7 +350,7 @@ Pin `jsm` to a release version, rather than `@latest`, so a new release cannot c
 
 ### Test results in CI
 
-Most CI systems can show JUnit XML test results, with each failing test on the pull request. `jsm validate all --continue-on-error --output junit > jsm-results.xml` writes one: each schema is a test suite, and each test document run against it a test case. It exits with the same code as the text report, so it still fails the job. JUnit has no warnings, so a schema's warnings are in its suite's `system-out`, or, with `--strict`, are failing test cases.
+Most CI systems can show JUnit XML test results, with each failing test on the pull request. `jsm validate all --continue-on-error --output junit > jsm-results.xml` writes one: each schema is a test suite, and each test document run against it a test case. It exits with the same code as the text report, so it still fails the job. JUnit has no warnings, so a schema's warnings are in its suite's `system-out`, or, with `--strict`, are failing test cases. A run a [deliberate exception](./scenarios.md#deliberate-exceptions) names is a skipped test case, whose message gives the reason, and a stale exception is a failing one.
 
 In GitHub Actions, upload the file even when the step fails, then show it with a test reporter action of your choice:
 

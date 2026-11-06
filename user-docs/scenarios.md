@@ -15,6 +15,8 @@
   - [9. A format someone else owns](#9-a-format-someone-else-owns)
 - [Declaring a family's scenario](#declaring-a-familys-scenario)
 - [The rule](#the-rule)
+- [Deliberate exceptions](#deliberate-exceptions)
+  - [The way out of a red deployed version](#the-way-out-of-a-red-deployed-version)
 - [The promises](#the-promises)
 - [What the checks can and cannot show](#what-the-checks-can-and-cannot-show)
 - [How to choose a scenario](#how-to-choose-a-scenario)
@@ -34,11 +36,11 @@ This page describes the common ways schemas are used, what can go wrong in each,
 - The same pairs of versions run however a version is selected: by key, by search scope or with `all`. Validating an earlier version runs its pairs with later versions too, so it can't miss a later breakage. A failure appears under the later version, since that's what changed.
 - A new version carries only the documents for what it changes, so documents aren't copied on a patch or minor bump, except in a family with no pairs of versions to run. `--strict` counts inherited documents. See [What a version carries](./developing-schemas.md#what-a-version-carries).
 - `validate` warns about a change that widens what the version before accepts, or that it cannot judge, when none of the version's `pass` documents uses the change, whichever scenario the family serves. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
+- A version can list a [deliberate exception](#deliberate-exceptions) to the rule, with a reason, for one run of one document. `validate` and `build-dist` then don't fail on that run, and nothing else is cleared.
 - `check-consumer` doesn't follow the declaration yet: it runs later `pass` documents on the version a consumer pins, in every family, so it can fail a change that is harmless in that family's scenario.
 
 **Not yet built**, besides what each scenario below lists:
 
-- A family declares a deliberate exception to a check, with a reason ([#121]).
 - The warnings about unexercised changes follow the family's scenario ([#122]).
 - `check-consumer` follows the family's scenario ([#123]).
 
@@ -294,6 +296,39 @@ Each pair of versions in a major is checked, not only neighbouring versions, so 
 
 A failure always appears under the later version of its pair, whichever version you asked for, and the exit code is non-zero if any run fails. It names the rule that broke, both versions and the document, and says what that means for the family's scenario. For a family that describes someone else's format, it says the real format has changed, not that you made a mistake. Text, JSON and JUnit reports all name them.
 
+## Deliberate exceptions
+
+Sometimes a change that breaks the rule is right. Take a provider-first family whose `1.0.0` wrongly rejected names over 50 characters, and a `1.1.0` that fixes it: `1.0.0`'s `fail` document with a long name is now accepted, and that is the point. Say so in `compat-exceptions.yml`, in the later version's directory, beside its schema:
+
+```yaml
+exceptions:
+  - version: 1.0.0
+    document: fail/too-long.json
+    rule: no-loosening
+    reason: 1.0.0 wrongly rejected names over 50 characters.
+```
+
+- **`version`** is the earlier version of the pair, in the same major.
+- **`document`** is the document, as `pass/<name>.json` or `fail/<name>.json`. It belongs to the earlier version or to the later one, as [the rule](#the-rule) says for that rule and type of document: here, `no-loosening` runs an earlier `fail` document on the later version, so this is `1.0.0`'s.
+- **`rule`** is the rule the run breaks, `no-loosening` or `no-tightening`. A version's own documents can't be excepted.
+- **`reason`** is required, and says why this break is deliberate.
+
+An entry clears that one run and nothing else: another document, another earlier version or another rule still fails. An excepted run doesn't fail, and the run exits `0`, but the report shows it, with its reason. The text report marks it `excepted`, the JSON report lists it under `excepted` with the status `excepted`, and in JUnit it's a skipped test case.
+
+**A stale exception fails.** An entry that names a version or document that doesn't exist, a rule the family doesn't hold its versions to, or a run that doesn't fail clears nothing, and it fails `validate` and `build-dist`, so entries don't pile up. A file JSM can't read, such as an entry with no reason, stops the command.
+
+**An exception belongs to one version.** `create-schema-version` never copies the file. If `1.2.0` has the same break with `1.0.0`, its own file lists it.
+
+### The way out of a red deployed version
+
+A new check can fail on versions already deployed, whose schemas and documents can no longer change. An upgrade of JSM, or a family declaring its scenario for the first time, can do this. You can't fix the schema, and deleting a published version harms its readers. List the break instead:
+
+1. Run `jsm validate all --continue-on-error`, and see which runs fail. Each failure names the rule, both versions and the document.
+2. For each, decide whether it really is harmless, or was already out in the world and has to stand. If it's a change you can still make differently, in a version that isn't deployed, do that instead.
+3. Add `compat-exceptions.yml` to the later version's directory, with one entry for each run, and a reason for each.
+
+`check-changes` allows this, in an environment which doesn't allow schema mutation: a deployed version may gain the file, and a file may gain entries. It refuses editing or removing an entry that was there at the deployment, so the file is reviewed once and then locked, as the schema is. The one exception is an entry whose earlier version or document has since gone, which is stale, so it may be removed along with what it named.
+
 ## The promises
 
 JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/testdata/behaviour-registry`, and a test fails if a promise has nothing proving it. They show JSM does what it says. They can't show how your schemas would fare, since [checks only sample](#checks-only-sample).
@@ -306,6 +341,7 @@ JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/te
 - <a id="unexercised-change-warned"></a>**Unexercised changes are warned about.** `validate` warns about a change that widens what the version before accepts when no `pass` document uses it, and `--strict` makes that warning a failure.
 - <a id="no-document-crosses-a-major"></a>**No document crosses a major.** A new major may change anything, and its documents never run on another major's versions, or theirs on it.
 - <a id="deployed-versions-fixed"></a>**Deployed versions stay fixed.** Where an environment doesn't allow schema mutation, `check-changes` fails if a deployed version's schema or test documents change. A deployed version may gain a test document, or be deleted as a whole.
+- <a id="declared-exception"></a>**An exception clears only what it names.** A version's `compat-exceptions.yml` clears the runs it lists, and each gives a reason. Any other failure still fails, an entry which clears nothing fails, and once deployed, an entry stays as it is, though more can be added.
 
 ## What the checks can and cannot show
 
@@ -339,7 +375,6 @@ Answer these in order, and stop at the first that fits. If an API operation brou
 
 Writer-ahead is what Confluent Schema Registry calls FORWARD_TRANSITIVE, and reader-ahead is BACKWARD_TRANSITIVE, bounded by the major, and tested by documents rather than by comparing schemas. In the same terms, either is FULL_TRANSITIVE, and neither is NONE.
 
-[#121]: https://github.com/bitshepherds/json-schema-manager/issues/121
 [#122]: https://github.com/bitshepherds/json-schema-manager/issues/122
 [#123]: https://github.com/bitshepherds/json-schema-manager/issues/123
 [#124]: https://github.com/bitshepherds/json-schema-manager/issues/124

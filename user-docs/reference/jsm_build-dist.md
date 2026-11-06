@@ -10,8 +10,9 @@ the registry root. So the registry must be in a subdirectory of its git reposito
 keeps dist inside the repository. Other commands work with the registry at the git root.
 
 Before building, it runs every schema's tests, and the documents its family's declaration
-runs across versions, as 'jsm validate all' does. If any fail, it prints the report, builds
-nothing and exits with code 1. It also prints any warnings, and --strict fails on them, as
+runs across versions, as 'jsm validate all' does, and a stale entry in a compat-exceptions.yml
+counts as a failure. If any fail, it prints the report, builds nothing and exits with code 1.
+It also prints any warnings, and --strict fails on them, as
 it does for validate. Use --skip-tests if your pipeline already runs validate.
 
 By default, this command only builds schemas that have been added or modified since 

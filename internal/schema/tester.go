@@ -3,8 +3,10 @@ package schema
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -375,6 +377,14 @@ func (t *Tester) runSpecs(ctx context.Context, specs []Spec) error {
 
 		if spec.Run(ri.Validator) == nil {
 			t.report.AddPassedTest(spec.ReportKey(), spec)
+			if spec.Exception != nil {
+				t.report.AddStaleException(spec.ReportKey(), *spec.Exception,
+					"that run doesn't fail, so there's nothing to except")
+			}
+			continue
+		}
+		if spec.Exception != nil {
+			t.report.AddExceptedTest(spec.ReportKey(), spec)
 			continue
 		}
 		t.report.AddFailedTest(spec.ReportKey(), spec)
@@ -431,18 +441,8 @@ func (t *Tester) schemas(keys []Key) ([]*Schema, error) {
 	return schemas, nil
 }
 
-// pairSpecs returns the specs for the pairs s is part of, leaving out any this run has already taken
-// on, so a pair two selected versions share runs once.
-func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
-	if decl.Facts.EffectiveAhead() == AheadNeither {
-		return nil, nil
-	}
-
-	earlier, later, err := t.otherVersions(s)
-	if err != nil {
-		return nil, err
-	}
-
+// pairsOf returns the pairs s is part of, given the other versions in its major.
+func pairsOf(s *Schema, earlier, later []*Schema) [][2]*Schema {
 	pairs := make([][2]*Schema, 0, len(earlier)+len(later))
 	for _, e := range earlier {
 		pairs = append(pairs, [2]*Schema{e, s})
@@ -450,9 +450,26 @@ func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
 	for _, l := range later {
 		pairs = append(pairs, [2]*Schema{s, l})
 	}
+	return pairs
+}
+
+// pairSpecs returns the specs for the pairs s is part of, leaving out any this run has already taken
+// on, so a pair two selected versions share runs once. Each is marked if the later version's exception
+// file names it, and an entry which names no run of the pair goes in the report as stale.
+func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
+	earlier, later, err := t.otherVersions(s)
+	if err != nil {
+		return nil, err
+	}
+	if eErr := t.reportExceptionsWithoutPairs(s, decl, earlier); eErr != nil {
+		return nil, eErr
+	}
+	if decl.Facts.EffectiveAhead() == AheadNeither {
+		return nil, nil
+	}
 
 	var specs []Spec
-	for _, p := range pairs {
+	for _, p := range pairsOf(s, earlier, later) {
 		if !t.claimPair(versionPair{p[0].Key(), p[1].Key()}) {
 			continue
 		}
@@ -460,9 +477,53 @@ func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
 		if pErr != nil {
 			return nil, pErr
 		}
+		if eErr := t.applyExceptions(runs, p[0], p[1], decl); eErr != nil {
+			return nil, eErr
+		}
 		specs = append(specs, runs...)
 	}
 	return specs, nil
+}
+
+// reportExceptionsWithoutPairs adds to the report the entries of s's exception file which can't name a
+// run of any pair: every one if the family runs nothing across versions, and otherwise those which
+// name anything but an earlier version in its major.
+func (t *Tester) reportExceptionsWithoutPairs(s *Schema, decl *FamilyDeclaration, earlier []*Schema) error {
+	exceptions, err := s.Exceptions()
+	if err != nil {
+		return err
+	}
+	for _, e := range exceptions {
+		switch {
+		case decl.Facts.EffectiveAhead() == AheadNeither:
+			t.report.AddStaleException(s.Key(), e, "this family runs no documents across versions")
+		case !slices.ContainsFunc(earlier, func(o *Schema) bool { return o.Key().Version() == e.Version }):
+			t.report.AddStaleException(s.Key(), e, fmt.Sprintf("there is no earlier version %s in this major",
+				e.Version.String('.')))
+		}
+	}
+	return nil
+}
+
+// applyExceptions marks each of the pair's runs which the later version's exception file names, and
+// adds to the report each entry for the pair which names none of them.
+func (t *Tester) applyExceptions(runs []Spec, earlier, later *Schema, decl *FamilyDeclaration) error {
+	exceptions, err := later.Exceptions()
+	if err != nil {
+		return err
+	}
+	for _, e := range exceptions {
+		if e.Version != earlier.Key().Version() {
+			continue
+		}
+		i := slices.IndexFunc(runs, func(spec Spec) bool { return e.clears(&spec) })
+		if i < 0 {
+			t.report.AddStaleException(later.Key(), e, e.whyNoRun(decl.Facts.EffectiveAhead(), later.Key()))
+			continue
+		}
+		runs[i].Exception = &e
+	}
+	return nil
 }
 
 // pairRuns returns the specs which the family's declaration asks of the pair.
@@ -510,18 +571,20 @@ func (t *Tester) documentAcrossVersions(
 	}
 
 	var specs []Spec
-	for _, run := range acrossVersionRuns {
-		if !run.appliesTo(ahead) || run.docType != tt {
-			continue
+	for _, p := range pairsOf(s, earlier, later) {
+		exceptions, eErr := p[1].Exceptions()
+		if eErr != nil {
+			return nil, eErr
 		}
-		if run.fromLater {
-			for _, e := range earlier {
-				specs = append(specs, run.spec(e, s, doc, decl))
+		for _, run := range acrossVersionRuns {
+			if !run.appliesTo(ahead) || run.docType != tt || run.source(p[0], p[1]) != s {
+				continue
 			}
-		} else {
-			for _, l := range later {
-				specs = append(specs, run.spec(s, l, doc, decl))
+			spec := run.spec(p[0], p[1], doc, decl)
+			if i := slices.IndexFunc(exceptions, func(e Exception) bool { return e.clears(&spec) }); i >= 0 {
+				spec.Exception = &exceptions[i]
 			}
+			specs = append(specs, spec)
 		}
 	}
 	return specs, nil

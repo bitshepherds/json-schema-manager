@@ -9,3 +9,4 @@ promises:
   - unexercised-change-warned
   - no-document-crosses-a-major
   - deployed-versions-fixed
+  - declared-exception

@@ -1,0 +1,5 @@
+exceptions:
+  - version: 1.0.0
+    document: fail/lost.json
+    rule: no-loosening
+    reason: 1.1.0 was going to accept lost orders, and does not.

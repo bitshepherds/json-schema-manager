@@ -14,8 +14,9 @@ import (
 
 // WatchEvent describes a file change event in the registry.
 // The user changed a schema file, in which case we will run the tests for that schema, or a test
-// document, in which case we will rerun that document wherever it runs, or a family's declaration, which
-// decides what runs for every version in the family.
+// document, in which case we will rerun that document wherever it runs, or a version's exception file,
+// which runs that version again, or a family's declaration, which decides what runs for every version
+// in the family.
 type WatchEvent struct {
 	Key      Key         // The Key of the schema that will be tested
 	TestPath string      // If set, only this specific test document changed
@@ -177,6 +178,14 @@ func (w *Watcher) mapToWatchEvent(path string) *WatchEvent {
 		return w.mapDeclarationToWatchEvent(path)
 	}
 
+	if filepath.Base(path) == ExceptionsFile {
+		key, ok := w.versionIn(filepath.Dir(path))
+		if ok {
+			return &WatchEvent{Key: key}
+		}
+		return nil
+	}
+
 	if strings.HasSuffix(path, SchemaSuffix) {
 		key, err := w.registry.KeyFromSchemaPath(path)
 		if err == nil {
@@ -208,10 +217,18 @@ func (w *Watcher) mapTestDocToWatchEvent(path string) *WatchEvent {
 		return nil
 	}
 
-	homeDir := filepath.Dir(dir)
+	key, ok := w.versionIn(filepath.Dir(dir))
+	if !ok {
+		return nil
+	}
+	return &WatchEvent{Key: key, TestPath: path}
+}
+
+// versionIn returns the key of the version whose directory is homeDir, if it is one.
+func (w *Watcher) versionIn(homeDir string) (Key, bool) {
 	entries, err := os.ReadDir(homeDir)
 	if err != nil {
-		return nil
+		return "", false
 	}
 
 	for _, entry := range entries {
@@ -219,9 +236,9 @@ func (w *Watcher) mapTestDocToWatchEvent(path string) *WatchEvent {
 			schemaPath := filepath.Join(homeDir, entry.Name())
 			key, err := w.registry.KeyFromSchemaPath(schemaPath)
 			if err == nil {
-				return &WatchEvent{Key: key, TestPath: path}
+				return key, true
 			}
 		}
 	}
-	return nil
+	return "", false
 }

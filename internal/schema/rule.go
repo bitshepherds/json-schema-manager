@@ -101,8 +101,10 @@ func (e *RuleBrokenError) Error() string {
 	if e.DocType == TestDocTypePass {
 		verb = verdictRejected
 	}
-	return fmt.Sprintf("%s broken between %s and %s: %s document %s of %s was %s by %s. %s Detail: %s",
-		e.Rule, e.Earlier, e.Later, e.DocType, e.DocPath, e.DocumentFrom, verb, e.ValidatedBy, e.meaning(), e.Wrapped)
+	return fmt.Sprintf("%s broken between %s and %s: %s document %s of %s was %s by %s. %s "+
+		"If this is deliberate, or %s is already deployed, list it in %s in %s's directory. Detail: %s",
+		e.Rule, e.Earlier, e.Later, e.DocType, e.DocPath, e.DocumentFrom, verb, e.ValidatedBy, e.meaning(),
+		e.Later, ExceptionsFile, e.Later, e.Wrapped)
 }
 
 // Unwrap returns the error from the document run itself.

@@ -1,0 +1,9 @@
+exceptions:
+  - version: 1.0.0
+    document: fail/refunded.json
+    rule: no-loosening
+    reason: 1.0.0 wrongly rejected refunded orders.
+  - version: 1.0.0
+    document: fail/refunded-too.json
+    rule: no-loosening
+    reason: The same fault, in a document added since.

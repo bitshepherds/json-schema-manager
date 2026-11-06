@@ -36,6 +36,9 @@ with later versions. A failure appears under the later version, since that's wha
 which rule broke, the two versions, the document, and what that means for the family's scenario. See
 user-docs/scenarios.md.
 
+A version's compat-exceptions.yml can list a deliberate break of the rule, with its reason. The report
+shows that run as excepted, and it doesn't fail. An entry which clears nothing is stale, and fails.
+
 These checks are only as strong as the documents, so validate also compares each schema with the
 version before it, and warns about each structural change which may break consumers of that version
 and which none of the schema's pass documents uses: for example, an enum value added with no

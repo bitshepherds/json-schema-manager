@@ -263,13 +263,18 @@ func parseOldestLive(s string, live DocumentsLive) (SemVer, error) {
 		return SemVer{}, fmt.Errorf("documentsLive is %s, so it must give the family's oldest live version, "+
 			"such as \"oldestLive: 1.0.0\"", DocumentsLiveRetention)
 	}
+	return parseVersion("oldestLive", s)
+}
+
+// parseVersion reads a version given in a file, such as 1.0.0, for the field of that name.
+func parseVersion(field, s string) (SemVer, error) {
 	parts := strings.Split(s, ".")
 	if len(parts) != len(SemVer{}) {
-		return SemVer{}, fmt.Errorf("oldestLive %q is not a version, such as 1.0.0", s)
+		return SemVer{}, fmt.Errorf("%s %q is not a version, such as 1.0.0", field, s)
 	}
 	v, err := NewSemVer(parts[0], parts[1], parts[2])
 	if err != nil {
-		return SemVer{}, fmt.Errorf("oldestLive %q is not a version, such as 1.0.0: %w", s, err)
+		return SemVer{}, fmt.Errorf("%s %q is not a version, such as 1.0.0: %w", field, s, err)
 	}
 	return v, nil
 }

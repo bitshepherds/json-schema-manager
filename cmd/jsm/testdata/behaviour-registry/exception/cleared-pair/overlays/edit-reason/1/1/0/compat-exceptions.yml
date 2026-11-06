@@ -1,0 +1,5 @@
+exceptions:
+  - version: 1.0.0
+    document: fail/refunded.json
+    rule: no-loosening
+    reason: A different reason.

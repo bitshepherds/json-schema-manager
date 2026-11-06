@@ -224,7 +224,7 @@ func (m *CLIManager) ValidateSchema(ctx context.Context, target schema.ResolvedT
 		return wErr
 	}
 
-	if len(tr.FailedTests) > 0 || strict && tr.HasWarnings() {
+	if tr.HasFailures() || strict && tr.HasWarnings() {
 		return ErrTestsFailed
 	}
 
@@ -512,20 +512,8 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 	}
 
 	if !envCfg.AllowSchemaMutation {
-		urlRoots, uErr := m.changedURLRoots(ctx, anchor, envCfg, changes)
-		if uErr != nil {
-			return uErr
-		}
-		declarations, dErr := m.changedDeclarations(ctx, anchor, changes)
-		if dErr != nil {
-			return dErr
-		}
-
-		modifiedPaths := deployedMutations(changes)
-		if len(modifiedPaths) > 0 || len(urlRoots) > 0 || len(declarations) > 0 {
-			return &schema.ChangedDeployedSchemasError{
-				Paths: modifiedPaths, URLRoots: urlRoots, Declarations: declarations,
-			}
+		if mErr := m.checkNoDeployedChange(ctx, anchor, envCfg, changes); mErr != nil {
+			return mErr
 		}
 	}
 
@@ -534,6 +522,35 @@ func (m *CLIManager) CheckChanges(ctx context.Context, envName config.Env) error
 	}
 
 	_, _ = fmt.Fprintln(m.reporterWriter, "All changes are valid")
+	return nil
+}
+
+// checkNoDeployedChange returns an error describing each of the changes which a deployment fixes in place.
+func (m *CLIManager) checkNoDeployedChange(
+	ctx context.Context,
+	anchor repo.Revision,
+	envCfg *config.EnvConfig,
+	changes []repo.Change,
+) error {
+	urlRoots, err := m.changedURLRoots(ctx, anchor, envCfg, changes)
+	if err != nil {
+		return err
+	}
+	declarations, err := m.changedDeclarations(ctx, anchor, changes)
+	if err != nil {
+		return err
+	}
+	exceptions, err := m.changedExceptions(ctx, anchor, changes)
+	if err != nil {
+		return err
+	}
+
+	modifiedPaths := deployedMutations(changes)
+	if len(modifiedPaths) > 0 || len(urlRoots) > 0 || len(declarations) > 0 || len(exceptions) > 0 {
+		return &schema.ChangedDeployedSchemasError{
+			Paths: modifiedPaths, URLRoots: urlRoots, Declarations: declarations, Exceptions: exceptions,
+		}
+	}
 	return nil
 }
 
@@ -693,6 +710,61 @@ func familyHasVersions(familyDir string) bool {
 	return len(matches) > 0
 }
 
+// changedExceptions describes each change since the anchor to an exception file which was there at the
+// anchor. A file may be added, and entries added to it, as that's the way out of a check which fails on
+// deployed versions, but what it said at the anchor is locked. A file goes along with its whole version,
+// an entry may go once what it names has gone, and a file invalid at the anchor had nothing to protect.
+func (m *CLIManager) changedExceptions(
+	ctx context.Context,
+	anchor repo.Revision,
+	changes []repo.Change,
+) ([]string, error) {
+	var refused []string
+	for _, c := range changes {
+		if c.IsNew || filepath.Base(c.Path) != schema.ExceptionsFile {
+			continue
+		}
+		data, err := m.gitter.ShowFile(ctx, anchor, c.Path)
+		if err != nil {
+			return nil, err
+		}
+		deployed, err := schema.ParseExceptions(data)
+		if err != nil {
+			continue
+		}
+		refused = append(refused, lockedExceptionChanges(c.Path, deployed)...)
+	}
+	return refused, nil
+}
+
+// lockedExceptionChanges describes each of the deployed exceptions which the file at path no longer
+// holds as it was.
+func lockedExceptionChanges(path string, deployed []schema.Exception) []string {
+	versionDir := filepath.Dir(path)
+	// git can report a removed file as a rename, so go by what's there, not by its status
+	//nolint:gosec // The path comes from git, within the registry
+	data, err := os.ReadFile(path)
+	if err != nil {
+		matches, _ := filepath.Glob(filepath.Join(versionDir, "*"+schema.SchemaSuffix))
+		if len(matches) == 0 {
+			return nil
+		}
+		data = nil
+	}
+	current, err := schema.ParseExceptions(data)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: it is no longer valid: %s", path, err)}
+	}
+
+	var refused []string
+	for _, e := range deployed {
+		if !slices.Contains(current, e) && !e.TargetGone(versionDir) {
+			refused = append(refused, fmt.Sprintf("%s: the entry for %s can't be edited or removed", path, e))
+		}
+	}
+	return refused
+}
+
 // TagDeployment ensures that a successful deployment is tagged in git.
 func (m *CLIManager) TagDeployment(ctx context.Context, envName config.Env, push bool) error {
 	m.logger.Debug("tagging deployment", "env", envName, "push", push)
@@ -825,14 +897,14 @@ func (m *CLIManager) testBeforeBuild(ctx context.Context, strict bool) error {
 	if err != nil {
 		return err
 	}
-	if len(tr.FailedTests) == 0 && !tr.HasWarnings() {
+	if !tr.HasFailures() && !tr.HasWarnings() {
 		return nil
 	}
 
 	if wErr := (&report.TextReporter{}).Write(m.reporterWriter, tr); wErr != nil {
 		return wErr
 	}
-	if len(tr.FailedTests) == 0 && !strict {
+	if !tr.HasFailures() && !strict {
 		return nil
 	}
 	_, _ = fmt.Fprintln(m.reporterWriter, "Not building: fix the failing tests, or use --skip-tests")

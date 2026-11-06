@@ -52,6 +52,8 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	keys := reportKeys(r)
 	totalPassed := 0
 	totalFailed := 0
+	totalExcepted := 0
+	totalStale := 0
 
 	for _, k := range keys {
 		keyCol := colWhite
@@ -59,12 +61,16 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		failed := r.FailedTests[k]
 		totalPassed += len(passed)
 		totalFailed += len(failed)
+		excepted := r.ExceptedTests[k]
+		stale := r.StaleExceptions[k]
+		totalExcepted += len(excepted)
+		totalStale += len(stale)
 
 		summary := r.Summaries[k]
 		statusText := "PASS"
 		statusCol := colGreen
 		switch {
-		case len(failed) > 0:
+		case len(failed) > 0 || len(stale) > 0:
 			statusText = "FAIL"
 			statusCol = colRed
 			keyCol = colRed
@@ -75,7 +81,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 		status := tr.cs(statusCol, "["+statusText+"]")
 		keyStr := tr.cs(keyCol, string(k)+schema.SchemaSuffix)
-		suffix := fmt.Sprintf("(pass: %d, fail: %d)", len(passed), len(failed))
+		suffix := countsSuffix(len(passed), len(failed), len(excepted))
 
 		_, _ = fmt.Fprintf(w, "%s %s %s\n", status, keyStr, tr.cs(statusCol, suffix))
 
@@ -108,6 +114,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 				_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
 			}
 		}
+		tr.writeExceptions(w, excepted, stale)
 		tr.writeSummary(w, summary)
 	}
 
@@ -116,14 +123,21 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	_, _ = fmt.Fprintf(w, "%s\n", divider)
 	summaryLabel := tr.cs(colBoldWhite, "Test summary: ")
 	summaryStats := fmt.Sprintf("%d passed, %d failed", totalPassed, totalFailed)
-	if totalUnexercised > 0 {
-		summaryStats += fmt.Sprintf(", %d unexercised %s", totalUnexercised, plural(totalUnexercised, "change"))
-	}
-	if missing := r.MissingDocuments(); missing > 0 {
-		summaryStats += fmt.Sprintf(", %d %s without pass or fail documents", missing, plural(missing, "schema"))
+	for _, part := range []struct {
+		n      int
+		format string
+	}{
+		{totalExcepted, ", %d excepted"},
+		{totalStale, ", %d stale " + plural(totalStale, "exception")},
+		{totalUnexercised, ", %d unexercised " + plural(totalUnexercised, "change")},
+		{r.MissingDocuments(), ", %d " + plural(r.MissingDocuments(), "schema") + " without pass or fail documents"},
+	} {
+		if part.n > 0 {
+			summaryStats += fmt.Sprintf(part.format, part.n)
+		}
 	}
 	statsColor := colBoldGreen
-	if totalFailed > 0 {
+	if totalFailed > 0 || totalStale > 0 {
 		statsColor = colBoldRed
 	}
 	_, err := fmt.Fprintf(w, "%s%s\n", summaryLabel, tr.cs(statsColor, summaryStats))
@@ -132,6 +146,14 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	}
 	_, err = fmt.Fprintf(w, "%s\n", divider)
 	return err
+}
+
+// countsSuffix says how a schema's runs went, leaving out excepted runs if there are none.
+func countsSuffix(passed, failed, excepted int) string {
+	if excepted > 0 {
+		return fmt.Sprintf("(pass: %d, fail: %d, excepted: %d)", passed, failed, excepted)
+	}
+	return fmt.Sprintf("(pass: %d, fail: %d)", passed, failed)
 }
 
 // reportKeys returns the keys of every schema in the report, sorted.
@@ -146,7 +168,30 @@ func reportKeys(r *schema.TestReport) []schema.Key {
 	for k := range r.Summaries {
 		keysMap[k] = true
 	}
+	for k := range r.ExceptedTests {
+		keysMap[k] = true
+	}
+	for k := range r.StaleExceptions {
+		keysMap[k] = true
+	}
 	return slices.Sorted(maps.Keys(keysMap))
+}
+
+// writeExceptions writes each run a schema's exception file excepts, with its reason, and each entry
+// of the file which is stale.
+func (tr *TextReporter) writeExceptions(w io.Writer, excepted []schema.Spec, stale []schema.StaleException) {
+	for i := range excepted {
+		spec := &excepted[i]
+		_, _ = fmt.Fprintf(w, "  %s %s (%s):\n",
+			tr.cs(colYellow, "~"),
+			tr.cs(colGrey, spec.TestInfo.Path),
+			tr.cs(colYellow, spec.ResultLabel()))
+		_, _ = fmt.Fprintf(w, "    reason: %s\n", spec.Exception.Reason)
+	}
+	for _, s := range stale {
+		_, _ = fmt.Fprintf(w, "  %s %s:\n", tr.cs(colRed, "✗"), tr.cs(colRed, "stale exception: "+s.Exception.String()))
+		_, _ = fmt.Fprintf(w, "    %s. Remove it from %s.\n", s.Why, schema.ExceptionsFile)
+	}
 }
 
 // writeSummary writes a warning if the schema has no pass or no fail documents, of its own or

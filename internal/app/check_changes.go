@@ -32,8 +32,11 @@ In an environment which does not permit schema mutation, these changes since the
   - changing the environment's privateUrlRoot or publicUrlRoot, which give deployed schemas their IDs
   - changing or removing the family.yml of a family with a deployed version, other than moving its
     oldestLive forward: a changed scenario means a new family
+  - editing or removing an entry of a compat-exceptions.yml which was there at the deployment, unless
+    the version or document it names has gone
 Adding new schemas and test documents is allowed, and so is deleting a whole version. A family with no
-family.yml may gain one, and a whole family may be deleted, along with its family.yml.
+family.yml may gain one, and a whole family may be deleted, along with its family.yml. A deployed
+version may gain a compat-exceptions.yml, or new entries in one.
 
 In every environment, the check fails if any family has no family.yml, or an invalid one.
 ` + deploymentHistoryHelp,

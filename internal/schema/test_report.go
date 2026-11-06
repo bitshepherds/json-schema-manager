@@ -40,6 +40,13 @@ type TestReport struct {
 	FailedTests TestLog // tests exposing a problem - i.e. a pass test that failed or a fail test that passed
 	PassedTests TestLog // tests that passed as expected - i.e a pass test that passed and a fail test that failed
 
+	// ExceptedTests are runs across versions which gave the wrong outcome, and which the later version's
+	// exception file names, so don't count as failures.
+	ExceptedTests TestLog
+
+	// StaleExceptions lists, for each later version, the entries of its exception file which clear nothing.
+	StaleExceptions map[Key][]StaleException
+
 	// UnexercisedChanges lists, for each schema, the changes which none of its pass documents use.
 	UnexercisedChanges map[Key][]UnexercisedChange
 
@@ -94,11 +101,20 @@ type UnexercisedChange struct {
 	Change  structdiff.Change
 }
 
+// StaleException is an entry of a version's exception file which clears nothing: what it names isn't
+// there, or the run doesn't fail. It fails the run, so they don't pile up.
+type StaleException struct {
+	Exception Exception
+	Why       string
+}
+
 // NewTestReport creates a new TestReport.
 func NewTestReport() *TestReport {
 	return &TestReport{
 		FailedTests:        make(TestLog),
 		PassedTests:        make(TestLog),
+		ExceptedTests:      make(TestLog),
+		StaleExceptions:    make(map[Key][]StaleException),
 		UnexercisedChanges: make(map[Key][]UnexercisedChange),
 		Summaries:          make(map[Key]*Summary),
 	}
@@ -126,6 +142,26 @@ func (r *TestReport) MissingDocuments() int {
 // fail document, or a change which no pass document uses.
 func (r *TestReport) HasWarnings() bool {
 	return len(r.UnexercisedChanges) > 0 || r.MissingDocuments() > 0
+}
+
+// HasFailures reports whether the report has anything which fails the run: a test which failed, or a
+// stale exception.
+func (r *TestReport) HasFailures() bool {
+	return len(r.FailedTests) > 0 || len(r.StaleExceptions) > 0
+}
+
+// AddExceptedTest adds a test which gave the wrong outcome, and which an exception names.
+func (r *TestReport) AddExceptedTest(key Key, spec *Spec) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ExceptedTests[key] = append(r.ExceptedTests[key], *spec)
+}
+
+// AddStaleException adds an entry of the exception file of the version with the given key which clears nothing.
+func (r *TestReport) AddStaleException(key Key, e Exception, why string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.StaleExceptions[key] = append(r.StaleExceptions[key], StaleException{Exception: e, Why: why})
 }
 
 // AddUnexercisedChange adds a change in the schema with the given key which no pass document uses.

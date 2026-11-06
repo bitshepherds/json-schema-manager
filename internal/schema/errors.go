@@ -359,11 +359,12 @@ func (e *NoTargetArgumentError) Error() string {
 
 // ChangedDeployedSchemasError is returned when deployed schemas or their test documents are
 // modified, the URL roots which give deployed schemas their IDs are changed, or a deployed
-// family's declaration is changed.
+// family's declaration, or a deployed exception, is changed.
 type ChangedDeployedSchemasError struct {
 	Paths        []string // the modified or deleted schema files and test documents
 	URLRoots     []string // a description of each changed URL root
 	Declarations []string // a description of each refused change to a family's declaration
+	Exceptions   []string // a description of each refused change to an exception file
 }
 
 func (e *ChangedDeployedSchemasError) Error() string {
@@ -377,6 +378,9 @@ func (e *ChangedDeployedSchemasError) Error() string {
 	if len(e.Declarations) > 0 {
 		problems = append(problems, "cannot change the declaration of a deployed family: "+
 			strings.Join(e.Declarations, "; "))
+	}
+	if len(e.Exceptions) > 0 {
+		problems = append(problems, "cannot change a deployed exception: "+strings.Join(e.Exceptions, "; "))
 	}
 	return strings.Join(problems, ". ")
 }
@@ -406,6 +410,20 @@ type HardCodedIDError struct {
 func (e *HardCodedIDError) Error() string {
 	return fmt.Sprintf("%s sets $id to %v: set \"$id\": \"{{ ID }}\", so that JSM gives the schema its canonical ID",
 		e.Path, e.ID)
+}
+
+// InvalidExceptionsError is returned when a version's compat-exceptions.yml can't be used.
+type InvalidExceptionsError struct {
+	Path    string
+	Wrapped error
+}
+
+func (e *InvalidExceptionsError) Error() string {
+	return fmt.Sprintf("%s can't be used: %s. See %s", e.Path, e.Wrapped, ScenariosDoc)
+}
+
+func (e *InvalidExceptionsError) Unwrap() error {
+	return e.Wrapped
 }
 
 // MissingFamilyDeclarationError is returned when a family has no family.yml.

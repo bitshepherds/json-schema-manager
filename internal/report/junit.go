@@ -16,7 +16,8 @@ import (
 //
 // JUnit has no warnings. A schema's warnings (no pass or no fail document, and changes which no pass
 // document uses) are written to its suite's system-out, or, if Strict, as failing test cases, so the
-// report fails when jsm validate --strict does.
+// report fails when jsm validate --strict does. A run an exception names is a skipped test case, whose
+// message gives the reason, and a stale exception is a failing one.
 type JUnitReporter struct {
 	Strict bool
 }
@@ -26,6 +27,7 @@ type junitTestSuites struct {
 	Name     string           `xml:"name,attr"`
 	Tests    int              `xml:"tests,attr"`
 	Failures int              `xml:"failures,attr"`
+	Skipped  int              `xml:"skipped,attr,omitempty"`
 	Time     string           `xml:"time,attr"`
 	Suites   []junitTestSuite `xml:"testsuite"`
 }
@@ -34,6 +36,7 @@ type junitTestSuite struct {
 	Name      string          `xml:"name,attr"`
 	Tests     int             `xml:"tests,attr"`
 	Failures  int             `xml:"failures,attr"`
+	Skipped   int             `xml:"skipped,attr,omitempty"`
 	Cases     []junitTestCase `xml:"testcase"`
 	SystemOut string          `xml:"system-out,omitempty"`
 }
@@ -42,6 +45,11 @@ type junitTestCase struct {
 	Name      string        `xml:"name,attr"`
 	ClassName string        `xml:"classname,attr"`
 	Failure   *junitFailure `xml:"failure"`
+	Skipped   *junitSkipped `xml:"skipped"`
+}
+
+type junitSkipped struct {
+	Message string `xml:"message,attr"`
 }
 
 type junitFailure struct {
@@ -69,6 +77,7 @@ func (jr *JUnitReporter) Write(w io.Writer, r *schema.TestReport) error {
 		suite := jr.suite(r, k)
 		out.Tests += suite.Tests
 		out.Failures += suite.Failures
+		out.Skipped += suite.Skipped
 		out.Suites = append(out.Suites, suite)
 	}
 
@@ -101,6 +110,21 @@ func (jr *JUnitReporter) suite(r *schema.TestReport, k schema.Key) junitTestSuit
 			Failure:   &junitFailure{Message: spec.ResultLabel(), Text: fmt.Sprint(spec.Err)},
 		})
 	}
+	for i := range r.ExceptedTests[k] {
+		spec := &r.ExceptedTests[k][i]
+		suite.Cases = append(suite.Cases, junitTestCase{
+			Name:      junitCaseName(spec),
+			ClassName: suite.Name,
+			Skipped:   &junitSkipped{Message: spec.ResultLabel() + ": " + spec.Exception.Reason},
+		})
+	}
+	for _, s := range r.StaleExceptions[k] {
+		suite.Cases = append(suite.Cases, junitTestCase{
+			Name:      "stale exception: " + s.Exception.String(),
+			ClassName: suite.Name,
+			Failure:   &junitFailure{Message: s.Why, Text: "Remove it from " + schema.ExceptionsFile},
+		})
+	}
 	slices.SortStableFunc(suite.Cases, func(a, b junitTestCase) int { return cmp.Compare(a.Name, b.Name) })
 
 	warnings := schemaWarnings(r, k)
@@ -120,6 +144,9 @@ func (jr *JUnitReporter) suite(r *schema.TestReport, k schema.Key) junitTestSuit
 	for _, c := range suite.Cases {
 		if c.Failure != nil {
 			suite.Failures++
+		}
+		if c.Skipped != nil {
+			suite.Skipped++
 		}
 	}
 	return suite

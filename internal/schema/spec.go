@@ -16,6 +16,7 @@ type Spec struct {
 	Earlier      Key                // For a run across versions, the earlier version of the pair
 	Later        Key                // For a run across versions, the later version of the pair
 	Declaration  *FamilyDeclaration // For a run across versions, the family's declaration
+	Exception    *Exception         // For a run across versions, the entry in the later version's file which names it
 	Err          error              // Once the spec has run, if it didn't give the expected outcome, the related error
 }
 
@@ -110,6 +111,9 @@ func (s *Spec) acrossVersionsLabel() string {
 	outcome := "holds"
 	if s.Err != nil {
 		outcome = "broken"
+		if s.Exception != nil {
+			outcome = "excepted"
+		}
 	}
 	verb := verdictAccepted
 	if (s.TestDocType == TestDocTypePass) == (s.Err != nil) {
