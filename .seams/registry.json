@@ -1,0 +1,97 @@
+{
+  "schema": "https://github.com/bitshepherds/seams/schemas/registry/v1",
+  "seams": [
+    {
+      "id": "cli:json-schema-manager/jsm",
+      "provider": {
+        "name": "json-schema-manager",
+        "inRepo": true
+      },
+      "consumers": [
+        {
+          "name": "sheepdog",
+          "external": true
+        },
+        {
+          "name": "jsm-demo",
+          "external": true
+        },
+        {
+          "name": "users-ci",
+          "external": true
+        }
+      ],
+      "audience": "public",
+      "contract": {
+        "location": "user-docs/reference",
+        "owner": "@bitshepherds/JSM-Approvers"
+      },
+      "deploysIndependently": true,
+      "testWorld": [
+        {
+          "side": "provider",
+          "test": "TestBinary_ValidateFailedTestsExitCode",
+          "tier": "gate",
+          "tool": "go test"
+        },
+        {
+          "side": "provider",
+          "test": "TestBinary_CannotRunExitCode",
+          "tier": "gate",
+          "tool": "go test"
+        },
+        {
+          "side": "provider",
+          "test": "TestReferenceIsUpToDate",
+          "tier": "gate",
+          "tool": "go test"
+        }
+      ]
+    },
+    {
+      "id": "file:json-schema-manager/registry",
+      "provider": {
+        "name": "json-schema-manager",
+        "inRepo": true
+      },
+      "consumers": [
+        {
+          "name": "users-registries",
+          "external": true
+        },
+        {
+          "name": "jsm-demo",
+          "external": true
+        }
+      ],
+      "audience": "public",
+      "contract": {
+        "location": "user-docs/registry.md",
+        "owner": "@bitshepherds/JSM-Approvers"
+      },
+      "deploysIndependently": true,
+      "testWorld": [
+        {
+          "side": "provider",
+          "test": "internal/config/config_test.go",
+          "tier": "gate",
+          "tool": "go test"
+        }
+      ]
+    }
+  ],
+  "rejected": [
+    {
+      "id": "event:json-schema-manager/customerregistered",
+      "signal": "contract",
+      "file": "examples/apis/customer-events.asyncapi.yaml",
+      "reason": "A sample in the docs' API examples; JSM provides no such event."
+    },
+    {
+      "id": "http:json-schema-manager/api",
+      "signal": "contract",
+      "file": "examples/apis/customer.openapi.yaml",
+      "reason": "A sample in the docs' API examples; JSM provides no such API."
+    }
+  ]
+}
