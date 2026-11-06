@@ -341,3 +341,49 @@ func TestCreateSchemaWritesDeclarationBesideVersions(t *testing.T) {
 		assert.Equal(t, "scenario: lock-step", string(data))
 	})
 }
+
+func TestFamilyDeclarationReadsMigrationStatements(t *testing.T) {
+	t.Parallel()
+
+	d, err := ParseFamilyDeclaration([]byte("scenario: stored-one-schema\nmigrations:\n  2: See the runbook.\n"))
+	require.NoError(t, err)
+	assert.Equal(t, map[uint64]string{2: "See the runbook."}, d.Migrations)
+
+	_, err = ParseFamilyDeclaration([]byte("scenario: stored-one-schema\nmigrations:\n  2: \"  \"\n"))
+	require.ErrorContains(t, err, "major 2 is empty")
+
+	_, err = ParseFamilyDeclaration([]byte("scenario: stored-one-schema\nmigrations:\n  two: See the runbook.\n"))
+	require.Error(t, err)
+
+	was, err := ParseFamilyDeclaration([]byte("scenario: stored-one-schema\n"))
+	require.NoError(t, err)
+	assert.Empty(t, d.ChangeFrom(was), "a deployed family gains a statement for each new major")
+}
+
+func TestFamilyFactsNeedingMigrationStatement(t *testing.T) {
+	t.Parallel()
+
+	want := map[Scenario]bool{
+		ScenarioProviderFirst: false, ScenarioConsumerFirst: false, ScenarioConfigFile: true,
+		ScenarioStoredOneSchema: true, ScenarioStoredSelfNaming: false, ScenarioRetainedStream: false,
+		ScenarioLockStep: false,
+	}
+	for scenario, needs := range want {
+		info, ok := scenarioInfo(scenario)
+		require.True(t, ok)
+		assert.Equal(t, needs, info.Facts.NeedsMigrationStatement(), scenario)
+	}
+}
+
+func TestFamilyDeclarationLive(t *testing.T) {
+	t.Parallel()
+
+	everything := &FamilyDeclaration{}
+	assert.True(t, everything.Live(SemVer{1, 0, 0}), "a family with no oldestLive holds every version")
+
+	retained := &FamilyDeclaration{OldestLive: SemVer{1, 2, 0}}
+	assert.False(t, retained.Live(SemVer{1, 1, 9}))
+	assert.True(t, retained.Live(SemVer{1, 2, 0}))
+	assert.True(t, retained.Live(SemVer{1, 2, 1}))
+	assert.True(t, retained.Live(SemVer{2, 0, 0}))
+}

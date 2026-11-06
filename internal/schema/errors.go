@@ -358,13 +358,15 @@ func (e *NoTargetArgumentError) Error() string {
 }
 
 // ChangedDeployedSchemasError is returned when deployed schemas or their test documents are
-// modified, the URL roots which give deployed schemas their IDs are changed, or a deployed
-// family's declaration, or a deployed exception, is changed.
+// modified, the URL roots which give deployed schemas their IDs are changed, a deployed family's
+// declaration, or a deployed exception, is changed, or a deployed version is deleted when documents
+// written under it may still exist.
 type ChangedDeployedSchemasError struct {
 	Paths        []string // the modified or deleted schema files and test documents
 	URLRoots     []string // a description of each changed URL root
 	Declarations []string // a description of each refused change to a family's declaration
 	Exceptions   []string // a description of each refused change to an exception file
+	Deletions    []string // a description of each deployed version which may not be deleted
 }
 
 func (e *ChangedDeployedSchemasError) Error() string {
@@ -381,6 +383,9 @@ func (e *ChangedDeployedSchemasError) Error() string {
 	}
 	if len(e.Exceptions) > 0 {
 		problems = append(problems, "cannot change a deployed exception: "+strings.Join(e.Exceptions, "; "))
+	}
+	if len(e.Deletions) > 0 {
+		problems = append(problems, "cannot delete a deployed version: "+strings.Join(e.Deletions, "; "))
 	}
 	return strings.Join(problems, ". ")
 }

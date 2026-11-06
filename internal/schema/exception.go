@@ -73,13 +73,18 @@ func (e *Exception) whyNoRun(ahead Ahead, later Key) string {
 	return fmt.Sprintf("%s has no document %s", owner, e.Document)
 }
 
-// TargetGone reports whether what the exception names has gone from disk: its earlier version, or its
-// document, given the directory of the later version whose file lists it. Such an entry is stale, and
-// nothing can bring it back, so it may be removed even once it's deployed.
+// TargetGone reports whether what the exception names has gone: its earlier version has left the disk,
+// or fallen below the family's oldestLive, which can't move back, or its document has left the disk,
+// given the directory of the later version whose file lists it. Such an entry is stale, and nothing
+// can bring it back, so it may be removed even once it's deployed.
 func (e *Exception) TargetGone(laterDir string) bool {
 	familyDir := filepath.Dir(filepath.Dir(filepath.Dir(laterDir)))
 	earlierDir := filepath.Join(familyDir, e.Version.String(filepath.Separator))
 
+	oldestLive := declaredOldestLive(familyDir)
+	if slices.Compare(e.Version[:], oldestLive[:]) < 0 {
+		return true
+	}
 	if schemas, _ := filepath.Glob(filepath.Join(earlierDir, "*"+SchemaSuffix)); len(schemas) == 0 {
 		return true
 	}

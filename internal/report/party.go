@@ -22,7 +22,7 @@ func (tr *TextReporter) WritePartyCheck(w io.Writer, res *party.Result) error {
 			party.Pass: colGreen, party.Notice: colGrey, party.Warn: colYellow, party.Fail: colRed,
 		}[sr.Status()]
 		_, _ = fmt.Fprintf(w, "%s %s", tr.cs(statusCol, "["+strings.ToUpper(string(sr.Status()))+"]"), sr.Entry)
-		if sr.Problem == "" && sr.Notice == "" {
+		if sr.Problem == "" && sr.Notice == "" && sr.Retired == "" {
 			_, _ = fmt.Fprintf(w, " %s", tr.cs(statusCol, fmt.Sprintf("(%d document %s)", len(sr.Runs),
 				plural(len(sr.Runs), "run"))))
 		}
@@ -34,6 +34,9 @@ func (tr *TextReporter) WritePartyCheck(w io.Writer, res *party.Result) error {
 		tr.writePartyRuns(w, sr)
 		if sr.Notice != "" {
 			_, _ = fmt.Fprintf(w, "  %s %s\n", tr.cs(colGrey, "i"), sr.Notice)
+		}
+		if sr.Retired != "" {
+			_, _ = fmt.Fprintf(w, "  %s %s\n", tr.cs(colYellow, "!"), sr.Retired)
 		}
 		if sr.NewerMajor != "" {
 			_, _ = fmt.Fprintf(w, "  %s the family has a newer major version, %s, which this check doesn't cover: %s\n",
@@ -85,6 +88,7 @@ type jsonPartySchema struct {
 	Status       party.Status `json:"status"`
 	Problem      string       `json:"problem,omitempty"`
 	Notice       string       `json:"notice,omitempty"`
+	Retired      string       `json:"retired,omitempty"`
 	DocumentRuns int          `json:"documentRuns"`
 	Failed       []jsonSpec   `json:"failed"`
 	Excepted     []jsonSpec   `json:"excepted"`
@@ -119,6 +123,7 @@ func (jr *JSONReporter) WritePartyCheck(w io.Writer, res *party.Result) error {
 			Status:       sr.Status(),
 			Problem:      sr.Problem,
 			Notice:       sr.Notice,
+			Retired:      sr.Retired,
 			DocumentRuns: len(sr.Runs),
 			Failed:       jsonSpecs(sr.Failures(), "failed"),
 			Excepted:     jsonSpecs(sr.Excepted(), statusExcepted),

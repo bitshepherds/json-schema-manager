@@ -49,6 +49,10 @@ type TestReport struct {
 	// StaleExceptions lists, for each later version, the entries of its exception file which clear nothing.
 	StaleExceptions map[Key][]StaleException
 
+	// MissingMigrations lists, under the first version of each major, a major which needs a migration
+	// statement and has none.
+	MissingMigrations map[Key]MissingMigration
+
 	// UnexercisedChanges lists, for each schema, the changes which none of its pass documents use.
 	UnexercisedChanges map[Key][]UnexercisedChange
 	// AcknowledgedChanges lists, for each schema, the changes its exception file acknowledges.
@@ -138,6 +142,12 @@ type StaleException struct {
 	Why       string
 }
 
+// MissingMigration is a major which needs a migration statement in its family's declaration, and has none.
+type MissingMigration struct {
+	Major uint64
+	Why   string
+}
+
 // NewTestReport creates a new TestReport.
 func NewTestReport() *TestReport {
 	return &TestReport{
@@ -145,6 +155,7 @@ func NewTestReport() *TestReport {
 		PassedTests:         make(TestLog),
 		ExceptedTests:       make(TestLog),
 		StaleExceptions:     make(map[Key][]StaleException),
+		MissingMigrations:   make(map[Key]MissingMigration),
 		UnexercisedChanges:  make(map[Key][]UnexercisedChange),
 		AcknowledgedChanges: make(map[Key][]AcknowledgedChange),
 		Summaries:           make(map[Key]*Summary),
@@ -184,10 +195,17 @@ func (r *TestReport) HasWarnings() bool {
 	return len(r.UnexercisedChanges) > 0 || r.MissingDocuments() > 0 || r.FailDocumentsWithSeveralReasons() > 0
 }
 
-// HasFailures reports whether the report has anything which fails the run: a test which failed, or a
-// stale exception.
+// HasFailures reports whether the report has anything which fails the run: a test which failed, a
+// stale exception, or a missing migration statement.
 func (r *TestReport) HasFailures() bool {
-	return len(r.FailedTests) > 0 || len(r.StaleExceptions) > 0
+	return len(r.FailedTests) > 0 || len(r.StaleExceptions) > 0 || len(r.MissingMigrations) > 0
+}
+
+// AddMissingMigration records, under the first version of its major, a major with no migration statement.
+func (r *TestReport) AddMissingMigration(key Key, m MissingMigration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.MissingMigrations[key] = m
 }
 
 // AddExceptedTest adds a test which gave the wrong outcome, and which an exception names.

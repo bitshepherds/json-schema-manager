@@ -25,6 +25,9 @@ What else it carries depends on the bump and on the family's declaration:
 Other files in the target's directory, such as compat-exceptions.yml, belong to that version
 and are never copied.
 
+A major bump in a family whose documents live indefinitely, and whose reader doesn't pick its
+schema from the document, needs a migration statement in family.yml before validate passes.
+
 
 ```
 jsm create-schema-version [target] [release-type] [flags]

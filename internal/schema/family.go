@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -84,6 +85,12 @@ func (f FamilyFacts) EffectiveAhead() Ahead {
 // reader-ahead runs earlier pass documents, and either runs both.
 func (f FamilyFacts) InheritsDocuments() bool {
 	return f.EffectiveAhead() != AheadNeither
+}
+
+// NeedsMigrationStatement reports whether a new major must say how old documents move to it: they stay
+// around for good, and each is read through whatever version the reader is on, not one it names itself.
+func (f FamilyFacts) NeedsMigrationStatement() bool {
+	return f.DocumentsLive == DocumentsLiveIndefinitely && !f.ReaderPicksSchema
 }
 
 // ScenarioInfo describes one scenario: its name, what it is called in the docs, and the facts it implies.
@@ -166,7 +173,21 @@ func ScenarioNames() string {
 type FamilyDeclaration struct {
 	Scenario   Scenario
 	Facts      FamilyFacts
-	OldestLive SemVer // the zero SemVer unless the family's documents live for a retention period
+	OldestLive SemVer            // the zero SemVer unless the family's documents live for a retention period
+	Migrations map[uint64]string // for a major, a sentence or link saying how old documents move to it
+}
+
+// Live reports whether the version takes part in the family's checks: documents written under it may
+// still exist. Every version does, unless the family's documents live for a retention period.
+func (d *FamilyDeclaration) Live(v SemVer) bool {
+	return slices.Compare(v[:], d.OldestLive[:]) >= 0
+}
+
+// MigrationStatementHelp says what a family must add to its declaration for a new major.
+func MigrationStatementHelp(major uint64) string {
+	return fmt.Sprintf("Add a sentence or link to %s saying how old documents move to it, with "+
+		"\"migrations:\" and under it \"%d: <how they move>\". A migration is your own code: JSM only checks "+
+		"the statement is there", FamilyDeclarationFile, major)
 }
 
 // familyFile is the content of a family.yml file. An absent optional fact is left empty.
@@ -177,6 +198,8 @@ type familyFile struct {
 	ReaderPicksSchema *bool         `yaml:"readerPicksSchema"`
 	Schema            Role          `yaml:"schema"`
 	OldestLive        string        `yaml:"oldestLive"`
+
+	Migrations map[uint64]string `yaml:"migrations"`
 }
 
 // oneOf returns a problem if value is set, and is not among allowed.
@@ -232,6 +255,12 @@ func ParseFamilyDeclaration(data []byte) (*FamilyDeclaration, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, major := range slices.Sorted(maps.Keys(f.Migrations)) {
+		if strings.TrimSpace(f.Migrations[major]) == "" {
+			return nil, fmt.Errorf("the migration statement for major %d is empty: give a sentence or link", major)
+		}
+	}
+	d.Migrations = f.Migrations
 	return d, nil
 }
 
@@ -280,7 +309,8 @@ func parseVersion(field, s string) (SemVer, error) {
 }
 
 // ChangeFrom says why this declaration may not replace the declaration a deployed family had, or
-// returns "" if it may. Only moving oldestLive forward changes what the family declares.
+// returns "" if it may. Only moving oldestLive forward changes what the family declares. Migration
+// statements are records, not declarations: a deployed family needs to gain one for each new major.
 func (d *FamilyDeclaration) ChangeFrom(deployed *FamilyDeclaration) string {
 	if d.Scenario != deployed.Scenario || d.Facts != deployed.Facts {
 		return "its scenario and facts cannot change, as a changed scenario means a new family"
@@ -342,7 +372,27 @@ func (r *Registry) FamilyDeclaration(k Key) (*FamilyDeclaration, error) {
 	if err != nil {
 		return nil, &InvalidFamilyDeclarationError{Path: path, Wrapped: err}
 	}
+	if d.Facts.DocumentsLive == DocumentsLiveRetention {
+		versionDir := filepath.Join(filepath.Dir(path), d.OldestLive.String(filepath.Separator))
+		if found, _ := filepath.Glob(filepath.Join(versionDir, "*"+SchemaSuffix)); len(found) == 0 {
+			return nil, &InvalidFamilyDeclarationError{Path: path, Wrapped: fmt.Errorf(
+				"oldestLive %s is not a version of this family. It must name the oldest version whose documents "+
+					"may still exist", d.OldestLive.String('.'))}
+		}
+	}
 	return d, nil
+}
+
+// declaredOldestLive returns the oldestLive of the family in familyDir: the zero SemVer if it has none,
+// or no valid declaration, which is reported elsewhere.
+func declaredOldestLive(familyDir string) SemVer {
+	//nolint:gosec // Path is constructed from internal registry logic
+	data, _ := os.ReadFile(filepath.Join(familyDir, FamilyDeclarationFile))
+	d, err := ParseFamilyDeclaration(data)
+	if err != nil {
+		return SemVer{}
+	}
+	return d.OldestLive
 }
 
 // RequireFamilyDeclared returns an error if the key's schema exists, and its family has no valid

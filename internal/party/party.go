@@ -84,7 +84,8 @@ const (
 	Pass Status = "pass"
 	// Notice means the version exists, and nothing ran, since no later version can harm the party.
 	Notice Status = "notice"
-	// Warn means the version passes or has a notice, but its family has a newer major version.
+	// Warn means the version passes or has a notice, but its family has a newer major version, or it is
+	// below its family's oldestLive, so nothing checks it any more.
 	Warn Status = "warn"
 	// Fail means the version does not exist, or a document run shows a later version harming the party.
 	Fail Status = "fail"
@@ -96,6 +97,7 @@ type SchemaResult struct {
 	Key        schema.Key    // empty if the entry is not a schema key or canonical URL
 	Problem    string        // why the entry could not be checked
 	Notice     string        // why no later version can harm the party, if none can
+	Retired    string        // why nothing checks the version, if it is below its family's oldestLive
 	Runs       []schema.Spec // the document runs with later versions, each with its outcome
 	NewerMajor schema.Key    // the newest version of the family, if it has a newer major version
 }
@@ -125,7 +127,7 @@ func (r *SchemaResult) Status() Status {
 	switch {
 	case r.Problem != "" || len(r.Failures()) > 0:
 		return Fail
-	case r.NewerMajor != "":
+	case r.NewerMajor != "" || r.Retired != "":
 		return Warn
 	case r.Notice != "":
 		return Notice
@@ -177,12 +179,18 @@ func checkEntry(ctx context.Context, r *schema.Registry, role Role, entry string
 		return sr, err
 	}
 
-	if decl.Facts.EffectiveAhead().Holds(role.rule()) {
+	switch {
+	case !decl.Live(sr.Key.Version()):
+		// The rule's pairs leave this version out, so a later version could harm the party unseen.
+		sr.Retired = fmt.Sprintf("%s is below this family's oldestLive %s, so no check holds later versions to it, "+
+			"and a later version can harm a %s still on it: move to a version the family still checks.",
+			sr.Key, decl.OldestLive.String('.'), role)
+	case decl.Facts.EffectiveAhead().Holds(role.rule()):
 		sr.Runs, err = schema.NewTester(r).RunsOnLaterVersions(ctx, sr.Key, role.rule())
 		if err != nil {
 			return sr, err
 		}
-	} else {
+	default:
 		sr.Notice = whyNoHarm(decl, role, sr.Key)
 	}
 

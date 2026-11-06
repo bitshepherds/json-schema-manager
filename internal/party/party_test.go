@@ -478,5 +478,22 @@ func TestStatus(t *testing.T) {
 	assert.Equal(t, Pass, (&SchemaResult{}).Status())
 	assert.Equal(t, Notice, (&SchemaResult{Notice: "n"}).Status())
 	assert.Equal(t, Warn, (&SchemaResult{Notice: "n", NewerMajor: "a_2_0_0"}).Status())
+	assert.Equal(t, Warn, (&SchemaResult{Retired: "r"}).Status())
 	assert.Equal(t, Fail, (&SchemaResult{Problem: "p", NewerMajor: "a_2_0_0"}).Status())
+}
+
+func TestCheckPartyListedVersionBelowOldestLiveRunsNothing(t *testing.T) {
+	t.Parallel()
+	r := newRegistry(t, "scenario: retained-stream\noldestLive: 1.1.0\n", map[schema.Key]string{
+		v100: statusPaid, v110: statusRefunded,
+	})
+	writeDoc(t, r, v110, "pass/refunded.json", refundedDoc)
+
+	sr := checkOne(t, r, RoleReader, v100)
+	assert.Empty(t, sr.Runs, "the pair is below oldestLive, so it is left out, as the rule leaves it out")
+	assert.Empty(t, sr.Notice)
+	assert.Contains(t, sr.Retired, "oldestLive 1.1.0")
+	assert.Equal(t, Warn, sr.Status())
+
+	assert.Empty(t, checkOne(t, r, RoleReader, v110).Retired)
 }

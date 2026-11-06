@@ -498,6 +498,17 @@ func TestExceptionForAChange(t *testing.T) {
 		require.NoError(t, os.RemoveAll(New("d_f_1_0_0", r).Path(HomeDir)))
 		assert.True(t, entries[0].TargetGone(laterDir))
 	})
+
+	t.Run("its target has gone once the earlier version is below oldestLive", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: retained-stream\noldestLive: 1.0.0\n",
+			schemaMap{"d_f_1_0_0": `{}`, "d_f_1_1_0": `{}`})
+		laterDir := New("d_f_1_1_0", r).Path(HomeDir)
+		assert.False(t, entries[0].TargetGone(laterDir))
+		require.NoError(t, os.WriteFile(r.FamilyDeclarationPath("d_f_1_0_0"),
+			[]byte("scenario: retained-stream\noldestLive: 1.1.0\n"), 0o600))
+		assert.True(t, entries[0].TargetGone(laterDir))
+	})
 }
 
 func TestDiffFollowsTheRegistrysAssertFormat(t *testing.T) {

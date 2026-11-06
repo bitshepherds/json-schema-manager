@@ -127,6 +127,13 @@ func (jr *JUnitReporter) suite(r *schema.TestReport, k schema.Key) junitTestSuit
 			Failure:   &junitFailure{Message: s.Why, Text: "Remove it from " + schema.ExceptionsFile},
 		})
 	}
+	if m, missing := r.MissingMigrations[k]; missing {
+		suite.Cases = append(suite.Cases, junitTestCase{
+			Name:      fmt.Sprintf("migration statement for major %d", m.Major),
+			ClassName: suite.Name,
+			Failure:   &junitFailure{Message: "missing migration statement", Text: m.Why},
+		})
+	}
 	slices.SortStableFunc(suite.Cases, func(a, b junitTestCase) int { return cmp.Compare(a.Name, b.Name) })
 
 	warnings := schemaWarnings(r, k)

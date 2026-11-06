@@ -10,3 +10,5 @@ promises:
   - no-document-crosses-a-major
   - deployed-versions-fixed
   - declared-exception
+  - version-lifecycle
+  - major-needs-migration

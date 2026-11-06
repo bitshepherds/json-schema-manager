@@ -122,6 +122,13 @@ type jsonAcknowledgedChange struct {
 	Reason   string            `json:"reason"`
 }
 
+// jsonMissingMigration is a major which needs a migration statement and has none, and so fails the run.
+type jsonMissingMigration struct {
+	Schema schema.Key `json:"schema"` // the major's first version
+	Major  uint64     `json:"major"`
+	Why    string     `json:"why"`
+}
+
 // jsonStaleException is an entry of a schema's exception file which clears nothing, and so fails the run.
 type jsonStaleException struct {
 	Schema   schema.Key  `json:"schema"` // the later version, whose file lists it
@@ -142,6 +149,7 @@ type jsonOutput struct {
 		TotalFailed      int `json:"totalFailed"`
 		TotalExcepted    int `json:"totalExcepted"`
 		TotalStale       int `json:"totalStaleExceptions"`
+		TotalMigrations  int `json:"totalMissingMigrations"`
 		TotalUnexercised int `json:"totalUnexercised"`
 		TotalMissingDocs int `json:"totalMissingDocuments"`
 	} `json:"stats"`
@@ -149,6 +157,7 @@ type jsonOutput struct {
 	UnexercisedChanges  []jsonUnexercisedChange          `json:"unexercisedChanges"`
 	AcknowledgedChanges []jsonAcknowledgedChange         `json:"acknowledgedChanges"`
 	StaleExceptions     []jsonStaleException             `json:"staleExceptions"`
+	MissingMigrations   []jsonMissingMigration           `json:"missingMigrations"`
 }
 
 func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
@@ -179,6 +188,8 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 	out.StaleExceptions = staleExceptions(r)
 	out.Stats.TotalStale = len(out.StaleExceptions)
+	out.MissingMigrations = missingMigrations(r)
+	out.Stats.TotalMigrations = len(out.MissingMigrations)
 
 	// Write empty result lists as [], not null
 	for k, res := range out.Results {
@@ -216,6 +227,16 @@ func addRuns(
 		total += len(specs)
 	}
 	return total
+}
+
+// missingMigrations lists the report's missing migration statements, ordered by schema.
+func missingMigrations(r *schema.TestReport) []jsonMissingMigration {
+	out := make([]jsonMissingMigration, 0, len(r.MissingMigrations))
+	for _, k := range slices.Sorted(maps.Keys(r.MissingMigrations)) {
+		m := r.MissingMigrations[k]
+		out = append(out, jsonMissingMigration{Schema: k, Major: m.Major, Why: m.Why})
+	}
+	return out
 }
 
 // staleExceptions lists the report's stale exceptions, ordered by schema.

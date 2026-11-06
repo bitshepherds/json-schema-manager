@@ -1,0 +1,19 @@
+# The log's oldest events are from 1.1.0, so 1.0.0 takes no part. 1.1.0 rejects 1.0.0's pass document,
+# and 1.0.0 rejects 1.1.0's, which would break the rule if the pair still ran.
+promise: version-lifecycle
+validate:
+  1.0.0: pass
+  1.1.0: pass
+  1.2.0: pass
+checkChanges:
+  deployed: [1.0.0, 1.1.0, 1.2.0]
+  overlays:
+    delete-below-oldest-live:
+      verdict: pass
+      delete: [1/0/0]
+    delete-at-oldest-live:
+      verdict: fail
+      delete: [1/1/0]
+    delete-above-oldest-live:
+      verdict: fail
+      delete: [1/2/0]

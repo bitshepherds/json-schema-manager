@@ -1,0 +1,5 @@
+# The statement is there, which is all JSM checks.
+promise: major-needs-migration
+validate:
+  1.0.0: pass
+  2.0.0: pass

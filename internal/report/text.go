@@ -71,7 +71,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		statusText := "PASS"
 		statusCol := colGreen
 		switch {
-		case len(failed) > 0 || len(stale) > 0:
+		case len(failed) > 0 || len(stale) > 0 || hasMissingMigration(r, k):
 			statusText = "FAIL"
 			statusCol = colRed
 			keyCol = colRed
@@ -115,6 +115,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 				_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
 			}
 		}
+		tr.writeMissingMigration(w, r, k)
 		tr.writeExceptions(w, excepted, stale)
 		tr.writeAcknowledged(w, r.AcknowledgedChanges[k])
 		totalAcknowledged += len(r.AcknowledgedChanges[k])
@@ -133,6 +134,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		{totalExcepted, ", %d excepted"},
 		{totalAcknowledged, ", %d acknowledged"},
 		{totalStale, ", %d stale " + plural(totalStale, "exception")},
+		{len(r.MissingMigrations), ", %d missing migration " + plural(len(r.MissingMigrations), "statement")},
 		{totalUnexercised, ", %d unexercised " + plural(totalUnexercised, "change")},
 		{r.MissingDocuments(), ", %d " + plural(r.MissingDocuments(), "schema") + " without pass or fail documents"},
 	} {
@@ -141,7 +143,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		}
 	}
 	statsColor := colBoldGreen
-	if totalFailed > 0 || totalStale > 0 {
+	if r.HasFailures() {
 		statsColor = colBoldRed
 	}
 	_, err := fmt.Fprintf(w, "%s%s\n", summaryLabel, tr.cs(statsColor, summaryStats))
@@ -178,10 +180,25 @@ func reportKeys(r *schema.TestReport) []schema.Key {
 	for k := range r.StaleExceptions {
 		keysMap[k] = true
 	}
+	for k := range r.MissingMigrations {
+		keysMap[k] = true
+	}
 	for k := range r.AcknowledgedChanges {
 		keysMap[k] = true
 	}
 	return slices.Sorted(maps.Keys(keysMap))
+}
+
+func hasMissingMigration(r *schema.TestReport, k schema.Key) bool {
+	_, missing := r.MissingMigrations[k]
+	return missing
+}
+
+// writeMissingMigration writes why the major whose first version is k needs a migration statement, if it does.
+func (tr *TextReporter) writeMissingMigration(w io.Writer, r *schema.TestReport, k schema.Key) {
+	if m, missing := r.MissingMigrations[k]; missing {
+		_, _ = fmt.Fprintf(w, "  %s %s\n", tr.cs(colRed, "✗"), m.Why)
+	}
 }
 
 // writeExceptions writes each run a schema's exception file excepts, with its reason, and each entry

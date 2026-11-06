@@ -200,7 +200,7 @@ A new version carries only the documents for what it changes. Earlier documents 
 | Patch or minor | The schema only | The schema and the given version's documents |
 | Major | The schema and the given version's documents | The schema and the given version's documents |
 
-- **A major bump copies documents as a starting point to edit**, since no document crosses a major and some will legitimately stop holding. It copies the documents of the version you give, not its whole major, so if that version carries few, add what the new major needs: `--strict` tells you if it has no `pass` or no `fail` document.
+- **A major bump copies documents as a starting point to edit**, since no document crosses a major and some will legitimately stop holding. In a family whose old documents stay around, it also needs [a migration statement](./scenarios.md#what-a-major-bump-means). It copies the documents of the version you give, not its whole major, so if that version carries few, add what the new major needs: `--strict` tells you if it has no `pass` or no `fail` document.
 - **A family with no cross-version runs keeps copying**, such as [lock-step](./scenarios.md#8-lock-step) or [a family whose documents name their version](./scenarios.md#5-stored-data-each-document-names-its-version), because nothing else would test the new version.
 - **Only documents are copied**: the `.json` files directly in `pass` and `fail`. Any other file in the version's directory stays behind, and `compat-exceptions.yml` never comes along, as an exception belongs to one version.
 - **Documents already copied into a version are left alone, and still run.** You can delete them from a version which isn't deployed yet, if you want to.
@@ -265,7 +265,7 @@ Add the document. If the rule then fails, the failure says what to do. If no doc
 
 Every schema `jsm validate` tests is listed in its report, and one with no `pass` document, or no `fail` document, is marked `[WARN]`.
 
-Documents count if they are in the version's own directory, or inherited from an earlier version in its major. The first version of a major, including `1.0.0`, has nothing to inherit, so it needs its own, and the copies a major bump makes are its own. A family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so each of its versions needs its own.
+Documents count if they are in the version's own directory, or inherited from an earlier version in its major. The first version of a major, including `1.0.0`, has nothing to inherit, so it needs its own, and the copies a major bump makes are its own. Nothing is inherited from a version [below `oldestLive`](./scenarios.md#how-long-a-version-lasts). A family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so each of its versions needs its own.
 
 Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions, so a version with no `pass` document of its own has nothing showing what it accepts. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
 
@@ -329,7 +329,7 @@ For example, a team running a service which takes requests from old clients decl
 
 A failure is reported as `validate` reports it, under the later version, naming the rule, both versions and the document. A [deliberate exception](./scenarios.md#deliberate-exceptions) applies here too, and the report shows it with its reason. A stale exception entry fails `validate`, not this check, since it doesn't harm the party.
 
-The check doesn't look across majors. It warns if the family has a newer major version, so you can plan the party's move to it. `--strict` makes warnings fail, as on `validate`, and `--output json` gives the result as JSON.
+The check doesn't look across majors. It warns if the family has a newer major version, so you can plan the party's move to it, and if a listed version is [below its family's `oldestLive`](./scenarios.md#how-long-a-version-lasts), when it runs nothing for that version, since no check holds later versions to it. `--strict` makes warnings fail, as on `validate`, and `--output json` gives the result as JSON.
 
 ## Exit codes
 
@@ -338,7 +338,7 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 | Code | Meaning |
 |------|---------|
 | `0`  | The command succeeded, and every test and check passed. |
-| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), or an entry in a `compat-exceptions.yml` is stale, `check-changes` found a deployed schema or exception modified, or `check-party` found a listed version missing or harmed by a later one. With `--strict`, a warning also exits `1`. The report says which. |
+| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), an entry in a `compat-exceptions.yml` is stale, or a major has no [migration statement](./scenarios.md#what-a-major-bump-means) it needs, `check-changes` found a deployed schema or exception modified, or a deployed version deleted while its documents may still exist, or `check-party` found a listed version missing or harmed by a later one. With `--strict`, a warning also exits `1`. The report says which. |
 | `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
 | `130` | JSM was interrupted, by Ctrl+C (SIGINT), before it finished. |
 | `143` | JSM was stopped by SIGTERM, for example when a CI job times out, before it finished. |
@@ -391,7 +391,7 @@ Pin `jsm` to a release version, rather than `@latest`, so a new release cannot c
 
 ### Test results in CI
 
-Most CI systems can show JUnit XML test results, with each failing test on the pull request. `jsm validate all --continue-on-error --output junit > jsm-results.xml` writes one: each schema is a test suite, and each test document run against it a test case. It exits with the same code as the text report, so it still fails the job. JUnit has no warnings, so a schema's warnings are in its suite's `system-out`, or, with `--strict`, are failing test cases. A run a [deliberate exception](./scenarios.md#deliberate-exceptions) names is a skipped test case, whose message gives the reason, and a stale exception is a failing one.
+Most CI systems can show JUnit XML test results, with each failing test on the pull request. `jsm validate all --continue-on-error --output junit > jsm-results.xml` writes one: each schema is a test suite, and each test document run against it a test case. It exits with the same code as the text report, so it still fails the job. JUnit has no warnings, so a schema's warnings are in its suite's `system-out`, or, with `--strict`, are failing test cases. A run a [deliberate exception](./scenarios.md#deliberate-exceptions) names is a skipped test case, whose message gives the reason, and a stale exception or a missing migration statement is a failing one.
 
 In GitHub Actions, upload the file even when the step fails, then show it with a test reporter action of your choice:
 

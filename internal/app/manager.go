@@ -544,14 +544,109 @@ func (m *CLIManager) checkNoDeployedChange(
 	if err != nil {
 		return err
 	}
+	deletions, err := m.refusedVersionDeletions(ctx, anchor, changes)
+	if err != nil {
+		return err
+	}
 
 	modifiedPaths := deployedMutations(changes)
-	if len(modifiedPaths) > 0 || len(urlRoots) > 0 || len(declarations) > 0 || len(exceptions) > 0 {
+	if len(modifiedPaths) > 0 || len(urlRoots) > 0 || len(declarations) > 0 || len(exceptions) > 0 ||
+		len(deletions) > 0 {
 		return &schema.ChangedDeployedSchemasError{
 			Paths: modifiedPaths, URLRoots: urlRoots, Declarations: declarations, Exceptions: exceptions,
+			Deletions: deletions,
 		}
 	}
 	return nil
+}
+
+// refusedVersionDeletions describes each deployed version the changes delete, while documents written
+// under it may still exist, as its family's declaration says.
+func (m *CLIManager) refusedVersionDeletions(
+	ctx context.Context,
+	anchor repo.Revision,
+	changes []repo.Change,
+) ([]string, error) {
+	var refused []string
+	for _, c := range changes {
+		if !c.IsDeleted || !strings.HasSuffix(c.Path, schema.SchemaSuffix) {
+			continue
+		}
+		versionDir := filepath.Dir(c.Path)
+		version, familyDir, ok := versionAt(versionDir)
+		if !ok {
+			continue
+		}
+		decl, err := m.deletionDeclaration(ctx, anchor, familyDir)
+		if err != nil {
+			return nil, err
+		}
+		if why := whyVersionStays(decl, version); why != "" {
+			refused = append(refused, fmt.Sprintf("%s: %s", versionDir, why))
+		}
+	}
+	return refused, nil
+}
+
+// versionAt returns the version whose directory is versionDir, <family>/<major>/<minor>/<patch>, and
+// the family's directory, or false if it isn't one.
+func versionAt(versionDir string) (schema.SemVer, string, bool) {
+	minorDir := filepath.Dir(versionDir)
+	majorDir := filepath.Dir(minorDir)
+	version, err := schema.NewSemVer(filepath.Base(majorDir), filepath.Base(minorDir), filepath.Base(versionDir))
+	return version, filepath.Dir(majorDir), err == nil
+}
+
+// deletionDeclaration returns the declaration a deleted version in the family is judged by: the one
+// on disk, whose oldestLive a reviewed change may have moved forward, or if that's gone with the
+// family, or invalid, the one at the anchor. It returns nil if neither declares anything.
+func (m *CLIManager) deletionDeclaration(
+	ctx context.Context,
+	anchor repo.Revision,
+	familyDir string,
+) (*schema.FamilyDeclaration, error) {
+	path := filepath.Join(familyDir, schema.FamilyDeclarationFile)
+	//nolint:gosec // The path comes from git, within the registry
+	current, _ := os.ReadFile(path)
+	if decl, err := schema.ParseFamilyDeclaration(current); err == nil {
+		return decl, nil
+	}
+
+	atAnchor, err := m.gitter.ListFiles(ctx, anchor, familyDir, schema.FamilyDeclarationFile)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(atAnchor, path) {
+		return nil, nil //nolint:nilnil // nothing was declared, as its doc says
+	}
+	data, err := m.gitter.ShowFile(ctx, anchor, path)
+	if err != nil {
+		return nil, err
+	}
+	decl, err := schema.ParseFamilyDeclaration(data)
+	if err != nil {
+		return nil, nil //nolint:nilerr,nilnil // see above: one invalid at the anchor declared nothing
+	}
+	return decl, nil
+}
+
+// whyVersionStays says why the declaration won't let the version go, or returns "" if it will.
+func whyVersionStays(decl *schema.FamilyDeclaration, version schema.SemVer) string {
+	if decl == nil {
+		return ""
+	}
+	switch decl.Facts.DocumentsLive {
+	case schema.DocumentsLiveIndefinitely:
+		return fmt.Sprintf("this family's documents live indefinitely, so documents written under %s may still "+
+			"be read, and would have no schema", version.String('.'))
+	case schema.DocumentsLiveRetention:
+		if decl.Live(version) {
+			return fmt.Sprintf("%s is not below this family's oldestLive %s, so its documents may still exist. "+
+				"Once they can't, move oldestLive forward", version.String('.'), decl.OldestLive.String('.'))
+		}
+	case schema.DocumentsLiveMoment:
+	}
+	return ""
 }
 
 // deployedMutations returns the paths of the deployed schema files and test documents which the

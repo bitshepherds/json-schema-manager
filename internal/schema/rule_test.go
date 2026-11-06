@@ -254,6 +254,28 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 		}
 	})
 
+	t.Run("the majors can't be listed, to judge a migration statement", func(t *testing.T) {
+		t.Parallel()
+		// Counting inherited documents lists a minor and a patch. Then come the family's majors, and the
+		// earlier versions in the major.
+		for _, succeeding := range []int{2, 3} {
+			r := ruleRegistry(t, "scenario: stored-one-schema\n")
+			major2 := Key("domain_family_2_0_0")
+			createSchemaFiles(t, r, schemaMap{major2: `{}`})
+			_, err := r.GetSchemaByKey(major2)
+			require.NoError(t, err)
+			calls := 0
+			r.pathResolver = &mockPathResolver{getUintSubdirectories: func(dir string) ([]uint64, error) {
+				if calls++; calls > succeeding {
+					return nil, errors.New("listing error")
+				}
+				return fsh.GetUintSubdirectories(dir)
+			}}
+			_, err = NewTester(r).TestSingleSchema(context.Background(), major2)
+			require.ErrorContains(t, err, "listing error", "after %d listings", succeeding)
+		}
+	})
+
 	t.Run("cancelled", func(t *testing.T) {
 		t.Parallel()
 		r := ruleRegistry(t, "scenario: provider-first\n")

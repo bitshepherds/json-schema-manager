@@ -44,6 +44,9 @@ What else it carries depends on the bump and on the family's declaration:
 
 Other files in the target's directory, such as compat-exceptions.yml, belong to that version
 and are never copied.
+
+A major bump in a family whose documents live indefinitely, and whose reader doesn't pick its
+schema from the document, needs a migration statement in family.yml before validate passes.
 `,
 		Args: cobra.RangeArgs(1, 2),
 		Example: `
@@ -114,6 +117,11 @@ IDENTIFYING A TARGET SCHEMA
 		if err == nil {
 			cmd.Println("The schema, and the pass and fail directories for its test documents, can be found here:")
 			cmd.Printf("  %s\n\n", s.Path(schema.HomeDir))
+		}
+		decl, dErr := mgr.Registry().FamilyDeclaration(kNew)
+		if releaseType == schema.ReleaseTypeMajor && dErr == nil && decl.Facts.NeedsMigrationStatement() {
+			cmd.Printf("This family's old documents stay around, so a new major needs a migration statement, "+
+				"which validate requires. %s.\n\n", schema.MigrationStatementHelp(kNew.Major()))
 		}
 
 		return nil

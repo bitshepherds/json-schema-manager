@@ -1,0 +1,5 @@
+# Each document names its version, so old documents keep their old schema, and nothing has to move.
+promise: major-needs-migration
+validate:
+  1.0.0: pass
+  2.0.0: pass

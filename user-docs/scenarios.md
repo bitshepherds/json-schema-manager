@@ -15,6 +15,8 @@
   - [9. A format someone else owns](#9-a-format-someone-else-owns)
 - [Declaring a family's scenario](#declaring-a-familys-scenario)
 - [The rule](#the-rule)
+- [How long a version lasts](#how-long-a-version-lasts)
+- [What a major bump means](#what-a-major-bump-means)
 - [Deliberate exceptions](#deliberate-exceptions)
   - [The way out of a red deployed version](#the-way-out-of-a-red-deployed-version)
 - [The promises](#the-promises)
@@ -26,10 +28,6 @@ A schema family's versions change over time, and whether a change is safe depend
 
 This page describes the common ways schemas are used, what can go wrong in each, and what JSM checks for each. Each family serves one of these scenarios.
 
-> [!IMPORTANT]
->
-> Much of this page describes where JSM is going, not where it is. Anything JSM does not do yet is marked **Not yet built**, with the issue that builds it. Start with [What JSM does today](#what-jsm-does-today).
-
 ## What JSM does today
 
 - Every family [declares its scenario](#declaring-a-familys-scenario), and the declaration decides which documents run across versions, within a major, as [the rule](#the-rule) says. `validate` and `build-dist` run the same rule, and `validate --watch` runs it for what changed. Patch and minor are treated alike, and no document crosses a major.
@@ -38,6 +36,7 @@ This page describes the common ways schemas are used, what can go wrong in each,
 - `validate` compares the same pairs of versions structurally, and warns about each change in a direction the family protects which no document shows. A writer-ahead family needs a `pass` document for a change that widens what's accepted, a reader-ahead family a `fail` document for one that narrows it, an either family both, and a neither family none. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
 - A version can list a [deliberate exception](#deliberate-exceptions) to the rule, with a reason, for one run of one document. `validate`, `build-dist` and `check-party` then don't fail on that run, and nothing else is cleared.
 - `check-party` tells a reader or writer whether later versions in its major can harm it, following the family's declaration and the role its manifest states. It runs the same pairs as `validate`, for that side of the rule, and honours the same exceptions. Where no later version can harm the party, such as a reader in a reader-ahead family, it says why and exits `0`. See [Checking a party's schema versions](./developing-schemas.md#checking-a-partys-schema-versions).
+- What happens to old versions follows [how long the family's documents live](#how-long-a-version-lasts). `check-changes` refuses deleting a deployed version whose documents may still exist, and a retention family's `oldestLive` takes older versions out of the checks. A new major in a family whose old documents stay around needs [a migration statement](#what-a-major-bump-means).
 
 ## Words used on this page
 
@@ -125,7 +124,7 @@ Old files load after a tool upgrade. Schemas are often closed to catch typos, so
 
 - Earlier `pass` documents run on later versions, so a `1.0.0` `pass` document that uses `timeout` fails on `1.1.0`. Later `fail` documents run on earlier versions.
 - Later `pass` documents don't run on earlier versions, so the harmless `parallel` option passes.
-- **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version, since files written against it may live indefinitely.
+- `check-changes` refuses deleting a deployed version, since files written against it may live indefinitely, and `validate` requires [a migration statement](#what-a-major-bump-means) for each new major.
 
 ### 4. Stored data, one schema for all
 
@@ -144,7 +143,7 @@ Every old document stays valid, however old. A major bump doesn't make old data 
 
 - Earlier `pass` documents run on later versions, so a `1.3.0` `pass` document with no `email` fails on `1.4.0`, and on every later version in the major. Later `fail` documents run on earlier versions.
 - Later `pass` documents don't run on earlier versions, so adding an option the old versions reject passes.
-- **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version, and `validate` requires a migration statement for each new major. JSM records the statement. The migration is your code, and JSM tests no data.
+- `check-changes` refuses deleting a deployed version, and `validate` requires [a migration statement](#what-a-major-bump-means) for each new major. JSM records the statement. The migration is your code, and JSM tests no data.
 
 ### 5. Stored data, each document names its version
 
@@ -160,7 +159,8 @@ Documents are a mix of versions, each validated against its own. No version may 
 **What JSM checks:** a family whose reader picks the schema from the document behaves as `neither`, so only each version's own documents run.
 
 - Only each version's own documents run, since these versions never need to agree.
-- **Not yet built** ([#124]): `check-changes` refuses deleting a deployed version.
+- `check-changes` refuses deleting a deployed version.
+- A new major needs no migration statement, because old documents keep naming the version they were written under.
 
 ### 6. Retained streams
 
@@ -177,7 +177,7 @@ Scenario 1, plus new consumers reading old events. Retention can limit how far b
 **What JSM checks:** an either family needs no loosening and no tightening.
 
 - All four runs across versions take place, so a `1.2.0` `pass` document with no `currency` fails on `1.3.0`, and so does an enum value added in `1.3.0` when a document shows it.
-- **Not yet built** ([#124]): the family declares its oldest live version, `oldestLive`, and moves it forward by a reviewed change. Older versions then take no part in the checks, and `check-changes` allows deleting them. JSM uses no clock, so results are repeatable. Until this is built, a retention family is checked against all the history in its major.
+- The family declares its oldest live version, `oldestLive`, and moves it forward by a reviewed change. [Older versions then take no part in the checks](#how-long-a-version-lasts), and `check-changes` allows deleting them. JSM uses no clock, so results are repeatable.
 
 ### 7. Uncoordinated parties
 
@@ -245,6 +245,9 @@ readerPicksSchema: false
 schema: prescribes        # prescribes | describes
 # Required when documentsLive is retention:
 oldestLive: 1.2.0
+# Required for each major past the first, when documents live indefinitely and the reader doesn't pick its schema:
+migrations:
+  2: The Accounts service rewrites each profile as it loads it. See its runbook.
 ```
 
 Each scenario implies these facts:
@@ -263,13 +266,13 @@ Each scenario implies these facts:
 
 **Two scenarios must state `documentsLive`.** How long documents live varies in `uncoordinated` and `third-party-format`, so the scenario alone is refused, and the family says which it is. A chat app's synced notes may be kept for good, and a webhook's messages may be read and gone. **If you don't know how long your documents live, choose `indefinitely`.** It is always accepted, and it is the safe answer, because it assumes old documents may still be out there.
 
-**A retention family gives its oldest live version.** `retained-stream`, or any family that sets `documentsLive: retention`, must have `oldestLive`. `jsm create-schema` starts it at `1.0.0`.
+**A retention family gives its oldest live version.** `retained-stream`, or any family that sets `documentsLive: retention`, must have `oldestLive`. `jsm create-schema` starts it at `1.0.0`. It must be a version the family has, so a mistyped version can't quietly switch the checks off.
 
 **Every command that reads a family needs its declaration.** `validate`, `build-dist`, `check-party`, `check-changes`, `diff` and `create-schema-version` fail on a family with no declaration, or an invalid one, and say how to declare it. Only `create-registry`, `render-schema` and `tag-deployment` don't need one. An existing family with no `family.yml` gets one by hand: there's no migration command.
 
-**A declaration is fixed once a family is deployed.** Where an environment doesn't allow schema mutation, `check-changes` fails on a change to the declaration of a family with a deployed version, meaning one at the newest `jsm-deploy/<env>/*` tag reachable from `HEAD`. A family is one flow, so a changed scenario means a new family. It allows three things: moving `oldestLive` forward, adding a declaration to a family that had none, and deleting a whole family.
+**A declaration is fixed once a family is deployed.** Where an environment doesn't allow schema mutation, `check-changes` fails on a change to the declaration of a family with a deployed version, meaning one at the newest `jsm-deploy/<env>/*` tag reachable from `HEAD`. A family is one flow, so a changed scenario means a new family. It allows three things: moving `oldestLive` forward, adding or changing a migration statement, and adding a declaration to a family that had none. A whole family may go only if [each of its versions may](#how-long-a-version-lasts), as judged by the declaration it was deployed with.
 
-The other facts bear on the rule like this. A reader that picks its schema from the document means no cross-version runs, so that family behaves as `neither`. `describes` changes the wording of failures, not which documents run. How long documents live affects the version lifecycle: a retention family declares its oldest live version, and moves it forward by a reviewed change.
+The other facts bear on the rule like this. A reader that picks its schema from the document means no cross-version runs, so that family behaves as `neither`. `describes` changes the wording of failures, not which documents run. How long documents live decides [how long a version lasts](#how-long-a-version-lasts) and [what a major bump means](#what-a-major-bump-means).
 
 Of the nine, only scenario 5 has a reader that picks its schema from the document, and only scenario 9 describes a format rather than prescribing one.
 
@@ -287,9 +290,58 @@ Which documents prove that depends on which versions can meet, within a major:
 | Later fail on earlier version | No tightening | No | Yes | Yes | No |
 | Own documents on own version | The version behaves as intended | Yes | Yes | Yes | Yes |
 
-Each pair of versions in a major is checked, not only neighbouring versions, so a `1.2.0` document runs on `1.0.0` as well as on `1.1.0`. Versions are those on disk. The same pairs run however a version is selected, and each runs once.
+Each pair of versions in a major is checked, not only neighbouring versions, so a `1.2.0` document runs on `1.0.0` as well as on `1.1.0`. Versions are those on disk, leaving out any [below `oldestLive`](#how-long-a-version-lasts). The same pairs run however a version is selected, and each runs once.
 
 A failure always appears under the later version of its pair, whichever version you asked for, and the exit code is non-zero if any run fails. It names the rule that broke, both versions and the document, and says what that means for the family's scenario. For a family that describes someone else's format, it says the real format has changed, not that you made a mistake. Text, JSON and JUnit reports all name them.
+
+## How long a version lasts
+
+Deleting a version is safe only if no document still needs it. So what `check-changes` allows, in an environment which doesn't allow schema mutation, follows how long the family's documents live:
+
+| `documentsLive` | Deleting a deployed version | Why |
+| --- | --- | --- |
+| `moment` | Allowed | Documents are read and gone, so a version nobody uses any more can go. |
+| `retention` | Allowed below `oldestLive`, refused at it or above | `oldestLive` is the oldest version whose documents may still exist. |
+| `indefinitely` | Refused | A document kept for years would be left with no schema that describes it. |
+
+Deleting a whole family is judged the same way, version by version, by the declaration it was deployed with. So a family whose documents live indefinitely can't be deleted from a deployed environment by accident, or at all.
+
+**`oldestLive` limits the rule's pairs too.** A version below it takes no part: no document runs between it and another version, the [unexercised-change](#unexercised-change-warned) comparison leaves it out, and a later version no longer inherits its documents. So a family can move on from a mistake in `1.0.0` once no `1.0.0` document remains. It's still a version: its own documents still run on it, and `--strict` asks of it what it always did. Across majors the comparison is by version number, so `oldestLive: 2.0.0` retires all of major 1.
+
+**Moving `oldestLive` forward is a change someone reviews.** JSM uses no clock and no deploy tags for this, so the same commit always gives the same result. If nobody moves it, the checks simply stay stricter than they need to be. It can't move back, and it must name a version the family has. A change may move it forward and delete the versions it passes, together.
+
+Moving it forward can ask for two things:
+
+- The new oldest live version inherits nothing from below it, so `--strict` says if it now has no `pass` or `fail` document of its own. A deployed version may gain test documents.
+- An entry in a later version's `compat-exceptions.yml` naming a version now below `oldestLive` clears nothing, so it is stale, and fails. `check-changes` lets you remove it, as it does when the version is deleted.
+
+`check-party` warns about a listed version below `oldestLive`, and runs nothing for it, since the rule no longer holds later versions to it. A party still on that version can be harmed unseen, and `--strict` makes that a failure, so move it to a version the family still checks.
+
+## What a major bump means
+
+No document crosses a major, so a major bump is how a family makes a change its rule forbids. What that leaves to you depends on the scenario. In all of them, a migration is your code, not JSM's: JSM doesn't own your data, so it records your statement, and tests no data.
+
+| Scenario | What a major bump means |
+| --- | --- |
+| 1. Provider moves first | A new flow, run side by side with the old one. Readers move first, then writers stop sending the old major. Nothing needs migrating, since messages are gone in moments. |
+| 2. Consumer moves first | A new flow, run side by side with the old one. Writers move, then the reader stops accepting the old major. Nothing needs migrating. |
+| 3. Config files | Files written for the old major are still in people's repositories, so the tool, or a tool you ship, must move them. **Needs a migration statement.** |
+| 4. Stored data, one schema for all | The old documents are still in the database, so your code must move them before the new major can read them. **Needs a migration statement.** |
+| 5. Stored data, each document names its version | Old documents keep naming their old version, and the reader goes on validating them against it. The reader must handle both, and nothing needs migrating. |
+| 6. Retained streams | Old events stay in the log until retention ends, so a reader replaying it must handle both majors until then. Once the last old-major event has gone, move `oldestLive` into the new major. |
+| 7. Uncoordinated parties | Run both majors side by side for as long as parties remain on the old one, which you may not control. If the family states `documentsLive: indefinitely`, **it needs a migration statement.** |
+| 8. Lock-step | Both sides move together, so a major bump means no more than any other version does. |
+| 9. A format someone else owns | The format's owner already made the change, and choosing a major changes nothing about the documents out there. If the family states `documentsLive: indefinitely`, **it needs a migration statement** saying what happens to what you've kept. |
+
+**The migration statement.** Where old documents live indefinitely and the reader doesn't pick its schema from the document, each major past the family's first needs a sentence or a link in `family.yml`, under `migrations`, keyed by major:
+
+```yaml
+scenario: stored-one-schema
+migrations:
+  2: The Accounts service rewrites each profile as it loads it. See its runbook.
+```
+
+Without one, `validate` fails on the versions of that major, under its first version, and earlier majors are unaffected. JSM checks only that a statement is there. `jsm create-schema-version` says when a major bump needs one. A statement isn't part of what `check-changes` fixes, since a deployed family has to gain one for each new major, and a link can move.
 
 ## Deliberate exceptions
 
@@ -338,7 +390,7 @@ A new check can fail on versions already deployed, whose schemas and documents c
 2. For each, decide whether it really is harmless, or was already out in the world and has to stand. If it's a change you can still make differently, in a version that isn't deployed, do that instead.
 3. Add `compat-exceptions.yml` to the later version's directory, with one entry for each run, and a reason for each.
 
-`check-changes` allows this, in an environment which doesn't allow schema mutation: a deployed version may gain the file, and a file may gain entries. It refuses editing or removing an entry that was there at the deployment, so the file is reviewed once and then locked, as the schema is. The one exception is an entry whose earlier version or document has since gone, which is stale, so it may be removed along with what it named.
+`check-changes` allows this, in an environment which doesn't allow schema mutation: a deployed version may gain the file, and a file may gain entries. It refuses editing or removing an entry that was there at the deployment, so the file is reviewed once and then locked, as the schema is. The one exception is an entry whose earlier version or document has since gone, or whose earlier version has fallen below `oldestLive`, which is stale, so it may be removed.
 
 ## The promises
 
@@ -348,10 +400,12 @@ JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/te
 - <a id="no-loosening"></a>**No loosening.** Where a writer can be ahead, a later version in a major accepts nothing an earlier one rejects, as far as the documents show: later `pass` documents run on earlier versions, and earlier `fail` documents on later versions.
 - <a id="no-tightening"></a>**No tightening.** Where a reader can be ahead, a later version in a major rejects nothing an earlier one accepts, as far as the documents show: earlier `pass` documents run on later versions, and later `fail` documents on earlier versions.
 - <a id="only-versions-that-meet"></a>**Only versions that can meet are held to each other.** A writer-ahead family may tighten, a reader-ahead family may loosen, and a family with neither ahead, or whose reader picks its schema from the document, runs only each version's own documents.
-- <a id="version-inherits-documents"></a>**A version inherits documents, where its family runs them across versions.** `--strict` asks each version to have a `pass` and a `fail` document, in its own directory or an earlier version's in its major. The first version of a major has nothing to inherit, and a family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so its versions each need their own.
+- <a id="version-inherits-documents"></a>**A version inherits documents, where its family runs them across versions.** `--strict` asks each version to have a `pass` and a `fail` document, in its own directory or an earlier version's in its major. The first version of a major has nothing to inherit, nor does a version from below `oldestLive`, and a family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so its versions each need their own.
 - <a id="unexercised-change-warned"></a>**Unexercised changes are warned about.** Between any two versions in a major, `validate` warns about a change in a direction the family protects which no document shows, and `--strict` makes that warning a failure. A writer-ahead family is warned about widenings, a reader-ahead family about narrowings, an either family about both, and a neither family about none.
 - <a id="no-document-crosses-a-major"></a>**No document crosses a major.** A new major may change anything, and its documents never run on another major's versions, or theirs on it.
-- <a id="deployed-versions-fixed"></a>**Deployed versions stay fixed.** Where an environment doesn't allow schema mutation, `check-changes` fails if a deployed version's schema or test documents change. A deployed version may gain a test document, or be deleted as a whole.
+- <a id="deployed-versions-fixed"></a>**Deployed versions stay fixed.** Where an environment doesn't allow schema mutation, `check-changes` fails if a deployed version's schema or test documents change. A deployed version may gain a test document, or be deleted as a whole if [its documents can't still exist](#version-lifecycle).
+- <a id="version-lifecycle"></a>**A version lasts as long as its documents may.** Where an environment doesn't allow schema mutation, `check-changes` refuses deleting a deployed version whose family's documents live indefinitely, or one at or above `oldestLive` in a retention family, and allows it otherwise. A version below `oldestLive` takes no part in the rule's pairs.
+- <a id="major-needs-migration"></a>**A new major says how old documents move, where they stay around.** Where documents live indefinitely and the reader doesn't pick its schema from the document, `validate` fails on a major past the first with no migration statement in `family.yml`. JSM checks only that it's there.
 - <a id="declared-exception"></a>**An exception clears only what it names.** A version's `compat-exceptions.yml` clears the runs it lists, and each gives a reason. Any other failure still fails, an entry which clears nothing fails, and once deployed, an entry stays as it is, though more can be added.
 
 ## What the checks can and cannot show
@@ -386,4 +440,3 @@ Answer these in order, and stop at the first that fits. If an API operation brou
 
 Writer-ahead is what Confluent Schema Registry calls FORWARD_TRANSITIVE, and reader-ahead is BACKWARD_TRANSITIVE, bounded by the major, and tested by documents rather than by comparing schemas. In the same terms, either is FULL_TRANSITIVE, and neither is NONE.
 
-[#124]: https://github.com/bitshepherds/json-schema-manager/issues/124

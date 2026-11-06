@@ -231,7 +231,7 @@ func (t *Tester) findUnexercisedChanges(k Key) error {
 	if ahead == AheadNeither {
 		return nil
 	}
-	earlier, later, err := t.otherVersions(s)
+	earlier, later, err := t.otherVersions(s, decl)
 	if err != nil {
 		return err
 	}
@@ -421,7 +421,9 @@ func carryKey(change *structdiff.Change) string {
 	return string(change.Effect) + " " + change.String()
 }
 
-// inheritedDocuments counts the documents s inherits from the earlier versions in its major.
+// inheritedDocuments counts the documents s inherits from the earlier versions in its major. A live
+// version inherits only from live ones, as nothing else still runs. One below oldestLive stays as it
+// was, so moving oldestLive past it asks nothing new of it.
 func (t *Tester) inheritedDocuments(s *Schema, decl *FamilyDeclaration) (pass, fail int, err error) {
 	if !decl.Facts.InheritsDocuments() {
 		return 0, 0, nil
@@ -430,6 +432,8 @@ func (t *Tester) inheritedDocuments(s *Schema, decl *FamilyDeclaration) (pass, f
 	if err != nil {
 		return 0, 0, err
 	}
+	sIsLive := decl.Live(s.Key().Version())
+	earlierKeys = slices.DeleteFunc(earlierKeys, func(k Key) bool { return sIsLive && !decl.Live(k.Version()) })
 	earlier, err := t.schemas(earlierKeys)
 	if err != nil {
 		return 0, 0, err
@@ -525,6 +529,9 @@ func (t *Tester) testVersion(ctx context.Context, k Key) error {
 	if sErr := t.summarise(s, decl, ri, own); sErr != nil {
 		return sErr
 	}
+	if mErr := t.checkMigrationStatement(s, decl); mErr != nil {
+		return mErr
+	}
 
 	cross, err := t.pairSpecs(s, decl)
 	if err != nil {
@@ -536,6 +543,37 @@ func (t *Tester) testVersion(ctx context.Context, k Key) error {
 	}
 
 	return t.findUnexercisedChanges(k)
+}
+
+// checkMigrationStatement adds to the report a major past the family's first which has no migration
+// statement and needs one. It goes under the major's first version, once however many are selected.
+// The earlier majors aren't affected, so it's found only when a version in that major is selected.
+func (t *Tester) checkMigrationStatement(s *Schema, decl *FamilyDeclaration) error {
+	major := s.Key().Major()
+	if !decl.Facts.NeedsMigrationStatement() || decl.Migrations[major] != "" {
+		return nil
+	}
+	majors, err := t.registry.pathResolver.GetUintSubdirectories(s.Path(FamilyDir))
+	if err != nil {
+		return err
+	}
+	if major == slices.Min(majors) {
+		return nil
+	}
+	earlier, err := s.MajorFamilyEarlierSchemas()
+	if err != nil {
+		return err
+	}
+	first := s.Key()
+	if len(earlier) > 0 {
+		first = earlier[0]
+	}
+	t.report.AddMissingMigration(first, MissingMigration{
+		Major: major,
+		Why: fmt.Sprintf("major %d needs a migration statement: in a %s family old documents stay around, "+
+			"and a major bump doesn't make them vanish. %s.", major, decl.Scenario, MigrationStatementHelp(major)),
+	})
+	return nil
 }
 
 // runSpecs runs each spec on the version it names, and adds the result to the report, under the
@@ -589,12 +627,18 @@ func ownSpecs(s *Schema) ([]Spec, error) {
 	return specs, nil
 }
 
-// otherVersions returns the schemas of the other versions in s's major: those before it, and those after it.
-func (t *Tester) otherVersions(s *Schema) (earlier, later []*Schema, err error) {
+// otherVersions returns the schemas of the other versions in s's major which it can be paired with:
+// those before it, and those after it. A version below the family's oldestLive takes no part, so it
+// has none, and none has it.
+func (t *Tester) otherVersions(s *Schema, decl *FamilyDeclaration) (earlier, later []*Schema, err error) {
+	if !decl.Live(s.Key().Version()) {
+		return nil, nil, nil
+	}
 	earlierKeys, err := s.MajorFamilyEarlierSchemas()
 	if err != nil {
 		return nil, nil, err
 	}
+	earlierKeys = slices.DeleteFunc(earlierKeys, func(k Key) bool { return !decl.Live(k.Version()) })
 	laterKeys, err := s.MajorFamilyFutureSchemas()
 	if err != nil {
 		return nil, nil, err
@@ -636,7 +680,7 @@ func pairsOf(s *Schema, earlier, later []*Schema) [][2]*Schema {
 // on, so a pair two selected versions share runs once. Each is marked if the later version's exception
 // file names it, and an entry which names no run of the pair goes in the report as stale.
 func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
-	earlier, later, err := t.otherVersions(s)
+	earlier, later, err := t.otherVersions(s, decl)
 	if err != nil {
 		return nil, err
 	}
@@ -666,8 +710,12 @@ func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
 
 // reportExceptionsWithoutPairs adds to the report the entries of s's exception file which can't name a
 // run of any pair: every one if the family runs nothing across versions, and otherwise those which
-// name anything but an earlier version in its major.
+// name anything but a live earlier version in its major. A version below oldestLive answers for none
+// of its entries, since nothing about its pairs is checked any more.
 func (t *Tester) reportExceptionsWithoutPairs(s *Schema, decl *FamilyDeclaration, earlier []*Schema) error {
+	if !decl.Live(s.Key().Version()) {
+		return nil
+	}
 	exceptions, err := s.Exceptions()
 	if err != nil {
 		return err
@@ -676,6 +724,10 @@ func (t *Tester) reportExceptionsWithoutPairs(s *Schema, decl *FamilyDeclaration
 		switch {
 		case decl.Facts.EffectiveAhead() == AheadNeither:
 			t.report.AddStaleException(s.Key(), &e, "this family runs no documents across versions")
+		case !decl.Live(e.Version):
+			t.report.AddStaleException(s.Key(), &e, fmt.Sprintf(
+				"%s is below the family's oldestLive %s, so it takes no part in the checks",
+				e.Version.String('.'), decl.OldestLive.String('.')))
 		case !slices.ContainsFunc(earlier, func(o *Schema) bool { return o.Key().Version() == e.Version }):
 			t.report.AddStaleException(s.Key(), &e, fmt.Sprintf("there is no earlier version %s in this major",
 				e.Version.String('.')))
@@ -755,7 +807,7 @@ func (t *Tester) documentAcrossVersions(
 		return nil, nil
 	}
 
-	earlier, later, err := t.otherVersions(s)
+	earlier, later, err := t.otherVersions(s, decl)
 	if err != nil {
 		return nil, err
 	}
