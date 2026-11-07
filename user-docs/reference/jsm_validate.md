@@ -22,6 +22,11 @@ with later versions. A failure appears under the later version, since that's wha
 which rule broke, the two versions, the document, and what that means for the family's scenario. See
 user-docs/scenarios.md.
 
+The report counts runs, not documents. A run is one document checked against one schema version. A
+version's own documents give one run each. A run across versions is counted under the later version of
+the pair, and happens only in the directions the table above gives for the family's scenario, so the
+count depends on the family: a version can show more runs than it has documents.
+
 A version's compat-exceptions.yml can list a deliberate break of the rule, with its reason. The report
 shows that run as excepted, and it doesn't fail. An entry which clears nothing is stale, and fails.
 

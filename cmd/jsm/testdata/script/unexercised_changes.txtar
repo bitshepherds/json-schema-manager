@@ -10,7 +10,7 @@ exec jsm validate shop_order_1_1_0 -c
 stdout 'Unexercised changes: no document shows these'
 stdout '\[WARN\] shop_order_1_1_0.schema.json since shop_order_1_0_0:'
 stdout '! /status: enum adds "refunded" \(widens\)'
-stdout 'Test summary: 4 passed, 0 failed, 1 unexercised change$'
+stdout 'Test summary: 4 runs passed, 0 failed, 1 unexercised change$'
 
 # The same for every schema, and in the JSON report
 exec jsm validate all -c -C
@@ -45,7 +45,7 @@ exec jsm diff shop_order_1_0_0 shop_order_1_1_0
 stdout 'enum adds "refunded" \(used by pass/refunded.json\)'
 ! exec jsm validate shop_order_1_1_0 -c
 ! stdout 'unexercised change'
-stdout 'Test summary: 4 passed, 1 failed$'
+stdout 'Test summary: 4 runs passed, 1 failed$'
 
 # jsm diff follows the family's scenario: a reader-ahead family asks for a fail document for each
 # narrowing, and a widening is harmless to it, so it flags none

@@ -161,7 +161,7 @@ func TestExceptionReportedWithReason(t *testing.T) {
 		assert.Contains(t, out, "no-loosening excepted")
 		assert.Contains(t, out, clearedReason)
 		assert.Contains(t, out, "1 excepted")
-		assert.Contains(t, out, "excepted: 1")
+		assert.Contains(t, out, "(runs: 4 passed, 0 failed, 1 excepted)")
 	})
 
 	t.Run("JSON", func(t *testing.T) {

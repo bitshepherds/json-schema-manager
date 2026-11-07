@@ -3,7 +3,7 @@
 # Every test passes: exit 0
 env JSM_REGISTRY_ROOT_DIR=ok
 exec jsm validate shop_order_1_0_0 -c
-stdout 'Test summary: 2 passed, 0 failed'
+stdout 'Test summary: 2 runs passed, 0 failed'
 ! stderr 'Error:'
 exec jsm validate shop_order_1_0_0 -c -o json
 stdout '"totalFailed": 0'
@@ -16,7 +16,7 @@ stdout '<testcase name=".*fail/lost.json" classname="shop_order_1_0_0.schema.jso
 env JSM_REGISTRY_ROOT_DIR=localfail
 ! exec jsm validate shop_order_1_0_0 -c
 stdout 'passed, when expected fail'
-stdout 'Test summary: 1 passed, 1 failed'
+stdout 'Test summary: 1 run passed, 1 failed'
 ! stderr 'Error:'
 ! exec jsm validate shop_order_1_0_0 -c -o json
 stdout '"totalFailed": 1'
@@ -30,7 +30,7 @@ stdout '<failure message="passed, when expected fail">'
 env JSM_REGISTRY_ROOT_DIR=breaking
 ! exec jsm validate shop_order_1_1_0 -c
 stdout 'no-loosening broken'
-stdout 'Test summary: 2 passed, 1 failed'
+stdout 'Test summary: 2 runs passed, 1 failed'
 ! stderr 'Error:'
 ! exec jsm validate shop_order_1_1_0 -c -o json
 stdout '"totalFailed": 1'
@@ -38,7 +38,16 @@ stdout '"totalFailed": 1'
 # Multi-schema targets fail too
 env JSM_REGISTRY_ROOT_DIR=localfail
 ! exec jsm validate all -c
-stdout 'Test summary: 1 passed, 1 failed'
+stdout 'Test summary: 1 run passed, 1 failed'
+
+# The report counts runs, not documents (#154). In an owner-writes family, 1.0.0 runs its own pass and
+# fail document. 1.0.1 runs its own two, its pass document on 1.0.0, and 1.0.0's fail document on 1.0.1:
+# four runs from two documents of its own.
+env JSM_REGISTRY_ROOT_DIR=runs
+exec jsm validate shop/order -c -C
+stdout '^\[PASS\] shop_order_1_0_0.schema.json \(runs: 2 passed, 0 failed\)$'
+stdout '^\[PASS\] shop_order_1_0_1.schema.json \(runs: 4 passed, 0 failed\)$'
+stdout '^Test summary: 6 runs passed, 0 failed$'
 
 -- ok/json-schema-manager-config.yml --
 environments:
@@ -114,3 +123,36 @@ scenario: owner-writes
 
 -- breaking/shop/order/family.yml --
 scenario: owner-writes
+-- runs/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- runs/shop/order/family.yml --
+scenario: owner-writes
+-- runs/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- runs/shop/order/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- runs/shop/order/1/0/0/fail/lost.json --
+{"status": "lost"}
+-- runs/shop/order/1/0/1/shop_order_1_0_1.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "description": "An order, as the shop records it.",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- runs/shop/order/1/0/1/pass/paid.json --
+{"status": "paid"}
+-- runs/shop/order/1/0/1/fail/missing.json --
+{}

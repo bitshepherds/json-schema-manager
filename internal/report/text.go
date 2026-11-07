@@ -126,7 +126,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 	_, _ = fmt.Fprintf(w, "%s\n", divider)
 	summaryLabel := tr.cs(colBoldWhite, "Test summary: ")
-	summaryStats := fmt.Sprintf("%d passed, %d failed", totalPassed, totalFailed)
+	summaryStats := fmt.Sprintf("%d %s passed, %d failed", totalPassed, plural(totalPassed, "run"), totalFailed)
 	for _, part := range []struct {
 		n      int
 		format string
@@ -157,9 +157,9 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 // countsSuffix says how a schema's runs went, leaving out excepted runs if there are none.
 func countsSuffix(passed, failed, excepted int) string {
 	if excepted > 0 {
-		return fmt.Sprintf("(pass: %d, fail: %d, excepted: %d)", passed, failed, excepted)
+		return fmt.Sprintf("(runs: %d passed, %d failed, %d excepted)", passed, failed, excepted)
 	}
-	return fmt.Sprintf("(pass: %d, fail: %d)", passed, failed)
+	return fmt.Sprintf("(runs: %d passed, %d failed)", passed, failed)
 }
 
 // reportKeys returns the keys of every schema in the report, sorted.

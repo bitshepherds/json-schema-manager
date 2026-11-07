@@ -13,7 +13,7 @@ exec git add .
 exec git commit -q -m first
 
 exec jsm validate all
-stdout '2 passed, 0 failed'
+stdout '2 runs passed, 0 failed'
 
 exec jsm render-schema domain_family_1_0_0
 stdout '"type": "object"'

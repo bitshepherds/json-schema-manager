@@ -1,11 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -169,4 +172,23 @@ func TestValidateCmd(t *testing.T) {
 		require.NoError(t, err)
 		mgr.AssertExpectations(t)
 	})
+}
+
+func TestValidateHelpExplainsRuns(t *testing.T) {
+	t.Parallel()
+	cmd := NewValidateCmd(&MockManager{registry: &schema.Registry{}})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--help"})
+	require.NoError(t, cmd.ExecuteContext(context.Background()))
+
+	help := strings.Join(strings.Fields(out.String()), " ")
+	for _, want := range []string{
+		"A run is one document checked against one schema version.",
+		"A version's own documents give one run each.",
+		"A run across versions is counted under the later version of the pair",
+		"so the count depends on the family",
+	} {
+		assert.Contains(t, help, want)
+	}
 }

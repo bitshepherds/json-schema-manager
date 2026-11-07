@@ -267,7 +267,7 @@ Add the document. If the rule then fails, the failure says what to do. If no doc
 
 #### Coverage
 
-Every schema `jsm validate` tests is listed in its report, and one with no `pass` document, or no `fail` document, is marked `[WARN]`.
+Every schema `jsm validate` tests is listed in its report, with how many runs passed and failed, and one with no `pass` document, or no `fail` document, is marked `[WARN]`. A run is one document checked against one version, and documents also run across versions in the directions [the rule](./scenarios.md#the-rule) protects, so a version can show more runs than it has documents.
 
 Documents count if they are in the version's own directory, or inherited from an earlier version in its major. The first version of a major, including `1.0.0`, has nothing to inherit, so it needs its own, and the copies a major bump makes are its own. Nothing is inherited from a version [below `oldestLive`](./scenarios.md#how-long-a-version-lasts). A family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so each of its versions needs its own.
 
@@ -276,7 +276,7 @@ Inheriting a document is not the same as running it on that version. Which docum
 With `--verbose`, the report also shows how many documents a schema inherits, how much of the schema its own `pass` documents reach, and which keywords reject each of its own `fail` documents:
 
 ```
-[PASS] shop_order_1_0_0.schema.json (pass: 3, fail: 0)
+[PASS] shop_order_1_0_0.schema.json (runs: 3 passed, 0 failed)
   coverage: 3 of 5 points reached by pass documents
     - /: property note
     - /status: enum "refunded"

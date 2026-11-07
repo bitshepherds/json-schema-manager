@@ -55,7 +55,7 @@ func TestTextReporter(t *testing.T) {
 		assert.Contains(t, output, "d2_f1_1_0_0.schema.json")
 		assert.Contains(t, output, "✗ fail.json")
 		assert.NotContains(t, output, "✓ pass.json")
-		assert.Contains(t, output, "Test summary: 2 passed, 1 failed")
+		assert.Contains(t, output, "Test summary: 2 runs passed, 1 failed")
 	})
 
 	t.Run("Verbose Mode", func(t *testing.T) {
@@ -97,7 +97,7 @@ func TestTextReporter(t *testing.T) {
 		assert.Contains(t, output, "\033[31m✗\033[0m")
 		assert.Contains(t, output, "\033[90mpass.json\033[0m")
 		assert.Contains(t, output, "\033[1;37mTest summary: \033[0m")
-		assert.Contains(t, output, "\033[1;31m2 passed, 1 failed\033[0m")
+		assert.Contains(t, output, "\033[1;31m2 runs passed, 1 failed\033[0m")
 	})
 
 	t.Run("Fail as Expected", func(t *testing.T) {
@@ -126,7 +126,7 @@ func TestTextReporter(t *testing.T) {
 
 		output := buf.String()
 		assert.Contains(t, output, "\033[1;37mTest summary: \033[0m")
-		assert.Contains(t, output, "\033[1;32m1 passed, 0 failed\033[0m")
+		assert.Contains(t, output, "\033[1;32m1 run passed, 0 failed\033[0m")
 	})
 }
 
@@ -246,7 +246,7 @@ func TestReporters_UnexercisedChanges(t *testing.T) {
 		"  ! /s: enum adds \"x\" (widens): needs a pass document\n"+
 		"[WARN] d_f_1_2_0.schema.json since d_f_1_1_0:\n"+
 		"  ! /a: removes every constraint (widens): needs a pass document\n")
-	assert.Contains(t, out, "Test summary: 0 passed, 0 failed, 2 unexercised changes")
+	assert.Contains(t, out, "Test summary: 0 runs passed, 0 failed, 2 unexercised changes")
 
 	var js bytes.Buffer
 	require.NoError(t, (&JSONReporter{}).Write(&js, r))
@@ -277,11 +277,11 @@ func TestReporters_Summaries(t *testing.T) {
 	var text bytes.Buffer
 	require.NoError(t, (&TextReporter{}).Write(&text, r))
 	out := text.String()
-	assert.Contains(t, out, "[WARN] d_a_1_0_0.schema.json (pass: 0, fail: 0)\n  ! no pass documents\n")
-	assert.Contains(t, out, "[WARN] d_b_1_0_0.schema.json (pass: 0, fail: 0)\n  ! no fail documents\n")
-	assert.Contains(t, out, "[PASS] d_c_1_0_0.schema.json (pass: 0, fail: 0)\n")
+	assert.Contains(t, out, "[WARN] d_a_1_0_0.schema.json (runs: 0 passed, 0 failed)\n  ! no pass documents\n")
+	assert.Contains(t, out, "[WARN] d_b_1_0_0.schema.json (runs: 0 passed, 0 failed)\n  ! no fail documents\n")
+	assert.Contains(t, out, "[PASS] d_c_1_0_0.schema.json (runs: 0 passed, 0 failed)\n")
 	assert.NotContains(t, out, "coverage:", "coverage is only shown when verbose")
-	assert.Contains(t, out, "Test summary: 0 passed, 0 failed, 2 schemas without pass or fail documents")
+	assert.Contains(t, out, "Test summary: 0 runs passed, 0 failed, 2 schemas without pass or fail documents")
 
 	text.Reset()
 	require.NoError(t, (&TextReporter{Verbose: true}).Write(&text, r))
@@ -384,10 +384,10 @@ func TestSummaryCountsInheritedDocumentsInReports(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, (&TextReporter{Verbose: true}).Write(&buf, r))
 	out := buf.String()
-	assert.Contains(t, out, "[PASS] d_inherits_1_1_0.schema.json (pass: 0, fail: 0)\n"+
+	assert.Contains(t, out, "[PASS] d_inherits_1_1_0.schema.json (runs: 0 passed, 0 failed)\n"+
 		"  inherited: 2 pass and 1 fail documents from earlier versions in its major\n")
-	assert.Contains(t, out, "[WARN] d_half_1_1_0.schema.json (pass: 0, fail: 0)\n  ! no fail documents\n")
-	assert.NotContains(t, out, "[PASS] d_owns_1_0_0.schema.json (pass: 0, fail: 0)\n  inherited")
+	assert.Contains(t, out, "[WARN] d_half_1_1_0.schema.json (runs: 0 passed, 0 failed)\n  ! no fail documents\n")
+	assert.NotContains(t, out, "[PASS] d_owns_1_0_0.schema.json (runs: 0 passed, 0 failed)\n  inherited")
 
 	buf.Reset()
 	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
