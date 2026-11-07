@@ -31,8 +31,9 @@ type Tester struct {
 
 	report *TestReport
 
-	mu       sync.Mutex
-	ranPairs map[versionPair]bool // the pairs this run has already taken on
+	mu sync.Mutex
+	// ranPairs are the pairs this run has already taken on, each with the version whose checks run it.
+	ranPairs map[versionPair]Key
 	// comparedPairs are the pairs whose structural changes this run has already looked at.
 	comparedPairs map[versionPair]bool
 	// listed stands in for the exception files of these versions.
@@ -50,7 +51,7 @@ func NewTester(r *Registry) *Tester {
 		report:           NewTestReport(),
 		stopOnFirstError: true,
 		numWorkers:       runtime.GOMAXPROCS(0),
-		ranPairs:         make(map[versionPair]bool),
+		ranPairs:         make(map[versionPair]Key),
 		comparedPairs:    make(map[versionPair]bool),
 		finished:         make(map[Key]bool),
 	}
@@ -142,7 +143,7 @@ func (t *Tester) TestSpecificDocument(ctx context.Context, k Key, testPath strin
 	}
 
 	specs := append([]Spec{NewSpec(s, ti, tt)}, cross...)
-	if err = t.runSpecs(ctx, specs); err != nil && !errors.Is(err, ErrStopTesting) {
+	if err = t.runSpecs(ctx, k, specs); err != nil && !errors.Is(err, ErrStopTesting) {
 		return nil, err
 	}
 	return t.report, nil
@@ -212,21 +213,39 @@ func (t *Tester) TestFoundSchemas(ctx context.Context, ss SearchScope) (*TestRep
 
 // dropUntested takes out of the report every schema whose runs didn't all finish when the run stopped
 // at a failure, but for one with a failure, and counts those of the searcher's schemas it took out, or
-// never reached, as not tested. A schema cut short would otherwise show as passed.
+// never reached, as not tested. A schema cut short would otherwise show as passed. What a schema whose
+// checks all finished found stays, though it goes under one not tested.
 func (t *Tester) dropUntested(ctx context.Context, searcher *Searcher) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	keep := func(k Key) bool { return t.finished[k] || len(t.report.FailedTests[k]) > 0 }
 	for res := range searcher.Schemas(ctx) {
 		if res.Err != nil {
 			return res.Err
 		}
-		if !keep(res.Key) {
+		if !t.tested(res.Key) {
 			t.report.NotTested++
 		}
 	}
-	t.report.dropUnless(keep)
+	t.report.dropUnless(t.tested, func(k Key) bool { return t.finished[k] })
 	return nil
+}
+
+// tested reports whether every run counted under the version finished, or one failed. The runs of a
+// pair count under its later version, but the version which took the pair on runs them, after its own
+// documents, so that version's checks must have finished too. The caller holds t.mu.
+func (t *Tester) tested(k Key) bool {
+	if len(t.report.FailedTests[k]) > 0 {
+		return true
+	}
+	if !t.finished[k] {
+		return false
+	}
+	for p, by := range t.ranPairs {
+		if p.later == k && !t.finished[by] {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *Tester) processSearchResult(
@@ -301,7 +320,7 @@ func (t *Tester) findUnexercisedChanges(k Key) error {
 		if !t.claimComparison(versionPair{p[0].Key(), p[1].Key()}) {
 			continue
 		}
-		if cErr := t.comparePair(p[0], p[1], ahead); cErr != nil {
+		if cErr := t.comparePair(k, p[0], p[1], ahead); cErr != nil {
 			return cErr
 		}
 	}
@@ -309,9 +328,10 @@ func (t *Tester) findUnexercisedChanges(k Key) error {
 }
 
 // comparePair adds to the report the unexercised changes between the pair, and each of the later
-// version's exception entries for the pair which acknowledges a change that needs no acknowledging. A
-// change the later version carries over from the version before it belongs to that version.
-func (t *Tester) comparePair(earlier, later *Schema, ahead Ahead) error {
+// version's exception entries for the pair which acknowledges a change that needs no acknowledging, as
+// found by the checks of the version with key by. A change the later version carries over from the
+// version before it belongs to that version.
+func (t *Tester) comparePair(by Key, earlier, later *Schema, ahead Ahead) error {
 	changes, err := compareVersions(earlier, later)
 	if err != nil {
 		return err
@@ -339,24 +359,26 @@ func (t *Tester) comparePair(earlier, later *Schema, ahead Ahead) error {
 	acknowledged := make(map[string]bool)
 	for i := range changes {
 		if !slices.Contains(carried, carryKey(&changes[i])) {
-			t.warnOfChange(&changes[i], earlier.Key(), later.Key(), evidence.missing(&changes[i], ahead), exceptions,
-				acknowledged)
+			t.warnOfChange(by, &changes[i], earlier.Key(), later.Key(), evidence.missing(&changes[i], ahead),
+				exceptions, acknowledged)
 		}
 	}
 
 	for i := range exceptions {
 		e := &exceptions[i]
 		if e.Change != "" && e.Version == earlier.Key().Version() && !acknowledged[e.Change] {
-			t.report.AddStaleException(later.Key(), e, fmt.Sprintf(
+			t.report.addStaleException(later.Key(), by, e, fmt.Sprintf(
 				"no change between %s and %s by that description needs acknowledging", earlier.Key(), later.Key()))
 		}
 	}
 	return nil
 }
 
-// warnOfChange adds to the report a change no document shows in the directions missing, unless an
-// exception acknowledges it, when it notes that in acknowledged.
+// warnOfChange adds to the report a change no document shows in the directions missing, as found by
+// the checks of the version with key by, unless an exception acknowledges it, when it notes that in
+// acknowledged.
 func (t *Tester) warnOfChange(
+	by Key,
 	change *structdiff.Change,
 	earlier, later Key,
 	missing []structdiff.Effect,
@@ -375,7 +397,7 @@ func (t *Tester) warnOfChange(
 	}
 	for _, direction := range missing {
 		t.report.AddUnexercisedChange(later, &UnexercisedChange{
-			Earlier: earlier, Later: later, Direction: direction, Change: *change,
+			Earlier: earlier, Later: later, Direction: direction, Change: *change, foundBy: by,
 		})
 	}
 }
@@ -647,7 +669,7 @@ func (t *Tester) testVersion(ctx context.Context, k Key) error {
 		return err
 	}
 
-	if rErr := t.runSpecs(ctx, append(own, cross...)); rErr != nil {
+	if rErr := t.runSpecs(ctx, k, append(own, cross...)); rErr != nil {
 		return rErr
 	}
 
@@ -678,7 +700,8 @@ func (t *Tester) checkMigrationStatement(s *Schema, decl *FamilyDeclaration) err
 		first = earlier[0]
 	}
 	t.report.AddMissingMigration(first, MissingMigration{
-		Major: major,
+		foundBy: []Key{s.Key()},
+		Major:   major,
 		Why: fmt.Sprintf("major %d needs a migration statement: in %s %s family old documents stay around, "+
 			"and a major bump doesn't make them vanish. %s.",
 			major, decl.Scenario.Article(), decl.Scenario, MigrationStatementHelp(major)),
@@ -686,10 +709,10 @@ func (t *Tester) checkMigrationStatement(s *Schema, decl *FamilyDeclaration) err
 	return nil
 }
 
-// runSpecs runs each spec on the version it names, and adds the result to the report, under the
-// later version for a run across versions. A failure stops the run only if stopOnFirstError, when it
-// returns ErrStopTesting.
-func (t *Tester) runSpecs(ctx context.Context, specs []Spec) error {
+// runSpecs runs each spec on the version it names, as the checks of the version with key by, and adds
+// the result to the report, under the later version for a run across versions. A failure stops the run
+// only if stopOnFirstError, when it returns ErrStopTesting.
+func (t *Tester) runSpecs(ctx context.Context, by Key, specs []Spec) error {
 	env := t.registry.config.ProductionEnvConfig()
 	for i := range specs {
 		if err := ctx.Err(); err != nil {
@@ -705,7 +728,7 @@ func (t *Tester) runSpecs(ctx context.Context, specs []Spec) error {
 		if spec.Run(ri.Validator) == nil {
 			t.report.AddPassedTest(spec.ReportKey(), spec)
 			if spec.Exception != nil {
-				t.report.AddStaleException(spec.ReportKey(), spec.Exception,
+				t.report.addStaleException(spec.ReportKey(), by, spec.Exception,
 					"that run doesn't fail, so there's nothing to except")
 			}
 			continue
@@ -803,14 +826,14 @@ func (t *Tester) pairSpecs(s *Schema, decl *FamilyDeclaration) ([]Spec, error) {
 
 	var specs []Spec
 	for _, p := range pairsOf(s, earlier, later) {
-		if !t.claimPair(versionPair{p[0].Key(), p[1].Key()}) {
+		if !t.claimPair(versionPair{p[0].Key(), p[1].Key()}, s.Key()) {
 			continue
 		}
 		runs, pErr := pairRuns(p[0], p[1], decl)
 		if pErr != nil {
 			return nil, pErr
 		}
-		if eErr := t.applyExceptions(runs, p[0], p[1], decl); eErr != nil {
+		if eErr := t.applyExceptions(s.Key(), runs, p[0], p[1], decl); eErr != nil {
 			return nil, eErr
 		}
 		specs = append(specs, runs...)
@@ -847,8 +870,9 @@ func (t *Tester) reportExceptionsWithoutPairs(s *Schema, decl *FamilyDeclaration
 }
 
 // applyExceptions marks each of the pair's runs which the later version's exception file names, and
-// adds to the report each entry for the pair which names none of them.
-func (t *Tester) applyExceptions(runs []Spec, earlier, later *Schema, decl *FamilyDeclaration) error {
+// adds to the report each entry for the pair which names none of them, as found by the checks of the
+// version with key by.
+func (t *Tester) applyExceptions(by Key, runs []Spec, earlier, later *Schema, decl *FamilyDeclaration) error {
 	exceptions, err := t.exceptions(later)
 	if err != nil {
 		return err
@@ -859,7 +883,7 @@ func (t *Tester) applyExceptions(runs []Spec, earlier, later *Schema, decl *Fami
 		}
 		i := slices.IndexFunc(runs, func(spec Spec) bool { return e.clears(&spec) })
 		if i < 0 {
-			t.report.AddStaleException(later.Key(), &e, e.whyNoRun(decl.Facts.EffectiveAhead(), later.Key()))
+			t.report.addStaleException(later.Key(), by, &e, e.whyNoRun(decl.Facts.EffectiveAhead(), later.Key()))
 			continue
 		}
 		runs[i].Exception = &e
@@ -896,14 +920,15 @@ func (t *Tester) claimComparison(p versionPair) bool {
 	return true
 }
 
-// claimPair reports whether this run is the first to take on the pair.
-func (t *Tester) claimPair(p versionPair) bool {
+// claimPair reports whether this run is the first to take on the pair, and if so, notes that the
+// checks of the version with key by run it.
+func (t *Tester) claimPair(p versionPair, by Key) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.ranPairs[p] {
+	if _, ok := t.ranPairs[p]; ok {
 		return false
 	}
-	t.ranPairs[p] = true
+	t.ranPairs[p] = by
 	return true
 }
 
@@ -975,7 +1000,7 @@ func (t *Tester) RunsOnLaterVersions(ctx context.Context, k Key, rule Rule) ([]S
 		if pErr != nil {
 			return nil, pErr
 		}
-		if eErr := t.applyExceptions(runs, s, l, decl); eErr != nil {
+		if eErr := t.applyExceptions(k, runs, s, l, decl); eErr != nil {
 			return nil, eErr
 		}
 		runs = slices.DeleteFunc(runs, func(spec Spec) bool { return spec.Rule != rule })

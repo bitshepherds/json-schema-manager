@@ -830,6 +830,7 @@ func TestTestReport_DropUnless(t *testing.T) {
 		r.AddSummary(k, &Summary{})
 	}
 
-	r.dropUnless(func(k Key) bool { return k == "d_keep_1_0_0" })
+	keep := func(k Key) bool { return k == "d_keep_1_0_0" }
+	r.dropUnless(keep, keep)
 	assert.Equal(t, []Key{"d_keep_1_0_0"}, reportedKeys(r))
 }

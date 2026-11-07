@@ -127,6 +127,6 @@ func TestUnexercised_EarlierDocumentsCantBeRead(t *testing.T) {
 		later, err := r.GetSchemaByKey("d_f_1_1_0")
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(earlier.Path(HomeDir), dir), nil, 0o600))
-		require.Error(t, NewTester(r).comparePair(earlier, later, AheadWriter), dir)
+		require.Error(t, NewTester(r).comparePair(later.Key(), earlier, later, AheadWriter), dir)
 	}
 }

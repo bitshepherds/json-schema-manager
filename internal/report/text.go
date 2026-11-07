@@ -80,7 +80,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 		status := tr.cs(statusCol, "["+statusText+"]")
 		keyStr := tr.cs(keyCol, string(k)+schema.SchemaSuffix)
-		suffix := countsSuffix(len(passed), len(failed), len(excepted))
+		suffix := runsSuffix(r, k)
 
 		_, _ = fmt.Fprintf(w, "%s %s %s\n", status, keyStr, tr.cs(statusCol, suffix))
 
@@ -154,6 +154,15 @@ func (tr *TextReporter) writeStopped(w io.Writer, r *schema.TestReport) {
 			"Stopped at the first failure: %d %s not tested. Run with -C to test them all.",
 			r.NotTested, plural(r.NotTested, "schema"))))
 	}
+}
+
+// runsSuffix says how the schema's runs went, or that the run didn't test it, when a schema it did test
+// found something under it.
+func runsSuffix(r *schema.TestReport, k schema.Key) string {
+	if !r.Tested(k) {
+		return "(not tested)"
+	}
+	return countsSuffix(len(r.PassedTests[k]), len(r.FailedTests[k]), len(r.ExceptedTests[k]))
 }
 
 // countsSuffix says how a schema's runs went, leaving out excepted runs if there are none.

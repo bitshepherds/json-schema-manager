@@ -6,7 +6,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -516,6 +518,39 @@ func TestJSONReporter_StoppedEarly(t *testing.T) {
 
 	out = write(schema.NewTestReport())
 	assert.Equal(t, false, out["stoppedEarly"])
+}
+
+// TestJSONAndJUnitReporters_StoppedEarlyShowFindingsForUntestedSchemas checks that the JSON and JUnit
+// reports agree with the text report about what a tested schema found under one not tested: each lists
+// the finding, and neither lists a run for that schema.
+func TestJSONAndJUnitReporters_StoppedEarlyShowFindingsForUntestedSchemas(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&buf, untestedFindingsReport()))
+	var out struct {
+		Results         map[string]any `json:"results"`
+		StaleExceptions []struct {
+			Schema string `json:"schema"`
+		} `json:"staleExceptions"`
+		MissingMigrations []struct {
+			Schema string `json:"schema"`
+		} `json:"missingMigrations"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+	assert.Equal(t, []string{"d_b_1_0_0"}, slices.Collect(maps.Keys(out.Results)), "only the schema which ran")
+	require.Len(t, out.StaleExceptions, 1)
+	assert.Equal(t, "d_f_1_1_0", out.StaleExceptions[0].Schema)
+	require.Len(t, out.MissingMigrations, 1)
+	assert.Equal(t, "d_m_2_0_0", out.MissingMigrations[0].Schema)
+
+	buf.Reset()
+	require.NoError(t, (&JUnitReporter{}).Write(&buf, untestedFindingsReport()))
+	junit := buf.String()
+	assert.Contains(t, junit, `<testcase name="stale exception: version 1.0.0, change /: gone" `+
+		`classname="d_f_1_1_0.schema.json">`)
+	assert.Contains(t, junit, `<testcase name="migration statement for major 2" classname="d_m_2_0_0.schema.json">`)
+	assert.Contains(t, junit, `<testsuite name="d_f_1_1_0.schema.json" tests="1" failures="1"`)
 }
 
 // The JSON report gives the path of a document failing across versions, and its error names it, by its

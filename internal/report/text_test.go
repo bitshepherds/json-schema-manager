@@ -205,3 +205,38 @@ func TestTextReporter_StoppedEarlyKeepsWarnings(t *testing.T) {
 	assert.Contains(t, out, "1 unexercised change, 1 schema without pass or fail documents\n"+
 		"Stopped at the first failure: 3 schemas not tested.")
 }
+
+// untestedFindingsReport is a report which stopped at the first failure, and holds a stale exception
+// and a missing migration statement, which tested schemas found, under schemas it didn't test.
+func untestedFindingsReport() *schema.TestReport {
+	r := schema.NewTestReport()
+	r.AddFailedTest("d_b_1_0_0", &schema.Spec{
+		TestInfo:    schema.TestInfo{Path: "bad.json"},
+		TestDocType: schema.TestDocTypePass,
+		Err:         assert.AnError,
+	})
+	stale := &schema.Exception{Version: schema.SemVer{1, 0, 0}, Change: "/: gone"}
+	r.AddStaleException("d_f_1_1_0", stale, "never there")
+	r.MarkNotTested("d_f_1_1_0")
+	r.AddMissingMigration("d_m_2_0_0", schema.MissingMigration{Major: 2, Why: "major 2 needs a migration statement"})
+	r.MarkNotTested("d_m_2_0_0")
+	r.NotTested = 2
+	return r
+}
+
+// TestTextReporter_StoppedEarlyShowsFindingsForUntestedSchemas checks that a stopped report shows what
+// a tested schema found under one not tested, on a line which says it was not tested, not that it ran
+// nothing.
+func TestTextReporter_StoppedEarlyShowsFindingsForUntestedSchemas(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&buf, untestedFindingsReport()))
+	out := buf.String()
+	assert.Contains(t, out, "[FAIL] d_f_1_1_0.schema.json (not tested)\n"+
+		"  ✗ stale exception: version 1.0.0, change /: gone:\n")
+	assert.Contains(t, out, "[FAIL] d_m_2_0_0.schema.json (not tested)\n"+
+		"  ✗ major 2 needs a migration statement\n")
+	assert.Contains(t, out, "[FAIL] d_b_1_0_0.schema.json (runs: 0 passed, 1 failed)\n")
+	assert.Contains(t, out, "Test summary: 0 runs passed, 1 failed, 1 stale exception, 1 missing migration statement\n"+
+		"Stopped at the first failure: 2 schemas not tested.")
+}

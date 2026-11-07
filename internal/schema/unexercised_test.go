@@ -459,7 +459,7 @@ func TestComparePairErrors(t *testing.T) {
 		t.Parallel()
 		r, earlier, later := setup(t)
 		require.NoError(t, os.Remove(New("d_f_1_1_0", r).Path(FilePath)))
-		require.Error(t, NewTester(r).comparePair(earlier, later, AheadWriter))
+		require.Error(t, NewTester(r).comparePair(later.Key(), earlier, later, AheadWriter))
 	})
 
 	t.Run("a version's documents can't be read", func(t *testing.T) {
@@ -467,7 +467,7 @@ func TestComparePairErrors(t *testing.T) {
 		for _, dir := range []string{"pass", "fail"} {
 			r, earlier, later := setup(t)
 			require.NoError(t, os.WriteFile(filepath.Join(later.Path(HomeDir), dir), nil, 0o600))
-			require.Error(t, NewTester(r).comparePair(earlier, later, AheadWriter))
+			require.Error(t, NewTester(r).comparePair(later.Key(), earlier, later, AheadWriter))
 		}
 	})
 
@@ -475,14 +475,14 @@ func TestComparePairErrors(t *testing.T) {
 		t.Parallel()
 		r, earlier, later := setup(t)
 		failToCompile(t, r, "d_f_1_1_0")
-		require.Error(t, NewTester(r).comparePair(earlier, later, AheadWriter))
+		require.Error(t, NewTester(r).comparePair(later.Key(), earlier, later, AheadWriter))
 	})
 
 	t.Run("an exception file which isn't valid", func(t *testing.T) {
 		t.Parallel()
 		r, earlier, later := setup(t)
 		writeExceptionFile(t, r, "d_f_1_2_0", "exceptions: nope")
-		require.Error(t, NewTester(r).comparePair(earlier, later, AheadWriter))
+		require.Error(t, NewTester(r).comparePair(later.Key(), earlier, later, AheadWriter))
 	})
 
 	t.Run("the earlier versions can't be listed", func(t *testing.T) {
@@ -491,7 +491,7 @@ func TestComparePairErrors(t *testing.T) {
 		majorDir := filepath.Join(later.Path(FamilyDir), "1")
 		require.NoError(t, os.RemoveAll(majorDir))
 		require.NoError(t, os.WriteFile(majorDir, nil, 0o600))
-		require.Error(t, NewTester(r).comparePair(earlier, later, AheadWriter))
+		require.Error(t, NewTester(r).comparePair(later.Key(), earlier, later, AheadWriter))
 	})
 }
 
