@@ -1,0 +1,48 @@
+# The registry jsm stands in beats $JSM_REGISTRY_ROOT_DIR, and jsm says which it changed (#158)
+mkdir a b
+cp config.yml a/json-schema-manager-config.yml
+cp config.yml b/json-schema-manager-config.yml
+
+# create-schema in B's folder, with the variable naming A, writes into B and leaves A untouched
+env JSM_REGISTRY_ROOT_DIR=$WORK/a
+cd b
+exec jsm create-schema shop/order --scenario owner-writes
+exists $WORK/b/shop/order/family.yml
+! exists $WORK/a/shop
+stderr 'ignored \$JSM_REGISTRY_ROOT_DIR \(.*[/\\]a\)'
+stderr 'Registry: .*[/\\]b \(from the current directory\)'
+
+# The variable naming the same registry gives no warning
+env JSM_REGISTRY_ROOT_DIR=$WORK/b
+exec jsm create-schema shop/basket --scenario owner-writes
+! stderr 'ignored'
+stderr 'Registry: .*[/\\]b \(from the current directory\)'
+
+# Outside any registry, the variable's registry is used, and named
+cd $WORK
+env JSM_REGISTRY_ROOT_DIR=$WORK/a
+exec jsm create-schema shop/order --scenario owner-writes
+exists $WORK/a/shop/order/family.yml
+! stderr 'ignored'
+stderr 'Registry: .*[/\\]a \(from \$JSM_REGISTRY_ROOT_DIR\)'
+
+# --registry is explicit: it is named, and the variable it overrides draws no warning
+cd b
+exec jsm create-schema shop/customer --scenario owner-writes -r $WORK/a
+exists $WORK/a/shop/customer/family.yml
+! stderr 'ignored'
+stderr 'Registry: .*[/\\]a \(from --registry\)'
+
+# A command that writes nothing names the registry only under --debug
+env JSM_REGISTRY_ROOT_DIR=
+exec jsm render-schema shop_order_1_0_0
+! stderr 'Registry:'
+exec jsm --debug render-schema shop_order_1_0_0
+stderr 'registry.*[/\\]b'
+
+-- config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://p/"
+    publicUrlRoot: "https://p/"
+    isProduction: true

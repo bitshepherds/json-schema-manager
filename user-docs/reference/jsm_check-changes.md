@@ -48,7 +48,7 @@ jsm check-changes [environment] [flags]
 ```
   -d, --debug[=true|false]      Enable debug logging
   -c, --nocolour[=true|false]   Disable colour in output
-  -r, --registry string         path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
+  -r, --registry string         path to the registry root directory (default: the current directory, if it holds a registry, or else $JSM_REGISTRY_ROOT_DIR)
 ```
 
 ### SEE ALSO

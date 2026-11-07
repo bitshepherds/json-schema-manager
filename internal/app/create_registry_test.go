@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"log/slog"
@@ -161,48 +162,40 @@ func TestPersistentPreRunE_CreateRegistry_SkipsInitialisation(t *testing.T) {
 	assert.False(t, lazy.HasInner())
 }
 
-func TestAddEnvironmentVariableInstructionsForOS(t *testing.T) {
+func TestCreateRegistry_NoGlobalExportAdvice(t *testing.T) {
+	t.Parallel()
+	// The advice no longer depends on the OS: there is no shell profile or setx to name. So one
+	// run covers darwin, linux and windows alike.
+	registryDir := filepath.Join(t.TempDir(), "my-registry")
+	var out bytes.Buffer
+	cmd := NewCreateRegistryCmd(fsh.NewPathResolver())
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{registryDir})
+	require.NoError(t, cmd.Execute())
+
+	got := out.String()
+	for _, global := range []string{".zshrc", ".bashrc", ".profile", "setx", "export "} {
+		assert.NotContains(t, got, global)
+	}
+	assert.Contains(t, got, "cd "+registryDir, "advises running jsm from the registry's folder")
+	assert.Contains(t, got, "-r "+registryDir, "advises giving the registry with -r")
+	assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
+	assert.Contains(t, got, "mise")
+	assert.Contains(t, got, "direnv")
+}
+
+func TestRegistryUsageAdvice_AbsError(t *testing.T) {
 	t.Parallel()
 	dir := "/tmp/bg-registry"
-	pathResolver := fsh.NewPathResolver()
+	mockResolver := &mockPathResolver{
+		absFn: func(_ string) (string, error) {
+			return "", errors.New("mock-error")
+		},
+	}
 
-	t.Run("windows", func(t *testing.T) {
-		t.Parallel()
-		got := addEnvironmentVariableInstructionsForOS(pathResolver, dir, "windows")
-		assert.Contains(t, got, "setx")
-		assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
-	})
-
-	t.Run("darwin", func(t *testing.T) {
-		t.Parallel()
-		got := addEnvironmentVariableInstructionsForOS(pathResolver, dir, "darwin")
-		assert.Contains(t, got, "echo")
-		assert.Contains(t, got, "&& source")
-		assert.Contains(t, got, ".zshrc")
-		assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
-	})
-
-	t.Run("linux", func(t *testing.T) {
-		t.Parallel()
-		got := addEnvironmentVariableInstructionsForOS(pathResolver, dir, "linux")
-		assert.Contains(t, got, "echo")
-		assert.Contains(t, got, "&& source")
-		assert.Contains(t, got, ".bashrc")
-		assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
-	})
-
-	t.Run("abs-error", func(t *testing.T) {
-		t.Parallel()
-
-		mockResolver := &mockPathResolver{
-			absFn: func(_ string) (string, error) {
-				return "", errors.New("mock-error")
-			},
-		}
-
-		got := addEnvironmentVariableInstructionsForOS(mockResolver, dir, "linux")
-		assert.Contains(t, got, dir)
-	})
+	got := registryUsageAdvice(mockResolver, dir)
+	assert.Contains(t, got, dir)
 }
 
 // mockPathResolver is a test implementation of fsh.PathResolver.

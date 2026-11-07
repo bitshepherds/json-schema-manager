@@ -101,6 +101,7 @@ func NewRootCmd(
 			if err != nil {
 				logger.Warn("logging to file disabled", "error", err)
 			}
+			reportRegistry(logger, registry, cmd.Name())
 
 			tester := schema.NewTester(registry)
 			cfg, _ := registry.Config()
@@ -121,7 +122,8 @@ func NewRootCmd(
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&registryPath, "registry", "r", "",
-		"path to the registry root directory (default: $"+schema.RootDirEnvVar+", or else the current directory)")
+		"path to the registry root directory (default: the current directory, if it holds a registry, or else $"+
+			schema.RootDirEnvVar+")")
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 
 	rootCmd.PersistentFlags().BoolVarP(&noColour, "nocolour", "c", false, "Disable colour in output")
@@ -147,6 +149,30 @@ func NewRootCmd(
 	rootCmd.AddCommand(NewCheckPartyCmd(lazy))
 
 	return rootCmd
+}
+
+// writingCommands are the commands which change a registry, or write from it, so name it on every run.
+var writingCommands = map[string]bool{
+	"create-schema":         true,
+	"create-schema-version": true,
+	"build-dist":            true,
+	"tag-deployment":        true,
+}
+
+// reportRegistry says which registry jsm uses, and where it was named: on stderr for a command
+// which writes, and at debug level for the others. It warns when the current directory's registry
+// was used in place of the one $JSM_REGISTRY_ROOT_DIR names.
+func reportRegistry(logger *slog.Logger, registry *schema.Registry, cmdName string) {
+	if ignored := registry.IgnoredEnv(); ignored != "" {
+		logger.Warn(fmt.Sprintf("ignored $%s (%s): the current directory holds a registry, so jsm uses that",
+			schema.RootDirEnvVar, ignored))
+	}
+	msg := fmt.Sprintf("Registry: %s (from %s)", registry.RootDirectory(), registry.Source())
+	if writingCommands[cmdName] {
+		logger.Info(msg)
+	} else {
+		logger.Debug(msg)
+	}
 }
 
 // isCompletionCommand returns true if the command or any of its parents is the "completion" command.
