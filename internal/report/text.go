@@ -38,8 +38,6 @@ func (tr *TextReporter) cs(c, s string) string {
 }
 
 // Write implements the schema.Reporter interface.
-//
-//nolint:gocognit // high complexity report rendering logic
 func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	divider := strings.Repeat("-", 40)
 
@@ -87,7 +85,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 		_, _ = fmt.Fprintf(w, "%s %s %s\n", status, keyStr, tr.cs(statusCol, suffix))
 
 		if tr.Verbose {
-			// Show for each schema, the tests that passed and failed, along with any errors
+			// Show for each schema the tests that passed, as well as those which failed
 			for i := range passed {
 				spec := &passed[i]
 				_, _ = fmt.Fprintf(w, "  %s %s (%s)\n",
@@ -95,26 +93,8 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 					tr.cs(colGrey, spec.TestInfo.Path),
 					tr.cs(colGreen, spec.ResultLabel()))
 			}
-
-			for i := range failed {
-				spec := &failed[i]
-				_, _ = fmt.Fprintf(w, "  %s %s (%s):\n",
-					tr.cs(colRed, "✗"),
-					tr.cs(colGrey, spec.TestInfo.Path),
-					tr.cs(colRed, spec.ResultLabel()))
-				_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
-			}
-		} else {
-			// Just show the failures
-			for i := range failed {
-				spec := &failed[i]
-				_, _ = fmt.Fprintf(w, "  %s %s (%s):\n",
-					tr.cs(colRed, "✗"),
-					tr.cs(colGrey, spec.TestInfo.Path),
-					tr.cs(colRed, spec.ResultLabel()))
-				_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
-			}
 		}
+		tr.writeFailed(w, failed)
 		tr.writeMissingMigration(w, r, k)
 		tr.writeExceptions(w, excepted, stale)
 		tr.writeAcknowledged(w, r.AcknowledgedChanges[k])
@@ -153,6 +133,17 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	tr.writeStopped(w, r)
 	_, err = fmt.Fprintf(w, "%s\n", divider)
 	return err
+}
+
+// writeFailed writes each failed run: what went wrong in a few words, then its error. The error names
+// the document by its path from the registry's root, so the line above leaves the path out, and the
+// report names each document once.
+func (tr *TextReporter) writeFailed(w io.Writer, failed []schema.Spec) {
+	for i := range failed {
+		spec := &failed[i]
+		_, _ = fmt.Fprintf(w, "  %s %s:\n", tr.cs(colRed, "✗"), tr.cs(colRed, spec.ResultLabel()))
+		_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
+	}
 }
 
 // writeStopped says how many schemas the run didn't test, if it stopped at the first failure before

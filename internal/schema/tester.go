@@ -115,7 +115,7 @@ func (t *Tester) TestSpecificDocument(ctx context.Context, k Key, testPath strin
 		return nil, err
 	}
 
-	ti, err := NewTestInfo(testPath)
+	ti, err := NewTestInfo(testPath, t.registry.RootDirectory())
 	if err != nil {
 		return nil, err
 	}

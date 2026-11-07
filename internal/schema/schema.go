@@ -451,7 +451,7 @@ func (s *Schema) TestDocuments(tt TestDocType) ([]TestInfo, error) {
 		}
 		if filepath.Ext(entry.Name()) == TestDocSuffix {
 			fp := filepath.Join(docDir, entry.Name())
-			ti, tErr := NewTestInfo(fp)
+			ti, tErr := NewTestInfo(fp, s.registry.RootDirectory())
 			if tErr != nil {
 				return nil, tErr
 			}

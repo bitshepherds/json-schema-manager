@@ -60,12 +60,11 @@ func newRegistry(t *testing.T, declaration string, schemas map[schema.Key]string
 	return r
 }
 
-// writeDoc writes a file in the version's directory, such as pass/a.json, and returns its path.
-func writeDoc(t *testing.T, r *schema.Registry, k schema.Key, name, content string) string {
+// writeDoc writes a file in the version's directory, such as pass/a.json.
+func writeDoc(t *testing.T, r *schema.Registry, k schema.Key, name, content string) {
 	t.Helper()
 	path := filepath.Join(schema.New(k, r).Path(schema.HomeDir), filepath.FromSlash(name))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
-	return path
 }
 
 func writeManifest(t *testing.T, content string) string {
@@ -98,7 +97,7 @@ func TestCheckPartyReaderInWriterAheadRunsLaterPassOnListedVersion(t *testing.T)
 	t.Parallel()
 
 	r := newRegistry(t, writerAhead, map[schema.Key]string{v100: statusPaid, v110: statusRefunded})
-	path := writeDoc(t, r, v110, "pass/refunded.json", refundedDoc)
+	writeDoc(t, r, v110, "pass/refunded.json", refundedDoc)
 
 	failure := requireOneFailure(t, checkOne(t, r, RoleReader, v100))
 
@@ -107,7 +106,7 @@ func TestCheckPartyReaderInWriterAheadRunsLaterPassOnListedVersion(t *testing.T)
 	assert.Equal(t, v110, failure.DocumentFrom)
 	assert.Equal(t, v100, failure.Schema.Key())
 	assert.Equal(t, v110, failure.ReportKey(), "a failure appears under the later version")
-	assert.Equal(t, path, failure.TestInfo.Path)
+	assert.Equal(t, filepath.Join("shop", "order", "1", "1", "0", "pass", "refunded.json"), failure.TestInfo.Path)
 	assert.ErrorAs(t, failure.Err, new(*schema.RuleBrokenError))
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,11 @@ func TestTextReporter(t *testing.T) {
 	specFail := schema.Spec{
 		TestInfo:    schema.TestInfo{Path: "fail.json"},
 		TestDocType: schema.TestDocTypePass,
-		Err:         assert.AnError,
+		Err: &schema.PassTestFailedError{
+			SchemaPath:  "s.json",
+			TestDocPath: "fail.json",
+			Wrapped:     assert.AnError,
+		},
 	}
 
 	r.AddPassedTest(k1, &specPass)
@@ -53,7 +58,7 @@ func TestTextReporter(t *testing.T) {
 		output := buf.String()
 		assert.Contains(t, output, "[FAIL] d1_f1_1_0_0.schema.json")
 		assert.Contains(t, output, "d2_f1_1_0_0.schema.json")
-		assert.Contains(t, output, "✗ fail.json")
+		assert.Contains(t, output, "✗ failed:\n    Pass Test document fail.json did not pass")
 		assert.NotContains(t, output, "✓ pass.json")
 		assert.Contains(t, output, "Test summary: 2 runs passed, 1 failed")
 	})
@@ -68,7 +73,7 @@ func TestTextReporter(t *testing.T) {
 		output := buf.String()
 		assert.Contains(t, output, "[FAIL] d1_f1_1_0_0.schema.json")
 		assert.Contains(t, output, "[PASS] d2_f1_1_0_0.schema.json")
-		assert.Contains(t, output, "✗ fail.json")
+		assert.Contains(t, output, "✗ failed:\n    Pass Test document fail.json did not pass")
 		assert.Contains(t, output, "✓ pass.json")
 	})
 
@@ -511,4 +516,31 @@ func TestJSONReporter_StoppedEarly(t *testing.T) {
 
 	out = write(schema.NewTestReport())
 	assert.Equal(t, false, out["stoppedEarly"])
+}
+
+// The JSON report gives the path of a document failing across versions, and its error names it, by its
+// path from the registry's root (#156).
+func TestJSONReporter_RelativePath(t *testing.T) {
+	t.Parallel()
+	r, root := relativePathReport(t)
+
+	var buf bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+	assert.NotContains(t, buf.String(), root)
+
+	var out struct {
+		Results map[schema.Key]struct {
+			Failed []map[string]any `json:"failed"`
+		} `json:"results"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+	failed := out.Results["shop_order_1_1_0"].Failed
+	require.Len(t, failed, 1)
+
+	doc := filepath.Join("shop", "order", "1", "1", "0", "pass", "refunded.json")
+	assert.Equal(t, doc, failed[0]["path"])
+	msg, ok := failed[0]["error"].(string)
+	require.True(t, ok)
+	assert.Contains(t, msg, "pass document "+doc+" of shop_order_1_1_0")
+	assert.Equal(t, 1, strings.Count(msg, doc), msg)
 }

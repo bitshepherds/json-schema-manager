@@ -6,8 +6,36 @@ env JSM_REGISTRY_ROOT_DIR=reg
 
 # A single key catches the breaking change
 ! exec jsm validate shop_order_1_1_0 -c
-stdout 'refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
+stdout '✗ no-loosening broken: pass document of 1.1.0 rejected by 1.0.0:'
 stdout 'Test summary: 2 runs passed, 1 failed'
+
+# The failure names the document once, by its path from the registry's root, wherever the registry is
+# and however it is given: the report is the same each way, and never names the work directory (#156)
+env FAILURE='^\[FAIL\] shop_order_1_1_0.schema.json \(runs: 2 passed, 1 failed\)\n  ✗ no-loosening broken: pass document of 1.1.0 rejected by 1.0.0:\n    no-loosening broken between shop_order_1_0_0 and shop_order_1_1_0: pass document shop/order/1/1/0/pass/refunded.json of shop_order_1_1_0 was rejected by shop_order_1_0_0. In an owner-writes family, a writer on shop_order_1_1_0 can send a reader still on shop_order_1_0_0 a document it rejects. Undo the change, or make it in a new major version. If this is deliberate, or shop_order_1_1_0 is already deployed, list it in compat-exceptions.yml in shop_order_1_1_0''s directory. Detail: jsonschema validation failed with ''https://json-schemas.internal.myorg.io/shop_order_1_0_0.schema.json#''\n- at ''/status'': value must be one of ''placed'', ''paid''\n-{40}\n'
+! exec jsm validate shop_order_1_1_0 -c
+stdout -count=1 'refunded.json'
+! stdout ${WORK@R}
+stdout $FAILURE
+
+env JSM_REGISTRY_ROOT_DIR=$WORK/reg
+! exec jsm validate shop_order_1_1_0 -c
+stdout -count=1 'refunded.json'
+! stdout ${WORK@R}
+stdout $FAILURE
+
+env JSM_REGISTRY_ROOT_DIR=
+! exec jsm validate shop_order_1_1_0 -c -r $WORK/reg
+stdout -count=1 'refunded.json'
+! stdout ${WORK@R}
+stdout $FAILURE
+
+cd reg
+! exec jsm validate shop_order_1_1_0 -c -r .
+stdout -count=1 'refunded.json'
+! stdout ${WORK@R}
+stdout $FAILURE
+cd $WORK
+env JSM_REGISTRY_ROOT_DIR=reg
 
 # So does the earlier version, which is part of the pair, and it reports under the later version
 ! exec jsm validate shop_order_1_0_0 -c -C
@@ -24,7 +52,7 @@ stdout 'Test summary: 3 runs passed, 1 failed'
 stdout 'no-loosening broken'
 
 ! exec jsm validate all -c -C
-stdout 'refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
+stdout '✗ no-loosening broken: pass document of 1.1.0 rejected by 1.0.0:'
 stdout 'Test summary: 5 runs passed, 1 failed'
 
 ! exec jsm validate shop/order -c -C
@@ -46,8 +74,8 @@ stderr 'unknown shorthand flag: .t.'
 
 # A failure names the schema that rejected the document, 1.0.0 (#50)
 ! exec jsm validate all -c -C
-stdout 'did not pass validation as expected for schema \S*shop_order_1_0_0.schema.json'
-! stdout 'did not pass validation as expected for schema \S*shop_order_1_1_0.schema.json'
+stdout 'refunded.json of shop_order_1_1_0 was rejected by shop_order_1_0_0\.'
+! stdout 'rejected by shop_order_1_1_0'
 
 # The JSON report names the rule, both versions and the document
 ! exec jsm validate shop_order_1_1_0 -o json

@@ -371,7 +371,8 @@ func TestTester_Summary(t *testing.T) {
 			{Location: "/", Kind: coverage.Branch, Detail: "anyOf/0", Covered: true},
 		}, summary.Coverage)
 		assert.Equal(t, 3, summary.Covered())
-		assert.Equal(t, map[string][]string{failPath: {"#/properties/status/enum"}}, summary.FailKeywords)
+		failDoc := filepath.Join("shop", "order", "1", "0", "0", "fail", "lost.json")
+		assert.Equal(t, map[string][]string{failDoc: {"#/properties/status/enum"}}, summary.FailKeywords)
 		assert.Equal(t, 0, report.MissingDocuments())
 	})
 

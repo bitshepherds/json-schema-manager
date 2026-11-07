@@ -24,26 +24,28 @@ type IDCache map[config.Env]ID
 
 // TestInfo holds the artefacts for a test document.
 type TestInfo struct {
-	Path         string                 // The path of the test document
+	Path         string                 // The path of the test document, from the registry's root
 	SrcDoc       []byte                 // The source document
 	Unmarshalled validator.JSONDocument // The UnmarshalJSON unmarshalled document
 }
 
-// NewTestInfo attempts to read in and parse a test JSON document.
-func NewTestInfo(filePath string) (TestInfo, error) {
+// NewTestInfo attempts to read in and parse the test JSON document at filePath. It names the document by
+// its path from rootDir, the registry's root, so that whatever reports it reads the same on every machine.
+func NewTestInfo(filePath, rootDir string) (TestInfo, error) {
+	path := relativeTo(rootDir, filePath)
 	//nolint:gosec // Path is constructed from internal registry logic
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return TestInfo{}, CannotReadTestDocumentError{Path: filePath}
+		return TestInfo{}, CannotReadTestDocumentError{Path: path}
 	}
 
 	var unmarshalled validator.JSONDocument
 	if err = json.Unmarshal(data, &unmarshalled); err != nil {
-		return TestInfo{}, InvalidTestDocumentError{Path: filePath}
+		return TestInfo{}, InvalidTestDocumentError{Path: path}
 	}
 
 	return TestInfo{
-		Path:         filePath,
+		Path:         path,
 		SrcDoc:       data,
 		Unmarshalled: unmarshalled,
 	}, nil

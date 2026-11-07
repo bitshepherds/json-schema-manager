@@ -25,7 +25,7 @@ stderr '\$ref https://geojson.org/schema/Point.json is external, and external \$
 # Under 2020-12, format is an annotation by default, so the invalid email is accepted
 env JSM_REGISTRY_ROOT_DIR=format
 ! exec jsm validate people_contact_1_0_0 -c
-stdout 'bad-email.json \(passed, when expected fail\)'
+stdout '✗ passed, when expected fail:\n    Fail Test document people/contact/1/0/0/fail/bad-email.json was accepted'
 
 # With assertFormat, it is rejected
 cp assert-format.yml format/json-schema-manager-config.yml

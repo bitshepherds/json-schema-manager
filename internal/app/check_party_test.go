@@ -159,7 +159,8 @@ func TestCheckPartyFailureIsReportedAsTheRuleReportsIt(t *testing.T) {
 	out, err := f.check("text", false)
 	require.ErrorIs(t, err, ErrTestsFailed)
 	assert.Contains(t, out, "[FAIL] shop_order_1_0_0 (1 document run)")
-	assert.Contains(t, out, "✗ shop_order_1_1_0: "+doc+
+	rel := filepath.Join("shop", "order", "1", "1", "0", "pass", "refunded.json")
+	assert.Contains(t, out, "✗ shop_order_1_1_0: "+rel+
 		" (no-loosening broken: pass document of 1.1.0 rejected by 1.0.0):")
 	assert.Contains(t, out, "no-loosening broken between shop_order_1_0_0 and shop_order_1_1_0")
 	assert.Contains(t, out,

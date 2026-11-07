@@ -2,14 +2,95 @@ package report
 
 import (
 	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/fsh"
 	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 	"github.com/bitshepherds/json-schema-manager/v2/internal/structdiff"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/validator"
 )
+
+// relativePathReport tests a registry on disk, in a temporary directory, whose 1.1.0 adds an enum value its
+// pass document uses, which 1.0.0 rejects, and whose 1.0.0 has a pass document it rejects itself. It
+// returns the report and the registry's root.
+func relativePathReport(t *testing.T) (*schema.TestReport, string) {
+	t.Helper()
+	root := t.TempDir()
+	files := map[string]string{
+		config.JsmRegistryConfigFile: "environments:\n  prod:\n" +
+			"    privateUrlRoot: \"https://json-schemas.internal.myorg.io/\"\n" +
+			"    publicUrlRoot: \"https://json-schemas.myorg.io/\"\n    isProduction: true\n",
+		"shop/order/family.yml": "scenario: owner-writes\n",
+		"shop/order/1/0/0/shop_order_1_0_0.schema.json": `{"$schema": "http://json-schema.org/draft-07/schema#",
+			"$id": "{{ ID }}", "properties": {"status": {"enum": ["placed"]}}}`,
+		"shop/order/1/0/0/pass/placed.json": `{"status": "placed"}`,
+		"shop/order/1/0/0/pass/lost.json":   `{"status": "lost"}`,
+		"shop/order/1/0/0/fail/paid.json":   `{"status": "paid"}`,
+		"shop/order/1/1/0/shop_order_1_1_0.schema.json": `{"$schema": "http://json-schema.org/draft-07/schema#",
+			"$id": "{{ ID }}", "properties": {"status": {"enum": ["placed", "refunded"]}}}`,
+		"shop/order/1/1/0/pass/refunded.json": `{"status": "refunded"}`,
+		"shop/order/1/1/0/fail/paid.json":     `{"status": "paid"}`,
+	}
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	}
+	registry, err := schema.NewRegistry(
+		root, validator.NewSanthoshCompiler(), fsh.NewPathResolver(), fsh.NewEnvProvider(),
+	)
+	require.NoError(t, err)
+	tester := schema.NewTester(registry)
+	tester.SetStopOnFirstError(false)
+	r, err := tester.TestFoundSchemas(context.Background(), "")
+	require.NoError(t, err)
+	return r, registry.RootDirectory()
+}
+
+// The text report names a document that fails across versions by its path from the registry's root, and
+// only once, however long the path to the registry is (#156).
+func TestTextReporter_CrossVersionFailure_RelativePath(t *testing.T) {
+	t.Parallel()
+	r, root := relativePathReport(t)
+
+	var buf bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&buf, r))
+	out := buf.String()
+
+	doc := filepath.Join("shop", "order", "1", "1", "0", "pass", "refunded.json")
+	assert.Contains(t, out, "  ✗ no-loosening broken: pass document of 1.1.0 rejected by 1.0.0:\n"+
+		"    no-loosening broken between shop_order_1_0_0 and shop_order_1_1_0: pass document "+doc+
+		" of shop_order_1_1_0 was rejected by shop_order_1_0_0.")
+	assert.Equal(t, 1, strings.Count(out, doc), out)
+	assert.NotContains(t, out, root)
+	assert.Contains(t, out, "shop_order_1_1_0's directory. Detail: jsonschema validation failed",
+		"the detail is the validator's own, without the run's error naming the document and schema again")
+}
+
+// A version's own failing document reads the same way as one failing across versions (#156).
+func TestTextReporter_OwnFailure_RelativePath(t *testing.T) {
+	t.Parallel()
+	r, root := relativePathReport(t)
+
+	var buf bytes.Buffer
+	require.NoError(t, (&TextReporter{}).Write(&buf, r))
+	out := buf.String()
+
+	doc := filepath.Join("shop", "order", "1", "0", "0", "pass", "lost.json")
+	own := filepath.Join("shop", "order", "1", "0", "0", "shop_order_1_0_0.schema.json")
+	assert.Contains(t, out, "  ✗ failed:\n    Pass Test document "+doc+
+		" did not pass validation as expected for schema "+own+", error: ")
+	assert.Equal(t, 1, strings.Count(out, doc), out)
+	assert.NotContains(t, out, root)
+}
 
 func TestCountsSuffix(t *testing.T) {
 	t.Parallel()

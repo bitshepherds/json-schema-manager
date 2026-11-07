@@ -1,6 +1,9 @@
 package schema
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Rule names what a document run proves. Each is a promise in ScenariosDoc.
 type Rule string
@@ -107,9 +110,28 @@ func (e *RuleBrokenError) Error() string {
 		verb = verdictRejected
 	}
 	return fmt.Sprintf("%s broken between %s and %s: %s document %s of %s was %s by %s. %s "+
-		"If this is deliberate, or %s is already deployed, list it in %s in %s's directory. Detail: %s",
+		"If this is deliberate, or %s is already deployed, list it in %s in %s's directory.%s",
 		e.Rule, e.Earlier, e.Later, e.DocType, e.DocPath, e.DocumentFrom, verb, e.ValidatedBy, e.meaning(),
-		e.Later, ExceptionsFile, e.Later, e.Wrapped)
+		e.Later, ExceptionsFile, e.Later, e.detail())
+}
+
+// detail returns what the validator said about the document, if it said anything. The run's own error
+// names the document and the schema again, by their paths, which the message has already named, so
+// it leaves that out: a fail document accepted has nothing more to say.
+func (e *RuleBrokenError) detail() string {
+	var rejected *PassTestFailedError
+	var accepted *FailTestPassedError
+	switch {
+	case e.Wrapped == nil, errors.As(e.Wrapped, &accepted):
+		return ""
+	case errors.As(e.Wrapped, &rejected):
+		if rejected.Wrapped == nil {
+			return ""
+		}
+		return " Detail: " + rejected.Wrapped.Error()
+	default:
+		return " Detail: " + e.Wrapped.Error()
+	}
 }
 
 // Unwrap returns the error from the document run itself.
