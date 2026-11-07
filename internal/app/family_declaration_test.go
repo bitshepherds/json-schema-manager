@@ -67,10 +67,7 @@ func (r *declTestRegistry) write(rel, content string) {
 
 func (r *declTestRegistry) git(args ...string) {
 	r.t.Helper()
-	full := append([]string{
-		"-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false",
-	}, args...)
-	cmd := exec.CommandContext(context.Background(), "git", full...)
+	cmd := exec.CommandContext(context.Background(), "git", args...)
 	cmd.Dir = r.repo
 	out, err := cmd.CombinedOutput()
 	require.NoError(r.t, err, "git %v: %s", args, out)

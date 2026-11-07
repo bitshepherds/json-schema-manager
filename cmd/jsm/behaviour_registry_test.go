@@ -271,25 +271,19 @@ func checkChangesProblems(t *testing.T, f behaviourFamily, versions []string) []
 	return problems
 }
 
-// isolatedEnv is the environment for every run: a developer's shell may point at a real registry, and
-// a git hook sets variables that would point git at the repository it runs in.
+// isolatedEnv is the environment for every run. TestMain has already hidden the machine, but
+// TestBehaviourRegistryIgnoresAmbientRegistry sets JSM_ variables to prove they can't reach a run.
 func isolatedEnv(t *testing.T, registryRoot string) []string {
 	t.Helper()
-	env := make([]string, 0, len(os.Environ())+8)
+	env := make([]string, 0, len(os.Environ())+2)
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GIT_") && !strings.HasPrefix(kv, "JSM_") {
+		if !strings.HasPrefix(kv, "JSM_") {
 			env = append(env, kv)
 		}
 	}
 	return append(env,
 		"JSM_REGISTRY_ROOT_DIR="+registryRoot,
 		"JSM_LOG_FILE="+filepath.Join(t.TempDir(), "jsm.log"),
-		"GIT_CONFIG_GLOBAL="+os.DevNull,
-		"GIT_CONFIG_NOSYSTEM=1",
-		"GIT_AUTHOR_NAME=test",
-		"GIT_AUTHOR_EMAIL=test@example.com",
-		"GIT_COMMITTER_NAME=test",
-		"GIT_COMMITTER_EMAIL=test@example.com",
 	)
 }
 
