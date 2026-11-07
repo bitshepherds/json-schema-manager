@@ -11,6 +11,7 @@ func NewBuildDistCmd(m Manager) *cobra.Command {
 	var all bool
 	var collapse bool
 	var skipTests bool
+	var strict bool
 
 	cmd := &cobra.Command{
 		Use:   "build-dist [environment]",
@@ -20,9 +21,12 @@ Build rendered schemas for the specified environment and write them to dist/[env
 the registry root. So the registry must be in a subdirectory of its git repository, which
 keeps dist inside the repository. Other commands work with the registry at the git root.
 
-Before building, it runs every schema's tests and compatibility check, as
-'jsm validate all' does. If any fail, it prints the report, builds nothing and exits
-with code 1. Use --skip-tests if your pipeline already runs validate.
+Before building, it runs every schema's tests, and the documents its family's declaration
+runs across versions, as 'jsm validate all' does, and a stale entry in a compat-exceptions.yml
+counts as a failure. If any fail, it prints the report, builds nothing and exits with code 1.
+It also prints any warnings, and --strict fails on them, as
+it does for validate. Use --skip-tests only if an earlier step of your pipeline has already
+run validate: it is not a way past a failure, which is what a compat-exceptions.yml entry is for.
 
 By default, this command only builds schemas that have been added or modified since 
 the last successful deployment to that environment. A mutation check is performed 
@@ -49,7 +53,7 @@ for local troubleshooting or manual overrides.
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := args[0]
-			if err := m.BuildDist(cmd.Context(), config.Env(env), all, collapse, skipTests); err != nil {
+			if err := m.BuildDist(cmd.Context(), config.Env(env), all, collapse, skipTests, strict); err != nil {
 				return err
 			}
 			return nil
@@ -60,7 +64,11 @@ for local troubleshooting or manual overrides.
 	cmd.Flags().BoolVar(&collapse, "collapse", false,
 		"Inline external $ref dependencies into each schema's $defs block")
 	cmd.Flags().BoolVar(&skipTests, "skip-tests", false,
-		"Build without first running the schemas' tests and compatibility check")
+		"Build without first running the schemas' tests, for a pipeline which has already run validate")
+	cmd.Flags().BoolVar(&strict, "strict", false,
+		"Fail on warnings: a schema with no pass or no fail document, a fail document rejected for several "+
+			"reasons, or a change in a direction the family protects which no document shows")
+	cmd.MarkFlagsMutuallyExclusive("skip-tests", "strict")
 
 	return cmd
 }

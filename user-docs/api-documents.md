@@ -77,7 +77,7 @@ npx @redocly/cli lint customer.openapi.yaml
 
 Both fail, exiting non-zero, if a `$ref` does not resolve, for example because the document names a schema version which is not in the registry.
 
-The documents name exact schema versions, so a new minor version of a body means a new `$ref` in the document. Since providers move to a new version first, update the provider's document when it starts sending the new version, and let `jsm check-consumer` tell each consumer when its version falls behind. See [Checking a consumer's schema versions](./developing-schemas.md#checking-a-consumers-schema-versions).
+The documents name exact schema versions, so a new minor version of a body means a new `$ref` in the document. Update the document when the service it describes moves to the new version, and let `jsm check-party` tell each reader or writer which lags behind whether later versions are safe for it. See [Checking a party's schema versions](./developing-schemas.md#checking-a-partys-schema-versions).
 
 ## Why not canonical URLs?
 

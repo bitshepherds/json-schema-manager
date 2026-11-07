@@ -6,6 +6,7 @@ exec git config user.name test
 cp config.yml json-schema-manager-config.yml
 mkdir domain/family/1/0/0/pass domain/family/1/0/0/fail
 cp schema.json domain/family/1/0/0/domain_family_1_0_0.schema.json
+cp $WORK/family-decl.yml domain/family/family.yml
 cp pass.json domain/family/1/0/0/pass/a.json
 cp fail.json domain/family/1/0/0/fail/a.json
 exec git add .
@@ -48,3 +49,5 @@ environments:
 {"name": "a"}
 -- fail.json --
 {}
+-- family-decl.yml --
+scenario: provider-first

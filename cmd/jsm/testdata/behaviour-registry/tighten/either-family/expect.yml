@@ -1,0 +1,6 @@
+# 1.1.0 lowers a maximum, so it rejects 1.0.0's pass document. An either family checks for tightening
+# as a reader-ahead family does.
+promise: no-tightening
+validate:
+  1.0.0: fail
+  1.1.0: fail

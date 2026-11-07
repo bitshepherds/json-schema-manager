@@ -1076,7 +1076,7 @@ environments:
 				require.NoError(t, os.Mkdir(targetFile, 0o755))
 			},
 			wantErr:         true,
-			wantErrContains: "file exists",
+			wantErrContains: "is a directory",
 		},
 	}
 
@@ -1174,6 +1174,62 @@ environments:
 			assert.NoFileExists(t, oldFilename, "Source schema filename should have been renamed")
 		})
 	}
+}
+
+func TestDuplicateSchemaFilesCopiesOnlyTestDocuments(t *testing.T) {
+	t.Parallel()
+
+	setup := func(t *testing.T) (source, target *Schema) {
+		t.Helper()
+		r := setupTestRegistry(t)
+		createSchemaFiles(t, r, schemaMap{Key("domain_family_1_0_0"): `{}`})
+		return New(Key("domain_family_1_0_0"), r), New(Key("domain_family_1_1_0"), r)
+	}
+
+	t.Run("a version with no test directories has no documents to copy", func(t *testing.T) {
+		t.Parallel()
+		source, target := setup(t)
+		require.NoError(t, target.DuplicateSchemaFiles(source))
+		assert.DirExists(t, filepath.Join(target.Path(HomeDir), string(TestDocTypePass)))
+		assert.DirExists(t, filepath.Join(target.Path(HomeDir), string(TestDocTypeFail)))
+	})
+
+	t.Run("a test directory which can't be read is an error", func(t *testing.T) {
+		t.Parallel()
+		source, target := setup(t)
+		require.NoError(t, os.WriteFile(filepath.Join(source.Path(HomeDir), string(TestDocTypePass)), nil, 0o600))
+		require.ErrorContains(t, target.DuplicateSchemaFiles(source), "not a directory")
+	})
+
+	t.Run("a document which can't be read is an error", func(t *testing.T) {
+		t.Parallel()
+		source, target := setup(t)
+		docDir := filepath.Join(source.Path(HomeDir), string(TestDocTypeFail))
+		require.NoError(t, os.Mkdir(docDir, 0o755))
+		doc := filepath.Join(docDir, "doc.json")
+		require.NoError(t, os.WriteFile(doc, []byte(`{}`), 0o000))
+		t.Cleanup(func() { _ = os.Chmod(doc, 0o600) })
+		require.ErrorContains(t, target.DuplicateSchemaFiles(source), "permission denied")
+	})
+
+	t.Run("a document which can't be written is an error", func(t *testing.T) {
+		t.Parallel()
+		source, target := setup(t)
+		docDir := filepath.Join(source.Path(HomeDir), string(TestDocTypePass))
+		require.NoError(t, os.Mkdir(docDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(docDir, "doc.json"), []byte(`{}`), 0o600))
+		blocked := filepath.Join(target.Path(HomeDir), string(TestDocTypePass), "doc.json")
+		require.NoError(t, os.MkdirAll(blocked, 0o755))
+		require.ErrorContains(t, target.DuplicateSchemaFiles(source), "is a directory")
+	})
+
+	t.Run("a target which can't hold its test directories is an error", func(t *testing.T) {
+		t.Parallel()
+		source, target := setup(t)
+		require.NoError(t, os.MkdirAll(filepath.Dir(target.Path(HomeDir)), 0o755))
+		require.NoError(t, os.WriteFile(target.Path(HomeDir), nil, 0o600))
+		require.ErrorContains(t, target.CopySchemaFile(source), "not a directory")
+	})
 }
 
 func TestTestDocuments(t *testing.T) {

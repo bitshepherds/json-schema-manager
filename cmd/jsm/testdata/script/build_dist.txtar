@@ -12,6 +12,7 @@ env JSM_REGISTRY_ROOT_DIR=registry
 # Create a schema
 mkdir registry/domain/person/1/0/0/pass registry/domain/person/1/0/0/fail
 cp schema.json registry/domain/person/1/0/0/domain_person_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/person/family.yml
 
 # Run jsm build-dist --all (should work without tags/history)
 exec jsm build-dist production --all
@@ -30,6 +31,7 @@ stdout 'No schemas to build'
 # An incremental build leaves out a schema git doesn't track yet, and names it (#81)
 mkdir registry/domain/pet/1/0/0/pass registry/domain/pet/1/0/0/fail
 cp schema.json registry/domain/pet/1/0/0/domain_pet_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/pet/family.yml
 exec jsm build-dist production
 stdout 'No schemas to build'
 stdout 'Not built, because git does not track them yet:\n  domain/pet/1/0/0/domain_pet_1_0_0.schema.json\nCommit them'
@@ -45,6 +47,7 @@ rm registry/domain/pet dist/production/private/domain_pet_1_0_0.schema.json
 # Add another schema
 mkdir registry/domain/address/1/0/0/pass registry/domain/address/1/0/0/fail
 cp schema.json registry/domain/address/1/0/0/domain_address_1_0_0.schema.json
+cp $WORK/family-decl.yml registry/domain/address/family.yml
 
 # Run jsm build-dist production (should build the new schema)
 exec git add .
@@ -63,8 +66,9 @@ exec git config user.name test
 mv $WORK/shop registry
 env JSM_REGISTRY_ROOT_DIR=registry
 ! exec jsm build-dist production --all
-stdout 'refunded.json \(failed - future version 1.1.0 introduced a breaking change!\)'
-stdout 'Not building: fix the failing tests, or use --skip-tests'
+stdout 'refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
+stdout 'Not building: fix the failing tests, or if a break between versions is deliberate, list it in compat-exceptions.yml'
+! stdout 'skip-tests'
 ! stdout 'Successfully built'
 ! exists dist
 
@@ -72,7 +76,7 @@ stdout 'Not building: fix the failing tests, or use --skip-tests'
 exec git add .
 exec git commit -q -m schemas
 ! exec jsm build-dist production
-stdout 'introduced a breaking change'
+stdout 'no-loosening broken'
 ! exists dist
 
 # --skip-tests builds anyway
@@ -125,3 +129,8 @@ environments:
     "name": { "type": "string" }
   }
 }
+-- shop/shop/order/family.yml --
+scenario: provider-first
+
+-- family-decl.yml --
+scenario: provider-first

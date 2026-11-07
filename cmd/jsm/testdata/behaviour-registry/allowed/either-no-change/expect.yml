@@ -1,0 +1,5 @@
+# Neither version changes what it accepts, so an either family's four cross-version runs all hold.
+promise: only-versions-that-meet
+validate:
+  1.0.0: pass
+  1.1.0: pass

@@ -89,10 +89,10 @@ It is common that the data validated by a JSON Schema changes over time. For exa
 JSON Schema Manager addresses this by forcing the creation of a **family** of versions of the schema. Each new addition to the family is immutable (i.e. once published to production, it cannot be changed). Schema families use [semantic versioning](https://semver.org/) as follows:
 
 - use a MAJOR version change to indicate a breaking change
-- use a MINOR version change when adding new features in a backward-compatible manner
-- use a PATCH version change when making non-breaking non-feature changes, such as improving a description.
+- use a MINOR version change when adding new features in a way that stays compatible in the direction the family's scenario protects
+- use a PATCH version change when making non-feature changes which stay compatible in that same way, such as improving a description.
 
-A new minor or patch version must accept nothing that an earlier version of the same major would reject, since consumers on the earlier version still check against it. JSM tests this. See [Compatibility runs one way](./developing-schemas.md#compatibility-runs-one-way-providers-first).
+What a new minor or patch version must promise depends on how the family is used: see [Schema Family Scenarios](./scenarios.md). In a writer-ahead family, where the provider moves first, it must accept nothing that an earlier version of the same major would reject, since consumers on the earlier version still check against it. In a reader-ahead family, it must reject nothing that an earlier version accepted. JSM tests this with the documents [the rule](./scenarios.md#the-rule) runs across versions, such as later `pass` documents on earlier versions and earlier `fail` documents on later ones in a writer-ahead family, so it finds only what they show. See [Compatibility when the provider moves first](./developing-schemas.md#compatibility-when-the-provider-moves-first).
 
 For example, consider a customer schema:
 
@@ -118,7 +118,7 @@ Where:
 
 1. `<Registry Root Directory>`: is a directory containing every schema managed by JSON Schema Manager - e.g. `/path/to/schemas`
 2. `<Namespace Directory(s)>`: is one or more namespacing directories - e.g. `logistics/data`
-3. `<Schema Family Directory>`: is a directory describing the purpose of a specific schema family - e.g. `shipment`. All versions of the schema (separate schemas) are stored under this directory.
+3. `<Schema Family Directory>`: is a directory describing the purpose of a specific schema family - e.g. `shipment`. All versions of the schema (separate schemas) are stored under this directory, beside `family.yml`, a required file which [declares how the family is used](./scenarios.md#declaring-a-familys-scenario).
 4. `<Semantic Version>`: is 3 directories describing a semantic version of a specific version of as schema family (`MAJOR/MINOR/PATCH` - e.g. `1/2/3`). The patch folder acts effectively as the schema's home directory, containing:
 
 Within the schema's home directory you will find:
@@ -126,6 +126,7 @@ Within the schema's home directory you will find:
 2. `pass` - a folder containing JSON documents which we expect the schema to validate
 3. `fail` - a folder containing JSON documents which we expect the schema to **fail** to validate.
 4. An optional `README.md` - a markdown file containing extra context for the schema which is not part of the schema itself.
+5. An optional `compat-exceptions.yml` - a file listing [deliberate exceptions](./scenarios.md#deliberate-exceptions) to the family's rule for this version, each with its reason.
 
 
 So the complete path for a schema with filename `logistics_data_shipment_1_2_3.schema.json` in the registry might be: 
@@ -227,7 +228,7 @@ e.g.
 jsm create-schema "logistics/data/shipment"
 ```
 
-creates `logistics/data/shipment/1/0/0/logistics_data_shipment_1_0_0.schema.json`, with empty `pass` and `fail` directories beside it, creating any missing directories. The schema uses the `defaultJsonSchemaVersion` from the [configuration file](#schema-registry-configuration-file); change its `$schema` to use another supported version.
+asks which [scenario](./scenarios.md#how-to-choose-a-scenario) the family serves, unless `--scenario` says, and creates `logistics/data/shipment/family.yml`, which [declares it](./scenarios.md#declaring-a-familys-scenario), and `logistics/data/shipment/1/0/0/logistics_data_shipment_1_0_0.schema.json`, with empty `pass` and `fail` directories beside it, creating any missing directories. The schema uses the `defaultJsonSchemaVersion` from the [configuration file](#schema-registry-configuration-file); change its `$schema` to use another supported version.
 
 To create later versions, use `jsm create-schema-version`. See [Developing Schemas](./developing-schemas.md#creating-a-new-version-of-an-existing-schema).
 
@@ -235,9 +236,9 @@ To create later versions, use `jsm create-schema-version`. See [Developing Schem
 
 A pipeline runs these commands, each failing with a non-zero [exit code](./developing-schemas.md#exit-codes) when something is wrong:
 
-1. `jsm validate all` tests every schema, including that newer versions do not break consumers of earlier ones.
+1. `jsm validate all` tests every schema, and runs the documents each family's [scenario](./scenarios.md#the-rule) says must hold across its versions.
 2. `jsm check-changes <env>` fails if a schema already deployed to `<env>` was changed, unless the environment sets `allowSchemaMutation: true`.
-3. `jsm build-dist <env>` runs the same tests and checks, then renders the new and changed schemas into `dist/<env>/private` and `dist/<env>/public`.
+3. `jsm build-dist <env>` runs the same tests and checks, then renders the new and changed schemas into `dist/<env>/private` and `dist/<env>/public`. If a test fails, it builds nothing: fix it, or if a break between versions is deliberate, list it in [`compat-exceptions.yml`](./scenarios.md#deliberate-exceptions). `--skip-tests` only saves running the tests again where step 1 has already passed. It isn't a way past a failure.
 4. Publish the `dist/<env>` directories to the hosts at your URL roots. JSM leaves this step to you, since it depends on where your schemas are served.
 5. `jsm tag-deployment <env>` records the deployment as a git tag, which the next `check-changes` and `build-dist` compare against.
 

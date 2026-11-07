@@ -1,0 +1,26 @@
+# 1.0.0 is deployed and 1.1.0 is not. A deployed version's schema and documents can't change, but
+# they can gain a document or go as a whole. delete-whole-version leaves the near-identical 1.1.0,
+# which the deletion must not be mistaken for a rename to.
+promise: deployed-versions-fixed
+validate:
+  1.0.0: pass
+  1.1.0: pass
+checkChanges:
+  deployed: [1.0.0]
+  overlays:
+    edit-schema:
+      verdict: fail
+    edit-pass-document:
+      verdict: fail
+    edit-fail-document:
+      verdict: fail
+    delete-pass-document:
+      verdict: fail
+      delete: [1/0/0/pass/placed.json]
+    add-pass-document:
+      verdict: pass
+    edit-undeployed-version:
+      verdict: pass
+    delete-whole-version:
+      verdict: pass
+      delete: [1/0/0]

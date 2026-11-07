@@ -1,0 +1,9 @@
+# 1.1.0 drops an enum value no document uses, in a family protected from narrowing. The documents show no
+# break, so validate passes, and warns that it needs a fail document, which --strict turns into a failure.
+promise: unexercised-change-warned
+validate:
+  1.0.0: pass
+  1.1.0: pass
+validateStrict:
+  1.0.0: fail
+  1.1.0: fail

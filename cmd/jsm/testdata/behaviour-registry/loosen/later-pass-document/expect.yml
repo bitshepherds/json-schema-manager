@@ -1,0 +1,6 @@
+# 1.1.0 adds an enum value and a pass document using it, which 1.0.0 rejects. Validating either
+# version runs the pair, and the failure appears under 1.1.0.
+promise: no-loosening
+validate:
+  1.0.0: fail
+  1.1.0: fail

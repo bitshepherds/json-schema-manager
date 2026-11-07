@@ -1,0 +1,3 @@
+scenario: stored-one-schema
+migrations:
+  2: The Accounts service rewrites each profile as it loads it. See its runbook.

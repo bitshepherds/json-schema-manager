@@ -30,6 +30,7 @@ func TestNewDiffCmd(t *testing.T) {
 				Effect:   structdiff.Widens,
 				Detail:   `adds "x"`,
 			},
+			Missing: []structdiff.Effect{structdiff.Widens},
 		},
 		{
 			Change: structdiff.Change{Location: "/n", Keyword: "maximum", Effect: structdiff.Widens, Detail: "relaxes"},
@@ -42,6 +43,38 @@ func TestNewDiffCmd(t *testing.T) {
 				Effect:   structdiff.Narrows,
 				Detail:   `requires "a"`,
 			},
+		},
+		{
+			Change: structdiff.Change{
+				Location: "/m",
+				Keyword:  "minimum",
+				Effect:   structdiff.Narrows,
+				Detail:   "raises",
+			},
+			Missing: []structdiff.Effect{structdiff.Narrows},
+		},
+		{
+			Change: structdiff.Change{
+				Location: "/o",
+				Keyword:  "maximum",
+				Effect:   structdiff.Narrows,
+				Detail:   "lowers",
+			},
+			ShownBy: []string{"/reg/domain/family/1/1/0/fail/c.json"},
+		},
+		{
+			Change: structdiff.Change{
+				Location: "/p",
+				Keyword:  "pattern",
+				Effect:   structdiff.Alters,
+				Detail:   "changes",
+			},
+			UsedBy:  []string{"/reg/domain/family/1/1/0/pass/d.json"},
+			Missing: []structdiff.Effect{structdiff.Narrows},
+		},
+		{
+			Change:  structdiff.Change{Location: "/q", Keyword: "pattern", Effect: structdiff.Alters, Detail: "alters"},
+			Missing: []structdiff.Effect{structdiff.Widens, structdiff.Narrows},
 		},
 	}
 
@@ -62,6 +95,10 @@ func TestNewDiffCmd(t *testing.T) {
 				"  widens   /status: enum adds \"x\" (no pass document uses it)\n",
 				"  widens   /n: maximum relaxes (used by pass/a.json pass/b.json)\n",
 				"  narrows  /: required requires \"a\"\n",
+				"  narrows  /m: minimum raises (no fail document shows it)\n",
+				"  narrows  /o: maximum lowers (shown by fail/c.json)\n",
+				"  alters   /p: pattern changes (used by pass/d.json; no fail document shows it)\n",
+				"  alters   /q: pattern alters (no pass document uses it; no fail document shows it)\n",
 			},
 		},
 		{
@@ -127,6 +164,7 @@ func TestCLIManager_DiffSchemas(t *testing.T) {
 		s := schema.New(k, registry)
 		require.NoError(t, os.MkdirAll(filepath.Join(s.Path(schema.HomeDir), "pass"), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(content), 0o600))
+		declareFamily(t, s)
 	}
 	mgr := NewCLIManager(logger, registry, schema.NewTester(registry), &MockGitter{}, nil, io.Discard)
 

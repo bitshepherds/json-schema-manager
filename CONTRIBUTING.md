@@ -79,6 +79,8 @@ For prettier test output, we use `gotestsum`, but go test will work fine too.
 - **Unit Tests**: Place `_test.go` files alongside the code they test.
 - **Mocking**: Use local mock implementations of interfaces to test commands and services in isolation.
 - **Commands**: Test Cobra commands by creating them with mocks and redirecting their output buffers.
+- **Compatibility verdicts**: `cmd/jsm/testdata/behaviour-registry` holds one family per [promise](user-docs/scenarios.md#the-promises), each with an `expect.yml` of the verdicts the promise wants, and `cmd/jsm/behaviour_registry_test.go` says how they work. Add a verdict there. CLI surface, output wording, exit codes and error messages stay in the inline `cmd/jsm/testdata/script` tests.
+- **The machine stays out of it**: A test passes or fails alike on a laptop and on CI. Every package with tests has a `TestMain` that calls `testenv.Hide()`, so git sees no global or system configuration and has an identity of its own, `HOME` points nowhere, and no `JSM_` or `GIT_` variable gets through. `internal/testenv` fails if a package lacks it.
 - **Test Runner**: We use `gotestsum` for colorful, enhanced test output. It's automatically installed via `make setup` and used by `make test`.
 
 Code is formatted on save.

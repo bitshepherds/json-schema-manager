@@ -1,0 +1,11 @@
+# A message is gone in moments, so a deployed version may be retired once nobody uses it.
+promise: version-lifecycle
+validate:
+  1.0.0: pass
+  1.1.0: pass
+checkChanges:
+  deployed: [1.0.0, 1.1.0]
+  overlays:
+    delete-deployed-version:
+      verdict: pass
+      delete: [1/0/0]

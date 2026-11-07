@@ -1,5 +1,5 @@
-# validate warns about a structural change which may break consumers of the version before,
-# when no pass document uses it, and jsm diff lists every structural change (#45)
+# validate warns about a structural change in the direction the family protects, when no document
+# shows it, and jsm diff lists every structural change (#45, #122)
 
 exec git init -q
 env JSM_REGISTRY_ROOT_DIR=reg
@@ -7,10 +7,10 @@ env JSM_REGISTRY_ROOT_DIR=reg
 # 1.1.0 adds an enum value which no 1.1.0 pass document uses: the compatibility check passes,
 # and validate warns, exiting 0
 exec jsm validate shop_order_1_1_0 -c
-stdout 'Unexercised changes: no pass document uses these'
+stdout 'Unexercised changes: no document shows these'
 stdout '\[WARN\] shop_order_1_1_0.schema.json since shop_order_1_0_0:'
 stdout '! /status: enum adds "refunded" \(widens\)'
-stdout 'Test summary: 3 passed, 0 failed, 1 unexercised change$'
+stdout 'Test summary: 4 passed, 0 failed, 1 unexercised change$'
 
 # The same for every schema, and in the JSON report
 exec jsm validate all -c -C
@@ -19,16 +19,10 @@ exec jsm validate all -o json -C
 stdout '"totalUnexercised": 1'
 stdout '"schema": "shop_order_1_1_0"'
 stdout '"earlier": "shop_order_1_0_0"'
+stdout '"later": "shop_order_1_1_0"'
+stdout '"direction": "widens"'
 stdout '"location": "/status"'
 stdout '"effect": "widens"'
-
-# --strict makes the warning fail the run
-! exec jsm validate shop_order_1_1_0 -c --strict
-stdout '1 unexercised change'
-
-# --skip-compatible leaves it out with the compatibility check
-exec jsm validate shop_order_1_1_0 -c --skip-compatible
-! stdout 'unexercised change'
 
 # jsm diff lists the changes: the new enum value is unexercised, and requiring a property and
 # tightening a limit narrow the schema, which is safe for consumers of 1.0.0
@@ -53,6 +47,33 @@ stdout 'enum adds "refunded" \(used by pass/refunded.json\)'
 ! stdout 'unexercised change'
 stdout 'Test summary: 4 passed, 1 failed$'
 
+# jsm diff follows the family's scenario: a reader-ahead family asks for a fail document for each
+# narrowing, and a widening is harmless to it, so it flags none
+cp consumer-first.yml reg/shop/order/family.yml
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'widens   /status: enum adds "refunded" \(used by pass/refunded.json\)'
+stdout 'narrows  /: required requires "total" \(no fail document shows it\)'
+stdout 'narrows  /note: maxLength tightens the limit from 100 to 50 \(no fail document shows it\)'
+
+# A fail document which shows a narrowing is named
+cp no-total.json reg/shop/order/1/1/0/fail/no-total.json
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'narrows  /: required requires "total" \(shown by fail/no-total.json\)'
+
+# A neither family flags nothing, and still lists every change
+cp lock-step.yml reg/shop/order/family.yml
+rm reg/shop/order/1/1/0/pass/refunded.json
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'widens   /status: enum adds "refunded"$'
+stdout 'narrows  /note: maxLength tightens the limit from 100 to 50$'
+! stdout 'no (pass|fail) document'
+
+-- consumer-first.yml --
+scenario: consumer-first
+-- lock-step.yml --
+scenario: lock-step
+-- no-total.json --
+{"status": "paid"}
 -- refunded.json --
 {"status": "refunded", "total": 3}
 -- reg/json-schema-manager-config.yml --
@@ -92,3 +113,5 @@ environments:
 {"status": "paid", "total": 3}
 -- reg/shop/order/1/1/0/fail/unknown-status.json --
 {"status": "lost", "total": 3}
+-- reg/shop/order/family.yml --
+scenario: provider-first

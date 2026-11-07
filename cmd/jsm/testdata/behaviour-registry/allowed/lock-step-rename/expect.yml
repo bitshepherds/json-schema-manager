@@ -1,0 +1,6 @@
+# 1.1.0 renames a property, so every document of each version would break on the other. In a
+# lock-step family no two versions meet, so only each version's own documents run.
+promise: only-versions-that-meet
+validate:
+  1.0.0: pass
+  1.1.0: pass

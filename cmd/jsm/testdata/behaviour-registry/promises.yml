@@ -1,0 +1,14 @@
+# Each promise JSM makes, by ID. Each ID is an anchor in user-docs/scenarios.md, and needs at least
+# one family here. cmd/jsm/behaviour_registry_test.go says how the families work.
+promises:
+  - own-documents
+  - only-versions-that-meet
+  - no-loosening
+  - no-tightening
+  - version-inherits-documents
+  - unexercised-change-warned
+  - no-document-crosses-a-major
+  - deployed-versions-fixed
+  - declared-exception
+  - version-lifecycle
+  - major-needs-migration

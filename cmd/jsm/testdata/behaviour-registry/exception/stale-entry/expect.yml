@@ -1,0 +1,6 @@
+# The exception names a run which doesn't fail, as 1.1.0 still rejects the document. Nothing needs
+# clearing, so the entry is stale, and fails the run, whichever version of the pair is selected.
+promise: declared-exception
+validate:
+  1.0.0: fail
+  1.1.0: fail

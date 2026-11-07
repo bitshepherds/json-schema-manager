@@ -1,0 +1,6 @@
+# Profiles stay in the database through a major bump, so 2.0.0 must say how they move. Only 2.0.0's
+# major needs the statement, so 1.0.0 still passes.
+promise: major-needs-migration
+validate:
+  1.0.0: pass
+  2.0.0: fail

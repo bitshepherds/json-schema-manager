@@ -1,0 +1,7 @@
+# 1.1.0 adds an option to a closed config schema. A reader-ahead family may loosen, because no older
+# tool reads a newer file, so 1.1.0's pass document doesn't run on 1.0.0, and 1.0.0's fail document
+# doesn't run on 1.1.0.
+promise: only-versions-that-meet
+validate:
+  1.0.0: pass
+  1.1.0: pass

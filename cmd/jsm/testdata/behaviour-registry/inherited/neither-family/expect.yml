@@ -1,0 +1,9 @@
+# A lock-step family runs no document across versions, so 1.1.0 inherits nothing, and --strict wants
+# its own.
+promise: version-inherits-documents
+validate:
+  1.0.0: pass
+  1.1.0: pass
+validateStrict:
+  1.0.0: pass
+  1.1.0: fail

@@ -1,64 +1,73 @@
-# Every validate target runs the compatibility check by default (#42)
-# 1.1.0 adds an enum value, and a pass/ document that uses it, which 1.0.0 rejects
+# Every validate target runs the same pairs, which the family's declaration decides (#42, #119)
+# 1.1.0 adds an enum value, and a pass/ document that uses it, which 1.0.0 rejects. The family is
+# provider-first, so that breaks a reader still on 1.0.0.
 
 env JSM_REGISTRY_ROOT_DIR=reg
 
 # A single key catches the breaking change
 ! exec jsm validate shop_order_1_1_0 -c
-stdout 'refunded.json \(failed - future version 1.1.0 introduced a breaking change!\)'
+stdout 'refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
 stdout 'Test summary: 2 passed, 1 failed'
 
-# So does every multi-schema target, including the bare command CI runs
+# So does the earlier version, which is part of the pair, and it reports under the later version
+! exec jsm validate shop_order_1_0_0 -c -C
+stdout '\[FAIL\] shop_order_1_1_0.schema.json'
+stdout 'no-loosening broken between shop_order_1_0_0 and shop_order_1_1_0'
+stdout 'Test summary: 3 passed, 1 failed'
+
+# So does every multi-schema target, including the bare command CI runs, each run once
 ! exec jsm validate all
-stdout 'future version 1.1.0 introduced a breaking change'
+stdout 'no-loosening broken'
 
 ! exec jsm validate all -c -C
-stdout 'refunded.json \(failed - future version 1.1.0 introduced a breaking change!\)'
-stdout 'Test summary: 4 passed, 1 failed'
+stdout 'refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
+stdout 'Test summary: 5 passed, 1 failed'
 
 ! exec jsm validate shop/order -c -C
-stdout 'future version 1.1.0 introduced a breaking change'
-stdout 'Test summary: 4 passed, 1 failed'
+stdout 'no-loosening broken'
+stdout 'Test summary: 5 passed, 1 failed'
 
 ! exec jsm validate reg/shop/order -c -C
-stdout 'future version 1.1.0 introduced a breaking change'
+stdout 'no-loosening broken'
 
-# --skip-compatible applies to multi-schema targets too
-exec jsm validate all -c -C --skip-compatible
-stdout 'Test summary: 4 passed, 0 failed'
-! stdout 'breaking change'
+# A search scope holding only the later version gives the same verdict as its key
+! exec jsm validate shop/order/1/1/0 -c -C
+stdout 'Test summary: 3 passed, 1 failed'
 
-# -t local runs only local tests, as documented
-exec jsm validate all -c -C -t local --skip-compatible
-stdout 'Test summary: 4 passed, 0 failed'
+# The flags that used to change what runs are gone
+! exec jsm validate all --skip-compatible
+stderr 'unknown flag: --skip-compatible'
+! exec jsm validate all -t local
+stderr 'unknown shorthand flag: .t.'
 
-# -t all and -t consumer-breaking still report the failure once, not twice
-! exec jsm validate all -c -C -t all
-stdout 'Test summary: 4 passed, 1 failed'
-! exec jsm validate all -c -C -t consumer-breaking
-stdout 'Test summary: 0 passed, 1 failed'
-
-# A breaking-change failure names the schema that rejected the document, 1.0.0 (#50)
-! exec jsm validate all -c -C -t consumer-breaking
+# A failure names the schema that rejected the document, 1.0.0 (#50)
+! exec jsm validate all -c -C
 stdout 'did not pass validation as expected for schema \S*shop_order_1_0_0.schema.json'
-! stdout 'for schema \S*shop_order_1_1_0.schema.json'
+! stdout 'did not pass validation as expected for schema \S*shop_order_1_1_0.schema.json'
 
-# The JSON report says which schema validated the document, and which version it came from
-! exec jsm validate all -C -t consumer-breaking -o json
-stdout '"validatedBy": "shop_order_1_0_0"'
-stdout '"forwardVersion": "1.1.0"'
-
+# The JSON report names the rule, both versions and the document
 ! exec jsm validate shop_order_1_1_0 -o json
 stdout '"validatedBy": "shop_order_1_0_0"'
-stdout '"forwardVersion": "1.1.0"'
-stdout '"failed": \[\]'
+stdout '"rule": "no-loosening"'
+stdout '"earlier": "shop_order_1_0_0"'
+stdout '"later": "shop_order_1_1_0"'
+stdout '"documentFrom": "shop_order_1_1_0"'
+stdout '"passed": \['
 ! stdout 'null'
 
-# A registry with no breaking change passes
-env JSM_REGISTRY_ROOT_DIR=ok
-exec jsm validate all -c -C
-stdout 'Test summary: 5 passed, 0 failed'
+# The JUnit report shows the run under the later version, naming the version it ran on
+! exec jsm validate all -C -o junit
+stdout '<testsuite name="shop_order_1_1_0.schema.json"'
+stdout 'refunded.json on shop_order_1_0_0'
+stdout '<failure message="no-loosening broken: pass document of 1.1.0 rejected by 1.0.0">'
 
+# Declared lock-step, the same versions never meet, so only their own documents run
+cp lock-step.yml reg/shop/order/family.yml
+exec jsm validate all -c -C
+stdout 'Test summary: 4 passed, 0 failed'
+
+-- lock-step.yml --
+scenario: lock-step
 -- reg/json-schema-manager-config.yml --
 environments:
   production:
@@ -89,33 +98,5 @@ environments:
 {"status": "refunded"}
 -- reg/shop/order/1/1/0/fail/lost.json --
 {"status": "lost"}
--- ok/json-schema-manager-config.yml --
-environments:
-  production:
-    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
-    publicUrlRoot: "https://json-schemas.myorg.io/"
-    isProduction: true
--- ok/shop/order/1/0/0/shop_order_1_0_0.schema.json --
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "{{ ID }}",
-  "type": "object",
-  "properties": { "status": { "enum": ["placed", "paid"] } },
-  "required": ["status"]
-}
--- ok/shop/order/1/0/0/pass/placed.json --
-{"status": "placed"}
--- ok/shop/order/1/0/0/fail/lost.json --
-{"status": "lost"}
--- ok/shop/order/1/1/0/shop_order_1_1_0.schema.json --
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "{{ ID }}",
-  "type": "object",
-  "properties": { "status": { "enum": ["placed", "paid", "refunded"] } },
-  "required": ["status"]
-}
--- ok/shop/order/1/1/0/pass/placed.json --
-{"status": "placed"}
--- ok/shop/order/1/1/0/fail/lost.json --
-{"status": "lost"}
+-- reg/shop/order/family.yml --
+scenario: provider-first

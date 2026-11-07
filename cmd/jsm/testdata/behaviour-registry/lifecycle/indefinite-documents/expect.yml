@@ -1,0 +1,12 @@
+# Each stored invoice names its version, so deleting a deployed version strands every invoice naming it.
+# 1.0.0 and 1.1.0 are both deployed, or git could see the deletion as a rename.
+promise: version-lifecycle
+validate:
+  1.0.0: pass
+  1.1.0: pass
+checkChanges:
+  deployed: [1.0.0, 1.1.0]
+  overlays:
+    delete-deployed-version:
+      verdict: fail
+      delete: [1/0/0]

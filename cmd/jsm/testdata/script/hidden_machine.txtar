@@ -1,0 +1,5 @@
+# A script sees none of the machine's git configuration, and has a git identity of its own.
+exec git config --list
+! stdout .
+exec git var GIT_COMMITTER_IDENT
+stdout 'test <test@example\.com>'

@@ -1,0 +1,4 @@
+exceptions:
+  - version: 1.0.0
+    change: "/status: maxLength removes the limit of 6"
+    reason: The limit moved into allOf. It still applies.

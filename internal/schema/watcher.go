@@ -13,12 +13,14 @@ import (
 )
 
 // WatchEvent describes a file change event in the registry.
-// Either the user changed a schema file, in which case we will run the
-// tests for that schema matching the test scope, or the user changed a test
-// document, in which case we will rerun the single test with its schema.
+// The user changed a schema file, in which case we will run the tests for that schema, or a test
+// document, in which case we will rerun that document wherever it runs, or a version's exception file,
+// which runs that version again, or a family's declaration, which decides what runs for every version
+// in the family.
 type WatchEvent struct {
-	Key      Key    // The Key of the schema that will be tested
-	TestPath string // If set, only this specific test document changed
+	Key      Key         // The Key of the schema that will be tested
+	TestPath string      // If set, only this specific test document changed
+	Family   SearchScope // If set, this family's declaration changed, and Key is empty
 }
 
 // eventWatcher is an interface that masks fsnotify.Watcher, allowing us to mock it in tests.
@@ -83,12 +85,13 @@ func (w *Watcher) Watch(ctx context.Context, target ResolvedTarget, callback fun
 	targetPath := w.registry.RootDirectory()
 	what := "every schema"
 	if target.Scope != nil && *target.Scope != "" {
-		targetPath = filepath.Join(targetPath, filepath.FromSlash(string(*target.Scope)))
+		targetPath = w.scopeWatchPath(*target.Scope)
 		what = "the schemas in " + string(*target.Scope)
 	} else if target.Key != nil {
+		// A version's result depends on its family's declaration and on the versions it pairs with
 		s, err := w.registry.GetSchemaByKey(*target.Key)
 		if err == nil {
-			targetPath = filepath.Dir(s.Path(FilePath))
+			targetPath = s.Path(FamilyDir)
 		}
 		what = string(*target.Key)
 	}
@@ -104,6 +107,20 @@ func (w *Watcher) Watch(ctx context.Context, target ResolvedTarget, callback fun
 	}
 
 	return w.eventLoop(ctx, watcher, callback)
+}
+
+// scopeWatchPath returns the directory to watch for a search scope: the scope's own, or if the scope is
+// below a family, the family's, as what runs in the scope depends on its family's declaration and on the
+// other versions in its major.
+func (w *Watcher) scopeWatchPath(scope SearchScope) string {
+	root := w.registry.RootDirectory()
+	scopeDir := filepath.FromSlash(string(scope))
+	for dir := scopeDir; dir != "." && dir != string(filepath.Separator); dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(root, dir, FamilyDeclarationFile)); err == nil {
+			return filepath.Join(root, dir)
+		}
+	}
+	return filepath.Join(root, scopeDir)
 }
 
 func (w *Watcher) eventLoop(ctx context.Context, watcher eventWatcher, callback func(WatchEvent)) error {
@@ -171,6 +188,18 @@ func (w *Watcher) addRecursive(watcher eventWatcher, root string) error {
 
 // mapToWatchEvent maps a file path to a WatchEvent. Returns nil if the file is not relevant.
 func (w *Watcher) mapToWatchEvent(path string) *WatchEvent {
+	if filepath.Base(path) == FamilyDeclarationFile {
+		return w.mapDeclarationToWatchEvent(path)
+	}
+
+	if filepath.Base(path) == ExceptionsFile {
+		key, ok := w.versionIn(filepath.Dir(path))
+		if ok {
+			return &WatchEvent{Key: key}
+		}
+		return nil
+	}
+
 	if strings.HasSuffix(path, SchemaSuffix) {
 		key, err := w.registry.KeyFromSchemaPath(path)
 		if err == nil {
@@ -178,11 +207,21 @@ func (w *Watcher) mapToWatchEvent(path string) *WatchEvent {
 		}
 	}
 
-	if filepath.Ext(path) == ".json" && !strings.HasSuffix(path, SchemaSuffix) {
+	if filepath.Ext(path) == TestDocSuffix && !strings.HasSuffix(path, SchemaSuffix) {
 		return w.mapTestDocToWatchEvent(path)
 	}
 
 	return nil
+}
+
+// mapDeclarationToWatchEvent maps a family's declaration to an event for the family. A file of that
+// name which is not under the registry root belongs to no family.
+func (w *Watcher) mapDeclarationToWatchEvent(path string) *WatchEvent {
+	rel, err := filepath.Rel(w.registry.RootDirectory(), filepath.Dir(path))
+	if err != nil || rel == "." || !filepath.IsLocal(rel) {
+		return nil
+	}
+	return &WatchEvent{Family: SearchScope(filepath.ToSlash(rel))}
 }
 
 func (w *Watcher) mapTestDocToWatchEvent(path string) *WatchEvent {
@@ -192,10 +231,18 @@ func (w *Watcher) mapTestDocToWatchEvent(path string) *WatchEvent {
 		return nil
 	}
 
-	homeDir := filepath.Dir(dir)
+	key, ok := w.versionIn(filepath.Dir(dir))
+	if !ok {
+		return nil
+	}
+	return &WatchEvent{Key: key, TestPath: path}
+}
+
+// versionIn returns the key of the version whose directory is homeDir, if it is one.
+func (w *Watcher) versionIn(homeDir string) (Key, bool) {
 	entries, err := os.ReadDir(homeDir)
 	if err != nil {
-		return nil
+		return "", false
 	}
 
 	for _, entry := range entries {
@@ -203,9 +250,9 @@ func (w *Watcher) mapTestDocToWatchEvent(path string) *WatchEvent {
 			schemaPath := filepath.Join(homeDir, entry.Name())
 			key, err := w.registry.KeyFromSchemaPath(schemaPath)
 			if err == nil {
-				return &WatchEvent{Key: key, TestPath: path}
+				return key, true
 			}
 		}
 	}
-	return nil
+	return "", false
 }

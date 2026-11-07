@@ -322,16 +322,6 @@ func (e *InvalidCreateSchemaArgError) Error() string {
 		"separated by '/' e.g. 'domain/subdomain/family'", e.Arg)
 }
 
-// InvalidTestScopeError is returned when a test scope is not in the correct format.
-type InvalidTestScopeError struct {
-	Scope string
-}
-
-func (e *InvalidTestScopeError) Error() string {
-	return fmt.Sprintf("Invalid test scope: %s - valid scopes are: %s, %s, %s, %s, %s",
-		e.Scope, TestScopeLocal, TestScopePass, TestScopeFail, TestScopeConsumerBreaking, TestScopeAll)
-}
-
 // InvalidTargetArgumentError is returned when a target argument is not in the correct format.
 type InvalidTargetArgumentError struct {
 	Arg string
@@ -368,10 +358,15 @@ func (e *NoTargetArgumentError) Error() string {
 }
 
 // ChangedDeployedSchemasError is returned when deployed schemas or their test documents are
-// modified, or the URL roots which give deployed schemas their IDs are changed.
+// modified, the URL roots which give deployed schemas their IDs are changed, a deployed family's
+// declaration, or a deployed exception, is changed, or a deployed version is deleted when documents
+// written under it may still exist.
 type ChangedDeployedSchemasError struct {
-	Paths    []string // the modified or deleted schema files and test documents
-	URLRoots []string // a description of each changed URL root
+	Paths        []string // the modified or deleted schema files and test documents
+	URLRoots     []string // a description of each changed URL root
+	Declarations []string // a description of each refused change to a family's declaration
+	Exceptions   []string // a description of each refused change to an exception file
+	Deletions    []string // a description of each deployed version which may not be deleted
 }
 
 func (e *ChangedDeployedSchemasError) Error() string {
@@ -381,6 +376,16 @@ func (e *ChangedDeployedSchemasError) Error() string {
 	}
 	if len(e.URLRoots) > 0 {
 		problems = append(problems, "cannot change the URL roots of deployed schemas: "+strings.Join(e.URLRoots, "; "))
+	}
+	if len(e.Declarations) > 0 {
+		problems = append(problems, "cannot change the declaration of a deployed family: "+
+			strings.Join(e.Declarations, "; "))
+	}
+	if len(e.Exceptions) > 0 {
+		problems = append(problems, "cannot change a deployed exception: "+strings.Join(e.Exceptions, "; "))
+	}
+	if len(e.Deletions) > 0 {
+		problems = append(problems, "cannot delete a deployed version: "+strings.Join(e.Deletions, "; "))
 	}
 	return strings.Join(problems, ". ")
 }
@@ -410,4 +415,53 @@ type HardCodedIDError struct {
 func (e *HardCodedIDError) Error() string {
 	return fmt.Sprintf("%s sets $id to %v: set \"$id\": \"{{ ID }}\", so that JSM gives the schema its canonical ID",
 		e.Path, e.ID)
+}
+
+// InvalidExceptionsError is returned when a version's compat-exceptions.yml can't be used.
+type InvalidExceptionsError struct {
+	Path    string
+	Wrapped error
+}
+
+func (e *InvalidExceptionsError) Error() string {
+	return fmt.Sprintf("%s can't be used: %s. See %s", e.Path, e.Wrapped, ScenariosDoc)
+}
+
+func (e *InvalidExceptionsError) Unwrap() error {
+	return e.Wrapped
+}
+
+// MissingFamilyDeclarationError is returned when a family has no family.yml.
+type MissingFamilyDeclarationError struct {
+	Path string
+}
+
+func (e *MissingFamilyDeclarationError) Error() string {
+	return fmt.Sprintf("this family does not declare how it is used: create %s naming its scenario, such as "+
+		"\"scenario: %s\". The scenarios are: %s. See %s to choose one",
+		e.Path, ScenarioProviderFirst, ScenarioNames(), ScenariosDoc)
+}
+
+// InvalidFamilyDeclarationError is returned when a family's family.yml can't be used.
+type InvalidFamilyDeclarationError struct {
+	Path    string
+	Wrapped error
+}
+
+func (e *InvalidFamilyDeclarationError) Error() string {
+	return fmt.Sprintf("the declaration %s is invalid: %v. See %s", e.Path, e.Wrapped, ScenariosDoc)
+}
+
+func (e *InvalidFamilyDeclarationError) Unwrap() error {
+	return e.Wrapped
+}
+
+// FamilyAlreadyDeclaredError is returned when creating a family's first version, and the family
+// already has a declaration, which can't be chosen again.
+type FamilyAlreadyDeclaredError struct {
+	Path string
+}
+
+func (e *FamilyAlreadyDeclaredError) Error() string {
+	return fmt.Sprintf("this family is already declared in %s", e.Path)
 }

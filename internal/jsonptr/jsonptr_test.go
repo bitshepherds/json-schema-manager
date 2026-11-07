@@ -139,3 +139,14 @@ func TestNumber(t *testing.T) {
 	_, ok = Number("1")
 	assert.False(t, ok)
 }
+
+func TestPatternSegment(t *testing.T) {
+	t.Parallel()
+
+	seg := PatternSegment("^x-")
+	assert.Equal(t, "/^x-", Format([]Segment{seg}))
+	assert.Equal(t, []any{1.0}, ValuesAt(parse(t, `{"x-a": 1, "y": 2}`), []Segment{seg}))
+	assert.Empty(t, ValuesAt(parse(t, `[1]`), []Segment{seg}), "an array's items have no names")
+
+	assert.Equal(t, AnySegment, PatternSegment("("), "a pattern which doesn't compile here is any property")
+}

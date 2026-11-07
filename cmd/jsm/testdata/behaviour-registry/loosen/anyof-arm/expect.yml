@@ -1,0 +1,6 @@
+# 1.1.0 adds an open anyOf arm, so it accepts 1.0.0's fail document. No pass document shows it: only
+# 1.0.0's fail document, running on 1.1.0, does. Validating 1.0.0 runs that pair too.
+promise: no-loosening
+validate:
+  1.0.0: fail
+  1.1.0: fail

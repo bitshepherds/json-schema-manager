@@ -31,24 +31,21 @@ func (m *MockManager) Registry() *schema.Registry {
 }
 
 func (m *MockManager) ValidateSchema(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	strict bool,
+	format string, useColour bool, continueOnError bool, strict bool,
 ) error {
-	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible,
-		strict)
+	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, strict)
 	return args.Error(0)
 }
 
 func (m *MockManager) WatchValidation(ctx context.Context, target schema.ResolvedTarget, verbose bool,
-	format string, useColour bool, continueOnError bool, testScope schema.TestScope, skipCompatible bool,
-	readyChan chan<- struct{},
+	format string, useColour bool, continueOnError bool, strict bool, readyChan chan<- struct{},
 ) error {
-	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, testScope, skipCompatible, readyChan)
+	args := m.Called(ctx, target, verbose, format, useColour, continueOnError, strict, readyChan)
 	return args.Error(0)
 }
 
-func (m *MockManager) CreateSchema(domainAndFamilyName string) (schema.Key, error) {
-	args := m.Called(domainAndFamilyName)
+func (m *MockManager) CreateSchema(domainAndFamilyName string, spec schema.FamilySpec) (schema.Key, error) {
+	args := m.Called(domainAndFamilyName, spec)
 	k, _ := args.Get(0).(schema.Key)
 	return k, args.Error(1)
 }
@@ -76,7 +73,7 @@ func (m *MockManager) DiffSchemas(older, newer schema.Key) ([]schema.Change, err
 	return res, args.Error(1)
 }
 
-func (m *MockManager) CheckConsumer(
+func (m *MockManager) CheckParty(
 	ctx context.Context, manifestPath, format string, useColour, strict bool,
 ) error {
 	args := m.Called(ctx, manifestPath, format, useColour, strict)
@@ -93,8 +90,8 @@ func (m *MockManager) TagDeployment(ctx context.Context, envName config.Env, _ b
 	return args.Error(0)
 }
 
-func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests bool) error {
-	args := m.Called(ctx, envName, all, collapse, skipTests)
+func (m *MockManager) BuildDist(ctx context.Context, envName config.Env, all, collapse, skipTests, strict bool) error {
+	args := m.Called(ctx, envName, all, collapse, skipTests, strict)
 	return args.Error(0)
 }
 
@@ -105,6 +102,14 @@ type MockGitter struct {
 	GetSchemaChangesFunc func(ctx context.Context, anchor repo.Revision, sourceDir, suffix string) ([]repo.Change, error)
 	ShowFileFunc         func(ctx context.Context, rev repo.Revision, path string) ([]byte, error)
 	UntrackedFilesFunc   func(ctx context.Context, sourceDir, suffix string) ([]string, error)
+	ListFilesFunc        func(ctx context.Context, rev repo.Revision, dir, suffix string) ([]string, error)
+}
+
+func (m *MockGitter) ListFiles(ctx context.Context, rev repo.Revision, dir, suffix string) ([]string, error) {
+	if m.ListFilesFunc != nil {
+		return m.ListFilesFunc(ctx, rev, dir, suffix)
+	}
+	return nil, nil
 }
 
 func (m *MockGitter) UntrackedFiles(ctx context.Context, sourceDir, suffix string) ([]string, error) {

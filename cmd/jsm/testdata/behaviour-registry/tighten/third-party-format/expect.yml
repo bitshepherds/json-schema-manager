@@ -1,0 +1,7 @@
+# The carrier starts sending held-at-customs, and 1.1.0 drops out-for-delivery while recording that.
+# A captured 1.0.0 sample still uses it. The schema is descriptive, so the failure says the real format
+# has changed. The new value alone is harmless: 1.1.0's pass document doesn't run on 1.0.0.
+promise: no-tightening
+validate:
+  1.0.0: fail
+  1.1.0: fail

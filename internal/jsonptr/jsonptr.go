@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"maps"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ type Segment struct {
 	Name  string
 	Index bool // Name is an array index
 	Any   bool
+	// Pattern limits Any to the properties whose names match it, and Name is its source.
+	Pattern *regexp.Regexp
 }
 
 // AnySegment matches any property of an object, or any item of an array.
@@ -32,6 +35,16 @@ func Item(i int) Segment {
 	return Segment{Name: strconv.Itoa(i), Index: true}
 }
 
+// PatternSegment returns the segment for the properties whose names match the regular expression p.
+// If p doesn't compile here, it's any property.
+func PatternSegment(p string) Segment {
+	re, err := regexp.Compile(p)
+	if err != nil {
+		return AnySegment
+	}
+	return Segment{Name: p, Any: true, Pattern: re}
+}
+
 // Format renders path as a JSON Pointer, with * for any property or item, and / for the root.
 func Format(path []Segment) string {
 	if len(path) == 0 {
@@ -40,7 +53,7 @@ func Format(path []Segment) string {
 	var b strings.Builder
 	for _, s := range path {
 		b.WriteString("/")
-		if s.Any {
+		if s.Any && s.Pattern == nil {
 			b.WriteString("*")
 			continue
 		}
@@ -59,28 +72,53 @@ func ValuesAt(doc any, path []Segment) []any {
 	if len(path) == 0 {
 		return []any{doc}
 	}
-	var children []any
-	switch v := doc.(type) {
-	case map[string]any:
-		if path[0].Any {
-			for _, name := range slices.Sorted(maps.Keys(v)) {
-				children = append(children, v[name])
-			}
-		} else if child, ok := v[path[0].Name]; ok && !path[0].Index {
-			children = append(children, child)
-		}
-	case []any:
-		if path[0].Any {
-			children = v
-		} else if i, err := strconv.Atoi(path[0].Name); err == nil && path[0].Index && i < len(v) {
-			children = append(children, v[i])
-		}
-	}
+	first, rest := path[0], path[1:]
 	var out []any
-	for _, child := range children {
-		out = append(out, ValuesAt(child, path[1:])...)
+	for _, child := range childrenAt(doc, first) {
+		out = append(out, ValuesAt(child, rest)...)
 	}
 	return out
+}
+
+// childrenAt returns the children of doc which s selects.
+func childrenAt(doc any, s Segment) []any {
+	switch v := doc.(type) {
+	case map[string]any:
+		return propertiesAt(v, s)
+	case []any:
+		return itemsAt(v, s)
+	default:
+		return nil
+	}
+}
+
+func propertiesAt(obj map[string]any, s Segment) []any {
+	if !s.Any {
+		if child, ok := obj[s.Name]; ok && !s.Index {
+			return []any{child}
+		}
+		return nil
+	}
+	var children []any
+	for _, name := range slices.Sorted(maps.Keys(obj)) {
+		if s.Pattern == nil || s.Pattern.MatchString(name) {
+			children = append(children, obj[name])
+		}
+	}
+	return children
+}
+
+func itemsAt(items []any, s Segment) []any {
+	if s.Any {
+		if s.Pattern != nil {
+			return nil // a pattern matches names, which items don't have
+		}
+		return items
+	}
+	if i, err := strconv.Atoi(s.Name); err == nil && s.Index && i < len(items) {
+		return []any{items[i]}
+	}
+	return nil
 }
 
 // Lookup finds the value at the JSON Pointer p in doc.

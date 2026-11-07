@@ -1,0 +1,17 @@
+# 1.0.0 rejected refunded orders by mistake, and 1.1.0 fixes that. It breaks no-loosening, and its
+# exception file says so, for that one document. Both versions are deployed, so the entry is locked,
+# but more can be added.
+promise: declared-exception
+validate:
+  1.0.0: pass
+  1.1.0: pass
+checkChanges:
+  deployed: [1.0.0, 1.1.0]
+  overlays:
+    edit-reason:
+      verdict: fail
+    remove-file:
+      verdict: fail
+      delete: [1/1/0/compat-exceptions.yml]
+    new-entry:
+      verdict: pass

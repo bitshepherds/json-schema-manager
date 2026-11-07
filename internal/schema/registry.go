@@ -218,7 +218,8 @@ func (r *Registry) GetSchema(path string) (*Schema, error) {
 // - e.g. "domain-a/family-name"
 // - e.g. "domain-a/subdomain-a/family-name"
 // There must be at least one domain component, and the family name is always the last component.
-func (r *Registry) CreateSchema(domainAndFamilyName string) (s *Schema, err error) {
+// The family's declaration, family.yml, is written beside its version directories, from spec.
+func (r *Registry) CreateSchema(domainAndFamilyName string, spec FamilySpec) (s *Schema, err error) {
 	if _, err = NewSearchScope(domainAndFamilyName); err != nil {
 		return nil, err
 	}
@@ -244,11 +245,20 @@ func (r *Registry) CreateSchema(domainAndFamilyName string) (s *Schema, err erro
 		return nil, &AlreadyExistsError{K: key}
 	}
 
+	declaration, err := spec.content()
+	if err != nil {
+		return nil, err
+	}
+	declarationPath := r.FamilyDeclarationPath(key)
+	if _, statErr := os.Stat(declarationPath); statErr == nil {
+		return nil, &FamilyAlreadyDeclaredError{Path: declarationPath}
+	}
+
 	if iErr := r.initNewRegistrySchema(s); iErr != nil {
 		return nil, iErr
 	}
 
-	return s, nil
+	return s, os.WriteFile(declarationPath, declaration, 0o600)
 }
 
 // CreateSchemaVersion creates a new version in an existing schema family, based
@@ -258,8 +268,17 @@ func (r *Registry) CreateSchema(domainAndFamilyName string) (s *Schema, err erro
 // ReleaseType is ReleaseTypeMajor, the new schema version will be 2.0.0.
 // If the ReleaseType is ReleaseTypeMinor, the new schema version will be 1.3.0.
 // If the ReleaseType is ReleaseTypePatch, the new schema version will be 1.2.4.
+//
+// A new version in the same major copies only the schema when its family inherits documents, since
+// earlier documents already run on it. Otherwise it copies the documents too: a major's documents may
+// stop holding, so they're a starting point to edit, and with no inheritance nothing else would test it.
 func (r *Registry) CreateSchemaVersion(k Key, rt ReleaseType) (*Schema, error) {
 	cs, err := r.GetSchemaByKey(k)
+	if err != nil {
+		return nil, err
+	}
+
+	decl, err := r.FamilyDeclaration(k)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +286,11 @@ func (r *Registry) CreateSchemaVersion(k Key, rt ReleaseType) (*Schema, error) {
 	ns := New(k, r)
 	ns.BumpVersion(rt)
 
-	if dErr := ns.DuplicateSchemaFiles(cs); dErr != nil {
+	duplicate := ns.DuplicateSchemaFiles
+	if rt != ReleaseTypeMajor && decl.Facts.InheritsDocuments() {
+		duplicate = ns.CopySchemaFile
+	}
+	if dErr := duplicate(cs); dErr != nil {
 		return nil, dErr
 	}
 
@@ -347,25 +370,11 @@ func (r *Registry) CoordinateRender(s *Schema, ec *config.EnvConfig) (RenderInfo
 	return ri, nil
 }
 
-// CreateNewSchemaVersion creates a new version of a schema in the registry, along with its folders.
+// CreateNewSchemaVersion creates a new version of the schema at the given path, as CreateSchemaVersion does.
 func (r *Registry) CreateNewSchemaVersion(path string, rt ReleaseType) (*Schema, error) {
 	cs, err := r.GetSchema(path)
 	if err != nil {
 		return nil, err
 	}
-
-	// Create a new schema, initially setup to match the current schema.
-	ns := New(cs.Key(), r)
-
-	ns.BumpVersion(rt)
-	if dErr := ns.DuplicateSchemaFiles(cs); dErr != nil {
-		return nil, dErr
-	}
-
-	// Add to cache with write lock
-	r.mu.Lock()
-	r.cache[ns.Key()] = ns
-	r.mu.Unlock()
-
-	return ns, nil
+	return r.CreateSchemaVersion(cs.Key(), rt)
 }

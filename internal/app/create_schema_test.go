@@ -1,10 +1,13 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -40,9 +43,10 @@ func TestCreateSchemaCmd(t *testing.T) {
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
 
-		mgr.On("CreateSchema", domainAndFamily).Return(key, nil).Once()
+		mgr.On("CreateSchema", domainAndFamily, schema.FamilySpec{Scenario: schema.ScenarioProviderFirst}).
+			Return(key, nil).Once()
 
-		cmd.SetArgs([]string{domainAndFamily})
+		cmd.SetArgs([]string{domainAndFamily, "--scenario", "provider-first"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)
 		mgr.AssertExpectations(t)
@@ -68,12 +72,108 @@ func TestCreateSchemaCmd(t *testing.T) {
 		t.Parallel()
 		mgr, cmd := setup(t)
 		domainAndFamily := "test-domain/test-family"
-		mgr.On("CreateSchema", domainAndFamily).Return(schema.Key(""), errors.New("manager error")).Once()
+		mgr.On("CreateSchema", domainAndFamily, schema.FamilySpec{Scenario: schema.ScenarioProviderFirst}).
+			Return(schema.Key(""), errors.New("manager error")).Once()
 
-		cmd.SetArgs([]string{domainAndFamily})
+		cmd.SetArgs([]string{domainAndFamily, "--scenario", "provider-first"})
 		err := cmd.ExecuteContext(context.Background())
 		require.Error(t, err)
 		assert.Equal(t, "manager error", err.Error())
 		mgr.AssertExpectations(t)
+	})
+}
+
+func TestCreateSchemaWritesDeclaration(t *testing.T) {
+	t.Parallel()
+
+	// run creates domain/family through the real manager, answering any questions with stdin.
+	run := func(t *testing.T, stdin string, args ...string) (*schema.FamilyDeclaration, string, error) {
+		t.Helper()
+		reg := setupTestRegistry(t)
+		mgr := NewCLIManager(slog.New(slog.DiscardHandler), reg, schema.NewTester(reg), &MockGitter{}, nil, io.Discard)
+		cmd := NewCreateSchemaCmd(mgr)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetIn(strings.NewReader(stdin))
+		cmd.SetArgs(append([]string{"domain/family"}, args...))
+		err := cmd.ExecuteContext(context.Background())
+		if err != nil {
+			assert.NoFileExists(t, reg.FamilyDeclarationPath("domain_family_1_0_0"), "nothing is written on a refusal")
+			return nil, out.String(), err
+		}
+		d, dErr := reg.FamilyDeclaration("domain_family_1_0_0")
+		require.NoError(t, dErr)
+		return d, out.String(), nil
+	}
+
+	t.Run("takes the scenario as a flag, without asking", func(t *testing.T) {
+		t.Parallel()
+		d, out, err := run(t, "", "--scenario", "config-file")
+		require.NoError(t, err)
+		assert.Equal(t, schema.ScenarioConfigFile, d.Scenario)
+		assert.NotContains(t, out, "Which scenario")
+		assert.Contains(t, out, schema.FamilyDeclarationFile)
+	})
+
+	t.Run("asks for the scenario, by number", func(t *testing.T) {
+		t.Parallel()
+		d, out, err := run(t, "8\n")
+		require.NoError(t, err)
+		assert.Equal(t, schema.ScenarioLockStep, d.Scenario)
+		assert.Contains(t, out, "Which scenario")
+		assert.Contains(t, out, "scenarios.md")
+		assert.Contains(t, out, "1. provider-first")
+		assert.Contains(t, out, "9. third-party-format")
+	})
+
+	t.Run("asks for the scenario, by name", func(t *testing.T) {
+		t.Parallel()
+		d, _, err := run(t, "consumer-first\n")
+		require.NoError(t, err)
+		assert.Equal(t, schema.ScenarioConsumerFirst, d.Scenario)
+	})
+
+	t.Run("a number off the menu is refused", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := run(t, "10\n")
+		require.ErrorContains(t, err, "not one of")
+	})
+
+	t.Run("with nobody to ask, says which flag to use", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := run(t, "")
+		require.ErrorContains(t, err, "--scenario")
+	})
+
+	t.Run("where documents live varies, takes it as a flag", func(t *testing.T) {
+		t.Parallel()
+		d, out, err := run(t, "", "--scenario", "uncoordinated", "--documents-live", "moment")
+		require.NoError(t, err)
+		assert.Equal(t, schema.DocumentsLiveMoment, d.Facts.DocumentsLive)
+		assert.NotContains(t, out, "varies in scenario")
+	})
+
+	t.Run("where documents live varies, asks, and offers indefinitely for not knowing", func(t *testing.T) {
+		t.Parallel()
+		d, out, err := run(t, "9\nindefinitely\n")
+		require.NoError(t, err)
+		assert.Equal(t, schema.ScenarioThirdPartyFormat, d.Scenario)
+		assert.Equal(t, schema.DocumentsLiveIndefinitely, d.Facts.DocumentsLive)
+		assert.Contains(t, out, "If you don't know, choose indefinitely")
+	})
+
+	t.Run("where documents live varies, with nobody to ask, says what to do", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := run(t, "", "--scenario", "third-party-format")
+		require.ErrorContains(t, err, "--documents-live")
+		require.ErrorContains(t, err, "choose indefinitely")
+	})
+
+	t.Run("a retention family starts with its first version as the oldest live", func(t *testing.T) {
+		t.Parallel()
+		d, _, err := run(t, "", "--scenario", "retained-stream")
+		require.NoError(t, err)
+		assert.Equal(t, schema.SemVer{1, 0, 0}, d.OldestLive)
 	})
 }

@@ -282,6 +282,40 @@ func TestCLIGitter_GetSchemaChanges(t *testing.T) {
 		assert.False(t, changes[0].IsNew)
 	})
 
+	t.Run("a file deleted beside a similar new one is both, not a rename", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := setupTestRepo(t)
+		g := NewCLIGitter(cfg, pathResolver, tmpDir)
+		git := func(args ...string) {
+			t.Helper()
+			require.NoError(t, exec.CommandContext(context.Background(), "git",
+				append([]string{"-C", tmpDir}, args...)...).Run())
+		}
+
+		srcDir := filepath.Join(tmpDir, "src", "schemas")
+		require.NoError(t, os.MkdirAll(srcDir, 0o755))
+		content := []byte(`{"type": "object", "properties": {"a": {"type": "string"}, "b": {"type": "string"}}}`)
+		older := filepath.Join(srcDir, "a_1_0_0.schema.json")
+		require.NoError(t, os.WriteFile(older, content, 0o600))
+		git("add", ".")
+		git("commit", "-m", "1")
+		git("tag", "jsm-deploy/prod/v1")
+
+		newer := filepath.Join(srcDir, "a_1_1_0.schema.json")
+		require.NoError(t, os.WriteFile(newer, content, 0o600))
+		git("rm", older)
+		git("add", ".")
+		git("commit", "-m", "2")
+
+		changes, err := g.GetSchemaChanges(context.Background(), "jsm-deploy/prod/v1", srcDir, ".schema.json")
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		for _, c := range changes {
+			assert.Equal(t, filepath.Base(c.Path) == filepath.Base(older), c.IsDeleted, c.Path)
+			assert.Equal(t, filepath.Base(c.Path) == filepath.Base(newer), c.IsNew, c.Path)
+		}
+	})
+
 	t.Run("ignore non-schema files", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := setupTestRepo(t)
@@ -632,5 +666,58 @@ func TestCLIGitter_UntrackedFiles(t *testing.T) {
 		g.SetGitBinary(gitPath)
 		_, err = g.UntrackedFiles(context.Background(), "/reg", ".schema.json")
 		require.ErrorContains(t, err, "git ls-files failed")
+	})
+}
+
+func TestCLIGitter_ListFiles(t *testing.T) {
+	t.Parallel()
+
+	t.Run("lists the files with the suffix at the revision", func(t *testing.T) {
+		t.Parallel()
+		dir := setupTestRepo(t)
+		root, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		f := filepath.Join(root, "reg", "family", "1", "a.schema.json")
+		require.NoError(t, os.MkdirAll(filepath.Dir(f), 0o755))
+		require.NoError(t, os.WriteFile(f, []byte("{}"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(root, "reg", "family", "family.yml"), []byte("x"), 0o600))
+		runGit(t, dir, "add", ".")
+		runGit(t, dir, "commit", "-q", "-m", "1")
+		runGit(t, dir, "tag", "v1")
+		require.NoError(t, os.Remove(f))
+		runGit(t, dir, "add", ".")
+		runGit(t, dir, "commit", "-q", "-m", "2")
+
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), filepath.Join(root, "reg"))
+		familyDir := filepath.Join(root, "reg", "family")
+
+		files, err := g.ListFiles(context.Background(), "v1", familyDir, ".schema.json")
+		require.NoError(t, err)
+		assert.Equal(t, []string{f}, files)
+
+		files, err = g.ListFiles(context.Background(), "HEAD", familyDir, ".schema.json")
+		require.NoError(t, err)
+		assert.Empty(t, files)
+
+		files, err = g.ListFiles(context.Background(), "v1", filepath.Join(root, "reg", "missing"), ".schema.json")
+		require.NoError(t, err)
+		assert.Empty(t, files)
+	})
+
+	t.Run("an unknown revision", func(t *testing.T) {
+		t.Parallel()
+		dir := setupTestRepo(t)
+		root, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), dir)
+		_, err = g.ListFiles(context.Background(), "no-such-tag", root, ".schema.json")
+		require.ErrorContains(t, err, "git ls-tree failed")
+	})
+
+	t.Run("not a git repo", func(t *testing.T) {
+		t.Parallel()
+		g := NewCLIGitter(newTestConfig(t), fsh.NewPathResolver(), t.TempDir())
+		_, err := g.ListFiles(context.Background(), "HEAD", "/x", ".schema.json")
+		require.ErrorContains(t, err, "failed to find git root")
 	})
 }

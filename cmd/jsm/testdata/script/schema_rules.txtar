@@ -96,3 +96,17 @@ environments:
 {"email": "ann@example.com"}
 -- format/people/contact/1/0/0/fail/bad-email.json --
 {"email": "not-an-email"}
+-- ids/misc/hard-id/family.yml --
+scenario: provider-first
+
+-- ids/misc/good-id/family.yml --
+scenario: provider-first
+
+-- placed/misc/item/family.yml --
+scenario: provider-first
+
+-- external/geo/place/family.yml --
+scenario: provider-first
+
+-- format/people/contact/family.yml --
+scenario: provider-first

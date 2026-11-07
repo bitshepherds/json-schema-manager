@@ -1,0 +1,6 @@
+# 1.1.0 adds a maximum, and a fail document 1.0.0 accepts. No 1.0.0 pass document shows the change, so
+# only 1.1.0's fail document running on 1.0.0 catches it.
+promise: no-tightening
+validate:
+  1.0.0: fail
+  1.1.0: fail

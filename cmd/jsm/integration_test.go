@@ -18,6 +18,7 @@ import (
 
 	"github.com/bitshepherds/json-schema-manager/internal/app"
 	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/internal/testenv"
 )
 
 var binaryPath string
@@ -44,6 +45,7 @@ func ensureBinary() error {
 
 		// Build the binary from the root of the project
 		cmd := exec.CommandContext(context.Background(), "go", "build", "-o", binaryPath, ".")
+		cmd.Env = testenv.GoToolEnv()
 		if bOutput, bErr := cmd.CombinedOutput(); bErr != nil {
 			errBuild = fmt.Errorf("failed to build binary: %w\nOutput: %s", bErr, string(bOutput))
 		}
@@ -51,8 +53,17 @@ func ensureBinary() error {
 	return errBuild
 }
 
+// hiddenMachine hides the machine only when the tests are to run. This binary also runs as the jsm a
+// script starts, and that jsm must see the environment the script gave it.
+type hiddenMachine struct{ m *testing.M }
+
+func (h hiddenMachine) Run() int {
+	testenv.Hide()
+	return h.m.Run()
+}
+
 func TestMain(m *testing.M) {
-	testscript.Main(m, map[string]func(){
+	testscript.Main(hiddenMachine{m}, map[string]func(){
 		"jsm": func() {
 			ctx := context.Background()
 			os.Exit(app.ExitCode(app.Run(ctx, os.Args, os.Stdout, os.Stderr, nil)))
@@ -64,6 +75,13 @@ func TestScripts(t *testing.T) {
 	t.Parallel()
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/script",
+		// A script starts with little of this process's environment, so it gets the hidden machine here.
+		Setup: func(env *testscript.Env) error {
+			for name, value := range testenv.Vars() {
+				env.Setenv(name, value)
+			}
+			return nil
+		},
 	})
 }
 
@@ -82,6 +100,14 @@ environments:
 		[]byte(cfgData),
 		0o600,
 	); err != nil {
+		t.Fatal(err)
+	}
+	familyDir := filepath.Join(regDir, "domain", "family")
+	if err := os.MkdirAll(familyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	declaration := []byte("scenario: provider-first\n")
+	if err := os.WriteFile(filepath.Join(familyDir, "family.yml"), declaration, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return regDir

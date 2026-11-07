@@ -4,6 +4,7 @@ package report
 import (
 	"encoding/json"
 	"io"
+	"maps"
 	"slices"
 	"time"
 
@@ -15,44 +16,66 @@ import (
 // JSONReporter implements schema.Reporter for JSON output.
 type JSONReporter struct{}
 
+// statusExcepted is the status of a run which gave the wrong outcome, and which an exception names.
+const statusExcepted = "excepted"
+
 type jsonSpec struct {
-	Path           string     `json:"path"`
-	TestDocType    string     `json:"type"`
-	ValidatedBy    schema.Key `json:"validatedBy,omitempty"`    // the schema the document was tested against
-	ForwardVersion string     `json:"forwardVersion,omitempty"` // set if the document came from a later version
-	Error          string     `json:"error,omitempty"`
+	Path         string      `json:"path"`
+	TestDocType  string      `json:"type"`
+	ValidatedBy  schema.Key  `json:"validatedBy,omitempty"`  // the schema the document was tested against
+	Rule         schema.Rule `json:"rule,omitempty"`         // what the run proves
+	DocumentFrom schema.Key  `json:"documentFrom,omitempty"` // the version the document belongs to
+	Earlier      schema.Key  `json:"earlier,omitempty"`      // for a run across versions, the earlier version
+	Later        schema.Key  `json:"later,omitempty"`        // for a run across versions, the later version
+	Status       string      `json:"status"`                 // passed, failed or excepted
+	Reason       string      `json:"reason,omitempty"`       // for an excepted run, the reason its exception gives
+	Error        string      `json:"error,omitempty"`
 }
 
-// newJSONSpec returns the JSON form of s, without its error.
-func newJSONSpec(s *schema.Spec) jsonSpec {
+// newJSONSpec returns the JSON form of s, with the given status.
+func newJSONSpec(s *schema.Spec, status string) jsonSpec {
 	js := jsonSpec{
-		Path:        s.TestInfo.Path,
-		TestDocType: string(s.TestDocType),
+		Status:       status,
+		Path:         s.TestInfo.Path,
+		TestDocType:  string(s.TestDocType),
+		Rule:         s.Rule,
+		DocumentFrom: s.DocumentFrom,
+		Earlier:      s.Earlier,
+		Later:        s.Later,
 	}
 	if s.Schema != nil {
 		js.ValidatedBy = s.Schema.Key()
 	}
-	if s.ForwardVersion != nil {
-		js.ForwardVersion = s.ForwardVersion.String('.')
+	if s.Err != nil {
+		js.Error = s.Err.Error()
+	}
+	if status == statusExcepted {
+		js.Reason = s.Exception.Reason
 	}
 	return js
 }
 
 type jsonSchemaResults struct {
-	Passed  []jsonSpec   `json:"passed"`
-	Failed  []jsonSpec   `json:"failed"`
-	Summary *jsonSummary `json:"summary,omitempty"` // set for each schema tested against its own documents
+	Passed []jsonSpec `json:"passed"`
+	Failed []jsonSpec `json:"failed"`
+	// Excepted lists runs which gave the wrong outcome, and which an exception names. They aren't failures.
+	Excepted []jsonSpec   `json:"excepted"`
+	Summary  *jsonSummary `json:"summary,omitempty"` // set for each schema tested against its own documents
 }
 
 // jsonSummary describes how well a schema's test documents cover it.
 type jsonSummary struct {
-	PassDocuments    int                 `json:"passDocuments"`
-	FailDocuments    int                 `json:"failDocuments"`
-	MissingDocuments bool                `json:"missingDocuments"` // no pass document, or no fail document
-	Covered          int                 `json:"covered"`
-	Total            int                 `json:"total"`
-	Points           []coverage.Point    `json:"points"`
-	FailKeywords     map[string][]string `json:"failKeywords"` // fail document path: the keywords which reject it
+	PassDocuments          int                 `json:"passDocuments"`
+	FailDocuments          int                 `json:"failDocuments"`
+	InheritedPassDocuments int                 `json:"inheritedPassDocuments"`
+	InheritedFailDocuments int                 `json:"inheritedFailDocuments"`
+	MissingDocuments       bool                `json:"missingDocuments"` // no pass or no fail document, own or inherited
+	Covered                int                 `json:"covered"`
+	Total                  int                 `json:"total"`
+	Points                 []coverage.Point    `json:"points"`
+	FailKeywords           map[string][]string `json:"failKeywords"` // fail document path: the keywords which reject it
+	// SeveralReasons gives, for a fail document's path, where its independent reasons are.
+	SeveralReasons map[string][]string `json:"severalReasons,omitempty"`
 }
 
 func newJSONSummary(s *schema.Summary) *jsonSummary {
@@ -61,24 +84,60 @@ func newJSONSummary(s *schema.Summary) *jsonSummary {
 		points = []coverage.Point{}
 	}
 	return &jsonSummary{
-		PassDocuments:    s.PassDocs,
-		FailDocuments:    s.FailDocs,
-		MissingDocuments: s.MissingDocuments(),
-		Covered:          s.Covered(),
-		Total:            len(s.Coverage),
-		Points:           points,
-		FailKeywords:     s.FailKeywords,
+		PassDocuments:          s.PassDocs,
+		FailDocuments:          s.FailDocs,
+		InheritedPassDocuments: s.InheritedPassDocs,
+		InheritedFailDocuments: s.InheritedFailDocs,
+		MissingDocuments:       s.MissingDocuments(),
+		Covered:                s.Covered(),
+		Total:                  len(s.Coverage),
+		Points:                 points,
+		FailKeywords:           s.FailKeywords,
+		SeveralReasons:         s.SeveralReasons,
 	}
 }
 
 // jsonUnexercisedChange is a change which no pass document of the schema uses.
 type jsonUnexercisedChange struct {
 	Schema   schema.Key        `json:"schema"`
-	Earlier  schema.Key        `json:"earlier"` // the version before the schema
+	Earlier  schema.Key        `json:"earlier"`
+	Later    schema.Key        `json:"later"`
+	Location string            `json:"location"`
+	Keyword  string            `json:"keyword,omitempty"`
+	Effect   structdiff.Effect `json:"effect"`
+	// Direction is the way which needs evidence: widens needs a pass document, and narrows a fail document.
+	Direction structdiff.Effect `json:"direction"`
+	Detail    string            `json:"detail"`
+}
+
+// jsonAcknowledgedChange is a change a schema's exception file acknowledges, as no document can show it.
+type jsonAcknowledgedChange struct {
+	Schema   schema.Key        `json:"schema"`
+	Earlier  schema.Key        `json:"earlier"`
+	Later    schema.Key        `json:"later"`
 	Location string            `json:"location"`
 	Keyword  string            `json:"keyword,omitempty"`
 	Effect   structdiff.Effect `json:"effect"`
 	Detail   string            `json:"detail"`
+	Reason   string            `json:"reason"`
+}
+
+// jsonMissingMigration is a major which needs a migration statement and has none, and so fails the run.
+type jsonMissingMigration struct {
+	Schema schema.Key `json:"schema"` // the major's first version
+	Major  uint64     `json:"major"`
+	Why    string     `json:"why"`
+}
+
+// jsonStaleException is an entry of a schema's exception file which clears nothing, and so fails the run.
+type jsonStaleException struct {
+	Schema   schema.Key  `json:"schema"` // the later version, whose file lists it
+	Version  string      `json:"version"`
+	Document string      `json:"document,omitempty"`
+	Rule     schema.Rule `json:"rule,omitempty"`
+	Change   string      `json:"change,omitempty"`
+	Reason   string      `json:"reason"`
+	Why      string      `json:"why"` // why it's stale
 }
 
 type jsonOutput struct {
@@ -88,11 +147,17 @@ type jsonOutput struct {
 	Stats     struct {
 		TotalPassed      int `json:"totalPassed"`
 		TotalFailed      int `json:"totalFailed"`
+		TotalExcepted    int `json:"totalExcepted"`
+		TotalStale       int `json:"totalStaleExceptions"`
+		TotalMigrations  int `json:"totalMissingMigrations"`
 		TotalUnexercised int `json:"totalUnexercised"`
 		TotalMissingDocs int `json:"totalMissingDocuments"`
 	} `json:"stats"`
-	Results            map[schema.Key]jsonSchemaResults `json:"results"`
-	UnexercisedChanges []jsonUnexercisedChange          `json:"unexercisedChanges"`
+	Results             map[schema.Key]jsonSchemaResults `json:"results"`
+	UnexercisedChanges  []jsonUnexercisedChange          `json:"unexercisedChanges"`
+	AcknowledgedChanges []jsonAcknowledgedChange         `json:"acknowledgedChanges"`
+	StaleExceptions     []jsonStaleException             `json:"staleExceptions"`
+	MissingMigrations   []jsonMissingMigration           `json:"missingMigrations"`
 }
 
 func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
@@ -103,27 +168,12 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 		Results:   make(map[schema.Key]jsonSchemaResults),
 	}
 
-	for k, specs := range r.PassedTests {
-		res := out.Results[k]
-		for i := range specs {
-			res.Passed = append(res.Passed, newJSONSpec(&specs[i]))
-		}
-		out.Results[k] = res
-		out.Stats.TotalPassed += len(specs)
-	}
-
-	for k, specs := range r.FailedTests {
-		res := out.Results[k]
-		for i := range specs {
-			js := newJSONSpec(&specs[i])
-			if specs[i].Err != nil {
-				js.Error = specs[i].Err.Error()
-			}
-			res.Failed = append(res.Failed, js)
-		}
-		out.Results[k] = res
-		out.Stats.TotalFailed += len(specs)
-	}
+	out.Stats.TotalPassed = addRuns(out.Results, r.PassedTests, "passed",
+		func(res *jsonSchemaResults, js jsonSpec) { res.Passed = append(res.Passed, js) })
+	out.Stats.TotalFailed = addRuns(out.Results, r.FailedTests, "failed",
+		func(res *jsonSchemaResults, js jsonSpec) { res.Failed = append(res.Failed, js) })
+	out.Stats.TotalExcepted = addRuns(out.Results, r.ExceptedTests, statusExcepted,
+		func(res *jsonSchemaResults, js jsonSpec) { res.Excepted = append(res.Excepted, js) })
 
 	for k, s := range r.Summaries {
 		res := out.Results[k]
@@ -133,7 +183,13 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 	out.Stats.TotalMissingDocs = r.MissingDocuments()
 
 	out.UnexercisedChanges = unexercisedChanges(r)
+	out.AcknowledgedChanges = acknowledgedChanges(r)
 	out.Stats.TotalUnexercised = len(out.UnexercisedChanges)
+
+	out.StaleExceptions = staleExceptions(r)
+	out.Stats.TotalStale = len(out.StaleExceptions)
+	out.MissingMigrations = missingMigrations(r)
+	out.Stats.TotalMigrations = len(out.MissingMigrations)
 
 	// Write empty result lists as [], not null
 	for k, res := range out.Results {
@@ -143,12 +199,63 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 		if res.Failed == nil {
 			res.Failed = []jsonSpec{}
 		}
+		if res.Excepted == nil {
+			res.Excepted = []jsonSpec{}
+		}
 		out.Results[k] = res
 	}
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
+}
+
+// addRuns adds each run in the log to its schema's results, and returns how many there are.
+func addRuns(
+	results map[schema.Key]jsonSchemaResults,
+	log schema.TestLog,
+	status string,
+	add func(*jsonSchemaResults, jsonSpec),
+) int {
+	total := 0
+	for k, specs := range log {
+		res := results[k]
+		for i := range specs {
+			add(&res, newJSONSpec(&specs[i], status))
+		}
+		results[k] = res
+		total += len(specs)
+	}
+	return total
+}
+
+// missingMigrations lists the report's missing migration statements, ordered by schema.
+func missingMigrations(r *schema.TestReport) []jsonMissingMigration {
+	out := make([]jsonMissingMigration, 0, len(r.MissingMigrations))
+	for _, k := range slices.Sorted(maps.Keys(r.MissingMigrations)) {
+		m := r.MissingMigrations[k]
+		out = append(out, jsonMissingMigration{Schema: k, Major: m.Major, Why: m.Why})
+	}
+	return out
+}
+
+// staleExceptions lists the report's stale exceptions, ordered by schema.
+func staleExceptions(r *schema.TestReport) []jsonStaleException {
+	out := []jsonStaleException{}
+	for _, k := range slices.Sorted(maps.Keys(r.StaleExceptions)) {
+		for _, s := range r.StaleExceptions[k] {
+			out = append(out, jsonStaleException{
+				Schema:   k,
+				Version:  s.Exception.Version.String('.'),
+				Document: s.Exception.Document,
+				Rule:     s.Exception.Rule,
+				Change:   s.Exception.Change,
+				Reason:   s.Exception.Reason,
+				Why:      s.Why,
+			})
+		}
+	}
+	return out
 }
 
 // unexercisedChanges lists the report's unexercised changes, ordered by schema.
@@ -161,14 +268,40 @@ func unexercisedChanges(r *schema.TestReport) []jsonUnexercisedChange {
 
 	out := []jsonUnexercisedChange{}
 	for _, k := range keys {
-		for _, uc := range r.UnexercisedChanges[k] {
+		ucs := r.UnexercisedChanges[k]
+		for i := range ucs {
+			uc := &ucs[i]
 			out = append(out, jsonUnexercisedChange{
+				Schema:    k,
+				Earlier:   uc.Earlier,
+				Later:     uc.Later,
+				Location:  uc.Change.Location,
+				Keyword:   uc.Change.Keyword,
+				Effect:    uc.Change.Effect,
+				Direction: uc.Direction,
+				Detail:    uc.Change.Detail,
+			})
+		}
+	}
+	return out
+}
+
+// acknowledgedChanges lists the changes exception files acknowledge, ordered by schema.
+func acknowledgedChanges(r *schema.TestReport) []jsonAcknowledgedChange {
+	out := []jsonAcknowledgedChange{}
+	for _, k := range slices.Sorted(maps.Keys(r.AcknowledgedChanges)) {
+		acs := r.AcknowledgedChanges[k]
+		for i := range acs {
+			ac := &acs[i]
+			out = append(out, jsonAcknowledgedChange{
 				Schema:   k,
-				Earlier:  uc.Earlier,
-				Location: uc.Change.Location,
-				Keyword:  uc.Change.Keyword,
-				Effect:   uc.Change.Effect,
-				Detail:   uc.Change.Detail,
+				Earlier:  ac.Earlier,
+				Later:    ac.Later,
+				Location: ac.Change.Location,
+				Keyword:  ac.Change.Keyword,
+				Effect:   ac.Change.Effect,
+				Detail:   ac.Change.Detail,
+				Reason:   ac.Reason,
 			})
 		}
 	}

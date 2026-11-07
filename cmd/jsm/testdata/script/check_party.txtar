@@ -1,0 +1,137 @@
+# check-party checks the schema versions a party lists in its manifest against the registry, for its
+# role, as the family's scenario says (#52, #123)
+
+exec git init -q
+env JSM_REGISTRY_ROOT_DIR=reg
+
+# The listed version exists, and has no later version yet
+exec jsm check-party -c
+stdout 'JSM PARTY CHECK: jsm-party.yml \(role: reader\)'
+stdout '\[PASS\] shop_order_1_0_0 \(0 document runs\)'
+stdout 'Party check summary: 1 passed, 0 failed, 0 warnings, 0 notices'
+
+# A compatible 1.1.0, given by canonical URL in another manifest, still passes
+mkdir reg/shop/order/1/1/0/pass reg/shop/order/1/1/0/fail
+cp v110.json reg/shop/order/1/1/0/shop_order_1_1_0.schema.json
+cp paid.json reg/shop/order/1/1/0/pass/paid.json
+cp lost.json reg/shop/order/1/1/0/fail/lost.json
+exec jsm check-party -c by-url.yml
+stdout '\[PASS\] https://json-schemas.myorg.io/shop_order_1_0_0.schema.json'
+
+# A 1.1.0 pass document which 1.0.0 rejects fails a reader, under the later version, naming the rule
+cp refunded.json reg/shop/order/1/1/0/pass/refunded.json
+! exec jsm check-party -c
+stdout '\[FAIL\] shop_order_1_0_0'
+stdout 'shop_order_1_1_0: .*refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
+stdout 'Party check summary: 0 passed, 1 failed, 0 warnings, 0 notices'
+
+! exec jsm check-party -c -o json
+stdout '"status": "fail"'
+stdout '"later": "shop_order_1_1_0"'
+stdout '"rule": "no-loosening"'
+
+# A writer in the same family isn't harmed by it: writers move first, so it gets a notice, and exits 0
+exec jsm check-party -c writer.yml --strict
+stdout '\[NOTICE\] shop_order_1_0_0'
+stdout 'This family is declared provider-first: writers move to a new version before readers do, so no later version can harm a writer on shop_order_1_0_0'
+stdout 'Party check summary: 0 passed, 0 failed, 0 warnings, 1 notice'
+
+# A declared exception clears the reader's failure, and the report says so
+cp exception.yml reg/shop/order/1/1/0/compat-exceptions.yml
+exec jsm check-party -c --strict
+stdout '\[PASS\] shop_order_1_0_0'
+stdout 'no-loosening excepted'
+stdout 'reason: every reader was upgraded first'
+rm reg/shop/order/1/1/0/compat-exceptions.yml
+rm reg/shop/order/1/1/0/pass/refunded.json
+
+# A 2.0.0 gives a warning naming the new major, which --strict makes fail
+mkdir reg/shop/order/2/0/0/pass reg/shop/order/2/0/0/fail
+cp v200.json reg/shop/order/2/0/0/shop_order_2_0_0.schema.json
+exec jsm check-party -c
+stdout '\[WARN\] shop_order_1_0_0'
+stdout 'the family has a newer major version, shop_order_2_0_0, which this check doesn''t cover: move to it before writers stop sending version 1'
+stdout 'Party check summary: 0 passed, 0 failed, 1 warning, 0 notices'
+! exec jsm check-party -c --strict
+exec jsm check-party -c -o json
+stdout '"newerMajor": "shop_order_2_0_0"'
+
+# A listed version which does not exist, or an entry which is not a key or URL, fails
+! exec jsm check-party -c missing.yml
+stdout '\[FAIL\] shop_order_1_9_0'
+stdout 'not found in the registry'
+stdout '\[FAIL\] shop/order'
+stdout 'not a schema key or canonical URL'
+
+# A manifest which cannot be read, or which states no role, is an error
+! exec jsm check-party -c nothing.yml
+stderr 'party manifest nothing.yml: cannot be read'
+! exec jsm check-party -c no-role.yml
+stderr 'party manifest no-role.yml: must state its role, reader or writer'
+
+# The old command has gone, with no alias
+! exec jsm check-consumer -c
+stderr 'unknown command "check-consumer"'
+
+-- jsm-party.yml --
+role: reader
+schemas:
+  - shop_order_1_0_0
+-- writer.yml --
+role: writer
+schemas:
+  - shop_order_1_0_0
+-- by-url.yml --
+role: reader
+schemas:
+  - https://json-schemas.myorg.io/shop_order_1_0_0.schema.json
+-- missing.yml --
+role: reader
+schemas:
+  - shop_order_1_9_0
+  - shop/order
+-- no-role.yml --
+schemas:
+  - shop_order_1_0_0
+-- exception.yml --
+exceptions:
+  - version: 1.0.0
+    document: pass/refunded.json
+    rule: no-loosening
+    reason: every reader was upgraded first
+-- v110.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "properties": { "status": { "enum": ["placed", "paid", "refunded"] } }
+}
+-- v200.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "properties": { "state": { "type": "string" } }
+}
+-- paid.json --
+{"status": "paid"}
+-- refunded.json --
+{"status": "refunded"}
+-- lost.json --
+{"status": "lost"}
+-- reg/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- reg/shop/order/1/0/0/shop_order_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "properties": { "status": { "enum": ["placed", "paid"] } }
+}
+-- reg/shop/order/1/0/0/pass/paid.json --
+{"status": "paid"}
+-- reg/shop/order/1/0/0/fail/lost.json --
+{"status": "lost"}
+-- reg/shop/order/family.yml --
+scenario: provider-first

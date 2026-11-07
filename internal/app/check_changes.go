@@ -30,7 +30,19 @@ In an environment which does not permit schema mutation, these changes since the
   - modifying a deployed schema file
   - modifying or deleting a pass/ or fail/ test document of a deployed version
   - changing the environment's privateUrlRoot or publicUrlRoot, which give deployed schemas their IDs
-Adding new schemas and test documents is allowed, and so is deleting a whole version.
+  - changing or removing the family.yml of a family with a deployed version, other than moving its
+    oldestLive forward or changing its migration statements: a changed scenario means a new family
+  - editing an entry of a compat-exceptions.yml which was there at the deployment, or removing one
+    while it clears something: an entry which clears nothing, as validate judges it, may go
+  - deleting a deployed version when documents written under it may still exist: any version if the
+    family's documentsLive is indefinitely, or a version at or above oldestLive if it is retention
+Adding new schemas and test documents is allowed, and so is deleting a whole version if its documents
+can't still exist: any version if documentsLive is moment, or one below oldestLive if it is retention.
+A family with no family.yml may gain one. A family's versions going all at once are judged as above, by the
+family.yml they were deployed with. A deployed version may gain a compat-exceptions.yml, or new entries in
+one, and a family.yml may gain or change migration statements.
+
+In every environment, the check fails if any family has no family.yml, or an invalid one.
 ` + deploymentHistoryHelp,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

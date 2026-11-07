@@ -10,13 +10,15 @@ import (
 
 func TestNewSpec(t *testing.T) {
 	t.Parallel()
-	s := &Schema{}
+	s := New("domain_family_1_0_0", nil)
 	ti := TestInfo{Path: "test.json"}
-	spec := NewSpec(s, ti, TestDocTypePass, nil)
+	spec := NewSpec(s, ti, TestDocTypePass)
 
 	assert.Equal(t, s, spec.Schema)
 	assert.Equal(t, ti, spec.TestInfo)
 	assert.Equal(t, TestDocTypePass, spec.TestDocType)
+	assert.Equal(t, RuleOwnDocuments, spec.Rule)
+	assert.Equal(t, s.Key(), spec.DocumentFrom)
 }
 
 func TestSpec_Run(t *testing.T) {
@@ -63,7 +65,7 @@ func TestSpec_Run(t *testing.T) {
 				Path:         "test.json",
 				Unmarshalled: map[string]interface{}{},
 			}
-			spec := NewSpec(s, ti, tt.testDocType, nil)
+			spec := NewSpec(s, ti, tt.testDocType)
 			v := &mockValidator{Err: tt.validateErr}
 
 			err := spec.Run(v)
@@ -84,12 +86,20 @@ func TestSpec_Run(t *testing.T) {
 func TestSpec_ResultLabel(t *testing.T) {
 	t.Parallel()
 
+	across := Spec{
+		Schema:       New("shop_order_1_0_0", nil),
+		Rule:         RuleNoLoosening,
+		DocumentFrom: "shop_order_1_1_0",
+		Earlier:      "shop_order_1_0_0",
+		Later:        "shop_order_1_1_0",
+	}
+
 	tests := []struct {
-		name           string
-		testDocType    TestDocType
-		err            error
-		forwardVersion *SemVer
-		want           string
+		name        string
+		testDocType TestDocType
+		err         error
+		across      bool
+		want        string
 	}{
 		{
 			name:        "Pass test doc - passed",
@@ -116,29 +126,42 @@ func TestSpec_ResultLabel(t *testing.T) {
 			want:        "passed, when expected fail",
 		},
 		{
-			name:           "Pass test doc - breaking change (forward version)",
-			testDocType:    TestDocTypePass,
-			err:            errors.New("fail"),
-			forwardVersion: &SemVer{1, 1, 0},
-			want:           "failed - future version 1.1.0 introduced a breaking change!",
+			name:        "Pass test doc across versions - rejected",
+			testDocType: TestDocTypePass,
+			err:         errors.New("fail"),
+			across:      true,
+			want:        "no-loosening broken: pass document of 1.1.0 rejected by 1.0.0",
 		},
 		{
-			name:           "Pass test doc - passed (forward version)",
-			testDocType:    TestDocTypePass,
-			err:            nil,
-			forwardVersion: &SemVer{1, 1, 0},
-			want:           "test from future version 1.1.0 passed",
+			name:        "Pass test doc across versions - accepted",
+			testDocType: TestDocTypePass,
+			across:      true,
+			want:        "no-loosening holds: pass document of 1.1.0 accepted by 1.0.0",
+		},
+		{
+			name:        "Fail test doc across versions - accepted",
+			testDocType: TestDocTypeFail,
+			err:         errors.New("pass"),
+			across:      true,
+			want:        "no-loosening broken: fail document of 1.1.0 accepted by 1.0.0",
+		},
+		{
+			name:        "Fail test doc across versions - rejected",
+			testDocType: TestDocTypeFail,
+			across:      true,
+			want:        "no-loosening holds: fail document of 1.1.0 rejected by 1.0.0",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			spec := Spec{
-				TestDocType:    tt.testDocType,
-				Err:            tt.err,
-				ForwardVersion: tt.forwardVersion,
+			spec := Spec{}
+			if tt.across {
+				spec = across
 			}
+			spec.TestDocType = tt.testDocType
+			spec.Err = tt.err
 			assert.Equal(t, tt.want, spec.ResultLabel())
 		})
 	}

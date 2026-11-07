@@ -1,0 +1,6 @@
+# 1.1.0 raises a maximum, so it accepts 1.0.0's fail document. An either family checks for loosening
+# as a writer-ahead family does.
+promise: no-loosening
+validate:
+  1.0.0: fail
+  1.1.0: fail

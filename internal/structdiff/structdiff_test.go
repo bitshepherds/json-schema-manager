@@ -6,7 +6,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitshepherds/json-schema-manager/internal/validator"
 )
+
+// validates returns the real validator's verdict on the subschemas of the schema s.
+func validates(t *testing.T, s string) Validates {
+	t.Helper()
+	const id = "https://example.com/s.json"
+	compiler := validator.NewSanthoshCompiler()
+	require.NoError(t, compiler.AddSchema(id, parse(t, s)))
+	return func(pointer string, v any) (bool, bool) {
+		sub, err := compiler.Compile(id + "#" + pointer)
+		if err != nil {
+			return false, false
+		}
+		return sub.Validate(v) == nil, true
+	}
+}
 
 func parse(t *testing.T, s string) any {
 	t.Helper()
@@ -41,6 +58,8 @@ func TestCompare(t *testing.T) {
 		want   []summary
 		used   []string // documents which use the first change
 		unused []string // documents which do not
+		// narrowedBy are documents which show the first change narrowing the schema
+		narrowedBy []string
 	}{
 		{
 			name:  "identical schemas",
@@ -121,8 +140,11 @@ func TestCompare(t *testing.T) {
 			name:  "const changed",
 			older: `{"const": "a"}`,
 			newer: `{"const": "b"}`,
-			want:  []summary{{"/", "const", Widens, `requires "b" instead of "a"`}},
-			used:  []string{`"b"`},
+			want: []summary{
+				{"/", "const", Widens, `allows "b"`},
+				{"/", "const", Narrows, `no longer allows "a"`},
+			},
+			used: []string{`"b"`},
 		},
 		{
 			name:   "const removed",
@@ -236,7 +258,8 @@ func TestCompare(t *testing.T) {
 			older: `{"pattern": "(?<=a)b"}`,
 			newer: `{}`,
 			want:  []summary{{"/", "pattern", Widens, `removes the pattern "(?<=a)b"`}},
-			used:  []string{`"c"`}, // any value, since Go cannot tell which the pattern rejects
+			// The validator can't compile the pattern either, so it can't say any value uses the change
+			unused: []string{`"c"`},
 		},
 		{
 			name:   "multipleOf removed",
@@ -264,6 +287,17 @@ func TestCompare(t *testing.T) {
 			newer: `{"multipleOf": 2}`,
 			want:  []summary{{"/", "multipleOf", Widens, "requires a multiple of 2 instead of 4"}},
 			used:  []string{`6`},
+		},
+		{
+			name:  "multipleOf of neither a multiple nor a divisor",
+			older: `{"multipleOf": 4}`,
+			newer: `{"multipleOf": 6}`,
+			want: []summary{
+				{"/", "multipleOf", Widens, "allows multiples of 6 which aren't multiples of 4"},
+				{"/", "multipleOf", Narrows, "no longer allows multiples of 4 which aren't multiples of 6"},
+			},
+			used:   []string{`6`},
+			unused: []string{`8`},
 		},
 		{
 			name:   "required removed",
@@ -357,12 +391,12 @@ func TestCompare(t *testing.T) {
 			used:  []string{`[1]`},
 		},
 		{
-			name:   "tuple items",
-			older:  `{"prefixItems": [{"const": 1}]}`,
-			newer:  `{"prefixItems": [{"const": 1}, {"const": 2}]}`,
-			want:   []summary{{"/1", "", Narrows, "adds constraints where the earlier version had none"}},
-			used:   []string{`[1, 2]`},
-			unused: []string{`[1]`},
+			name:       "tuple items",
+			older:      `{"prefixItems": [{"const": 1}]}`,
+			newer:      `{"prefixItems": [{"const": 1}, {"const": 2}]}`,
+			want:       []summary{{"/1", "", Narrows, "adds constraints where the earlier version had none"}},
+			narrowedBy: []string{`[1, 3]`},
+			unused:     []string{`[1]`, `[1, 3]`},
 		},
 		{
 			name:   "tuple item relaxed",
@@ -477,22 +511,18 @@ func TestCompare(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.want, summaries(changes))
+			older := validates(t, tt.older)
 			for _, d := range tt.used {
-				assert.True(t, changes[0].UsedBy(parse(t, d)), "used by %s", d)
+				assert.True(t, changes[0].UsedBy(parse(t, d), older), "used by %s", d)
 			}
 			for _, d := range tt.unused {
-				assert.False(t, changes[0].UsedBy(parse(t, d)), "not used by %s", d)
+				assert.False(t, changes[0].UsedBy(parse(t, d), older), "not used by %s", d)
+			}
+			for _, d := range tt.narrowedBy {
+				assert.True(t, changes[0].NarrowedBy(parse(t, d), older, validates(t, tt.newer)), "narrowed by %s", d)
 			}
 		})
 	}
-}
-
-func TestChangeMayBreak(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, (&Change{Effect: Widens}).MayBreak())
-	assert.True(t, (&Change{Effect: Alters}).MayBreak())
-	assert.False(t, (&Change{Effect: Narrows}).MayBreak())
 }
 
 func TestChangeString(t *testing.T) {
@@ -508,9 +538,11 @@ func TestChangeString(t *testing.T) {
 func TestUsedByUnknown(t *testing.T) {
 	t.Parallel()
 
-	changes := Compare(parse(t, `{"properties": {"a": {"anyOf": [{}]}}}`),
-		parse(t, `{"properties": {"a": {"anyOf": [{}, {}]}}}`))
+	older := `{"properties": {"a": {"anyOf": [{"type": "string"}]}}}`
+	changes := Compare(parse(t, older),
+		parse(t, `{"properties": {"a": {"anyOf": [{"type": "string"}, {"type": "null"}]}}}`))
 	require.Len(t, changes, 1)
-	assert.True(t, changes[0].UsedBy(parse(t, `{"a": 1}`)), "any value at the location uses the change")
-	assert.False(t, changes[0].UsedBy(parse(t, `{"b": 1}`)))
+	assert.True(t, changes[0].UsedBy(parse(t, `{"a": null}`), validates(t, older)), "the older subschema rejects it")
+	assert.False(t, changes[0].UsedBy(parse(t, `{"a": "s"}`), validates(t, older)), "the older subschema accepts it")
+	assert.False(t, changes[0].UsedBy(parse(t, `{"b": 1}`), validates(t, older)), "nothing at the location")
 }

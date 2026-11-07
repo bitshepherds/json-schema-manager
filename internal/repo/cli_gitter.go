@@ -152,6 +152,8 @@ func (g *CLIGitter) TagDeploymentSuccess(ctx context.Context, env config.Env, pu
 }
 
 // GetSchemaChanges identifies files with the given suffix changed between the anchor and HEAD.
+// A file's path says what it is, such as which version a schema is, so a file moved is one deleted and
+// one new, and rename detection stays off.
 func (g *CLIGitter) GetSchemaChanges(ctx context.Context, anchor Revision, sourceDir, suffix string) ([]Change, error) {
 	if !filepath.IsAbs(sourceDir) {
 		sourceDir = filepath.Join(g.repoRoot, sourceDir)
@@ -167,7 +169,8 @@ func (g *CLIGitter) GetSchemaChanges(ctx context.Context, anchor Revision, sourc
 	}
 
 	//nolint:gosec // CMD arguments are internal and path is absolute
-	cmd := exec.CommandContext(ctx, g.gitBinary, "diff", "--name-status", anchor.String(), "--", absSourceDir)
+	cmd := exec.CommandContext(ctx, g.gitBinary, "diff", "--name-status", "--no-renames", anchor.String(), "--",
+		absSourceDir)
 	cmd.Dir = g.repoRoot
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -220,6 +223,32 @@ func (g *CLIGitter) ShowFile(ctx context.Context, rev Revision, path string) ([]
 		return nil, fmt.Errorf("failed to read %s at %s: %w", rel, rev, err)
 	}
 	return out, nil
+}
+
+// ListFiles returns the absolute paths of the files with the given suffix in dir, an absolute path
+// as returned in a Change, at the given revision. A dir which isn't there at that revision has none.
+func (g *CLIGitter) ListFiles(ctx context.Context, rev Revision, dir, suffix string) ([]string, error) {
+	root, err := g.getGitRoot(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	//nolint:gosec // CMD arguments are internal
+	cmd := exec.CommandContext(ctx, g.gitBinary, "ls-tree", "-r", "--name-only", "--full-name", rev.String(), "--", dir)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-tree failed: %w", err)
+	}
+
+	var paths []string
+	for line := range strings.Lines(string(out)) {
+		path := strings.TrimSpace(line)
+		if strings.HasSuffix(path, suffix) {
+			paths = append(paths, filepath.Join(root, path))
+		}
+	}
+	return paths, nil
 }
 
 // UntrackedFiles returns the absolute paths of the files with the given suffix in sourceDir which
