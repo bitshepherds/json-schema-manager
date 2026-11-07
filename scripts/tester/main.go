@@ -11,6 +11,11 @@ import (
 	"strings"
 )
 
+// defaultTimeout limits each package's test binary. Without it, a stuck run waits for Go's default of 10 minutes.
+// The slowest package, cmd/jsm, has taken at most 21.8 seconds in CI. It goes first in the test arguments, so a later
+// -timeout from the caller wins, and nothing after -args is affected.
+const defaultTimeout = "-timeout=45s"
+
 func main() {
 	args := os.Args[1:]
 	testArgs, cfg := parseFlags(args)
@@ -44,7 +49,7 @@ func (c *testerConfig) isCoverageRun() bool {
 }
 
 func parseFlags(args []string) ([]string, *testerConfig) {
-	var testArgs []string
+	testArgs := []string{defaultTimeout}
 	cfg := &testerConfig{}
 
 	for _, arg := range args {
