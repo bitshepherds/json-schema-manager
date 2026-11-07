@@ -16,6 +16,27 @@ import (
 	"github.com/bitshepherds/json-schema-manager/internal/fsh"
 )
 
+// TestSetupLoggerFallsBackToTheCurrentDirectory isn't parallel: t.Chdir
+// changes the process's working directory, and panics under a parallel test.
+func TestSetupLoggerFallsBackToTheCurrentDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	logLevel := &slog.LevelVar{}
+	stderr := &bytes.Buffer{}
+	envProvider := &mockEnvProvider{values: map[string]string{}}
+
+	logger, closer, err := setupLogger(stderr, logLevel, "", "", envProvider)
+	require.NoError(t, err)
+
+	logger.Info("fallback to the current directory")
+	require.NoError(t, closer.Close())
+
+	content, err := os.ReadFile(filepath.Join(tmpDir, LogFile))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "fallback to the current directory")
+}
+
 func TestSetupLogger(t *testing.T) {
 	t.Parallel()
 
@@ -124,25 +145,6 @@ func TestSetupLogger(t *testing.T) {
 
 		logger.Info("default log")
 		assert.FileExists(t, filepath.Join(tmpDir, LogFile))
-	})
-
-	t.Run("full fallback when rd, wd, and env are empty", func(t *testing.T) {
-		t.Parallel()
-		// This will use current directory's .jsm.log
-		// We should clean it up if it's created, but better to check the path logic.
-		logLevel := &slog.LevelVar{}
-		stderr := &bytes.Buffer{}
-		envProvider := &mockEnvProvider{values: map[string]string{}}
-
-		// Note: This might fail if the current directory is unwritable, but in tests it usually is.
-		// To be safe, we don't necessarily need to RUN it, just check the code path if we could.
-		// But let's try to run it and cleanup.
-		logger, closer, err := setupLogger(stderr, logLevel, "", "", envProvider)
-		if err == nil {
-			defer func() { _ = closer.Close() }()
-			defer func() { _ = os.Remove(LogFile) }()
-		}
-		assert.NotNil(t, logger)
 	})
 
 	t.Run("error opening log file", func(t *testing.T) {
