@@ -272,6 +272,17 @@ func TestCheckPartyGivesNoticeWhenNoLaterVersionCanHarm(t *testing.T) {
 			readerAhead + "ahead: writer\n", RoleWriter, "writers move to a new version before readers do",
 		},
 		{
+			"schema: prescribes overriding third-party-format gives the plain reason",
+			"scenario: third-party-format\ndocumentsLive: moment\nschema: prescribes\n", RoleReader,
+			"readers move to a new version before writers do",
+		},
+		{
+			"documentsLive overriding stored-one-schema keeps its scenario's reason",
+			"scenario: stored-one-schema\ndocumentsLive: moment\n", RoleReader,
+			"the service that owns the data reads it, and moves first, against its own past: " +
+				"a new release reads what old releases saved, never the other way round",
+		},
+		{
 			"ahead: neither overriding owner-reads gives the plain reason",
 			readerAhead + "ahead: neither\n", RoleWriter, "both sides move together",
 		},

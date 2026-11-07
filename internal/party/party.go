@@ -223,7 +223,7 @@ var scenarioWhy = map[schema.Scenario]string{
 
 // whyNoHarm says why no later version can harm a party in the role, in a family which doesn't hold its
 // versions to the rule that protects that role. The scenario's own reason holds only while the family
-// keeps the scenario's facts on who can be ahead; a family that overrides them gets the plain reason.
+// keeps the scenario's facts that reason rests on; a family that overrides one gets the plain reason.
 func whyNoHarm(decl *schema.FamilyDeclaration, role Role, k schema.Key) string {
 	why, ok := scenarioWhy[decl.Scenario]
 	if !ok || !keepsWhoMovesFirst(decl) {
@@ -233,11 +233,16 @@ func whyNoHarm(decl *schema.FamilyDeclaration, role Role, k schema.Key) string {
 		decl.Scenario, why, role, k)
 }
 
-// keepsWhoMovesFirst reports whether the family keeps its scenario's facts on who can be ahead.
+// keepsWhoMovesFirst reports whether the family keeps the scenario's facts its reason rests on: who can be
+// ahead, whether the reader picks its schema, and whether the schema prescribes or describes, which says
+// whose format it is. How long documents live doesn't change who moves first, and some scenarios leave
+// it for the family to state, so it doesn't count.
 func keepsWhoMovesFirst(decl *schema.FamilyDeclaration) bool {
 	for _, info := range schema.Scenarios() {
 		if info.Name == decl.Scenario {
-			return info.Facts.Ahead == decl.Facts.Ahead && info.Facts.ReaderPicksSchema == decl.Facts.ReaderPicksSchema
+			return info.Facts.Ahead == decl.Facts.Ahead &&
+				info.Facts.ReaderPicksSchema == decl.Facts.ReaderPicksSchema &&
+				info.Facts.Schema == decl.Facts.Schema
 		}
 	}
 	return false
