@@ -21,10 +21,10 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v7
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
             - name: Set up Go
-              uses: actions/setup-go@v7
+              uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
               with:
                   go-version-file: go.mod
                   cache: true
@@ -43,17 +43,17 @@ jobs:
               run: make test-race-coverage
 
             - name: Run govulncheck
-              uses: golang/govulncheck-action@v1
+              uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
 
     models:
         name: Generated Models and API Examples
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v7
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
             - name: Set up Go
-              uses: actions/setup-go@v7
+              uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
               with:
                   go-version-file: go.mod
                   cache: true
@@ -65,7 +65,7 @@ jobs:
             # bunx installs the pinned npm tools into Bun's cache; @asyncapi/cli alone is about
             # 2,700 packages, so keep the cache between runs. The pins are in the scripts.
             - name: Cache the npm tools
-              uses: actions/cache@v6
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
               with:
                   path: ~/.bun/install/cache
                   key: bun-tools-${{ runner.os }}-${{ hashFiles('mise.toml', 'scripts/models/main.go', 'scripts/apis/main.go') }}
