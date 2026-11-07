@@ -44,6 +44,16 @@ jobs:
 
             - name: Run govulncheck
               uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
+              with:
+                  # The job has checked out the repo and restored the Go cache
+                  # already: a second restore over it fails on every file.
+                  repo-checkout: false
+                  cache: false
+                  # Scan with the Go that go.mod names, which CI builds and
+                  # releases with. setup-go prefers go-version over
+                  # go-version-file, so the default 'stable' must be emptied.
+                  go-version-input: ''
+                  go-version-file: go.mod
 
     models:
         name: Generated Models and API Examples
