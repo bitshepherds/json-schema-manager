@@ -471,17 +471,19 @@ func (s *Schema) TestDocuments(tt TestDocType) ([]TestInfo, error) {
 // a) Belong to the same major version in the same family
 // b) Have a version which is later than this schema's version.
 //
-// This set of keys will be used to identify which schemas we should collect the 'pass' tests from in order to
-// validate that no future schema in the same family with the same major version breaks the contract represented by
-// this schema.
+// These are the versions the family's rule runs documents across with this schema: see the rule in
+// ScenariosDoc. Which way the documents run depends on who can be ahead. Where the writer can be ahead, a
+// later version's pass documents run on this schema, and this schema's fail documents on the later one,
+// so that no later version loosens the contract. Where the reader can be ahead, it is the other way round,
+// so that no later version tightens it.
 //
-// If any of those tests, when applied to this schema, actually fail, it means that the author of a supposedly
-// non-breaking change in a later version has inadvertently contributed a breaking change.
+// If one of those runs gives the wrong verdict, the author of a supposedly non-breaking change in a later
+// version has inadvertently contributed a breaking change.
 //
-// This is a key capability of the JSON Schema Manager. It is vital that information providers can be confident that
-// changes they want to do to an information payload will not break consumers in production. The aim is to identify
-// these accidental breakages AHEAD of the future schema being published, but JSM can also give a complete view of
-// breakages in supposedly non-breaking lineages of versions.
+// This is a key capability of the JSON Schema Manager. A contract's owner moves first, and must be confident
+// that a change it makes will not break, in production, the followers who lag behind it. The aim is to
+// identify these accidental breakages AHEAD of the future schema being published, but JSM can also give a
+// complete view of breakages in supposedly non-breaking lineages of versions.
 func (s *Schema) MajorFamilyFutureSchemas() ([]Key, error) {
 	var keys []Key
 
@@ -562,13 +564,13 @@ func (s *Schema) NewestInFamily() (Key, error) {
 // b) Have a version which is earlier than this schema's version.
 //
 // Purpose:
-// This set of keys is used to check provider compatibility. When developing a new schema version,
-// we need to verify that documents passing the new schema's validation will also pass validation
-// by consumers still using earlier versions. This prevents providers from breaking consumers who
-// haven't yet upgraded.
-//
-// If this schema's pass tests fail validation by an earlier schema, it means the new schema
-// would produce documents that break consumers on older versions.
+// These are the versions the family's rule runs documents across with this schema, when this schema
+// is the later version: see the rule in ScenariosDoc. When the contract's owner develops a new version,
+// the rule checks it against the earlier versions its followers may still be on. Where the writer can
+// be ahead, documents passing the new schema must still pass the earlier ones, so a writer on the new
+// version doesn't break a reader that hasn't upgraded. Where the reader can be ahead, documents passing
+// an earlier schema must still pass the new one, so a reader on the new version doesn't reject a writer
+// that hasn't upgraded.
 func (s *Schema) MajorFamilyEarlierSchemas() ([]Key, error) {
 	var keys []Key
 

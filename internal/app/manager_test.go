@@ -143,7 +143,7 @@ func setupTestRegistry(t *testing.T) *schema.Registry {
 func declareFamily(t *testing.T, s *schema.Schema) {
 	t.Helper()
 	path := filepath.Join(s.Path(schema.FamilyDir), schema.FamilyDeclarationFile)
-	require.NoError(t, os.WriteFile(path, []byte("scenario: provider-first\n"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("scenario: owner-writes\n"), 0o600))
 }
 
 func TestCLIManager_ValidateSchema(t *testing.T) {
@@ -577,7 +577,7 @@ func TestCLIManager_CreateSchema(t *testing.T) {
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 
 		key, err := mgr.CreateSchema("test-domain/test-family",
-			schema.FamilySpec{Scenario: schema.ScenarioProviderFirst})
+			schema.FamilySpec{Scenario: schema.ScenarioOwnerWrites})
 		require.NoError(t, err)
 		assert.Equal(t, schema.Key("test-domain_test-family_1_0_0"), key)
 	})
@@ -588,7 +588,7 @@ func TestCLIManager_CreateSchema(t *testing.T) {
 		tester := schema.NewTester(registry)
 		mgr := NewCLIManager(logger, registry, tester, &MockGitter{}, nil, io.Discard)
 
-		_, err := mgr.CreateSchema("INVALID/scope", schema.FamilySpec{Scenario: schema.ScenarioProviderFirst})
+		_, err := mgr.CreateSchema("INVALID/scope", schema.FamilySpec{Scenario: schema.ScenarioOwnerWrites})
 		require.Error(t, err)
 	})
 }
@@ -1059,7 +1059,7 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
-			[]byte("scenario: provider-first\n"), 0o600))
+			[]byte("scenario: owner-writes\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "init").Run())
 		require.NoError(
@@ -1113,7 +1113,7 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
-			[]byte("scenario: provider-first\n"), 0o600))
+			[]byte("scenario: owner-writes\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "in").Run())
 		require.NoError(
@@ -1160,7 +1160,7 @@ func TestCLIManager_CheckChanges(t *testing.T) {
 		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
-			[]byte("scenario: provider-first\n"), 0o600))
+			[]byte("scenario: owner-writes\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "in").Run())
 		require.NoError(
@@ -1203,7 +1203,7 @@ environments:
 		f1 := filepath.Join(schemaDir, "domain_family_1_0_0.schema.json")
 		require.NoError(t, os.WriteFile(f1, []byte("{}"), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "domain", "family", schema.FamilyDeclarationFile),
-			[]byte("scenario: provider-first\n"), 0o600))
+			[]byte("scenario: owner-writes\n"), 0o600))
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "add", ".").Run())
 		require.NoError(t, exec.CommandContext(context.Background(), "git", "-C", dir, "commit", "-m", "in").Run())
 		require.NoError(
@@ -1803,9 +1803,9 @@ func TestLazyManager_Delegation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test CreateSchema delegation
-	mockMgr.On("CreateSchema", "domain/family", schema.FamilySpec{Scenario: schema.ScenarioProviderFirst}).
+	mockMgr.On("CreateSchema", "domain/family", schema.FamilySpec{Scenario: schema.ScenarioOwnerWrites}).
 		Return(schema.Key("domain_family_1_0_0"), nil)
-	key2, err := lazy.CreateSchema("domain/family", schema.FamilySpec{Scenario: schema.ScenarioProviderFirst})
+	key2, err := lazy.CreateSchema("domain/family", schema.FamilySpec{Scenario: schema.ScenarioOwnerWrites})
 	require.NoError(t, err)
 	assert.Equal(t, schema.Key("domain_family_1_0_0"), key2)
 

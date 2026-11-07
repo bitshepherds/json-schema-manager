@@ -1,6 +1,6 @@
 # Every validate target runs the same pairs, which the family's declaration decides (#42, #119)
 # 1.1.0 adds an enum value, and a pass/ document that uses it, which 1.0.0 rejects. The family is
-# provider-first, so that breaks a reader still on 1.0.0.
+# owner-writes, so that breaks a reader still on 1.0.0.
 
 env JSM_REGISTRY_ROOT_DIR=reg
 
@@ -99,4 +99,4 @@ environments:
 -- reg/shop/order/1/1/0/fail/lost.json --
 {"status": "lost"}
 -- reg/shop/order/family.yml --
-scenario: provider-first
+scenario: owner-writes

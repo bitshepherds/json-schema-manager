@@ -50,7 +50,7 @@ func TestFamilyDeclarationAcceptsEachScenarioName(t *testing.T) {
 	t.Parallel()
 
 	names := []Scenario{
-		"provider-first", "consumer-first", "config-file", "stored-one-schema", "stored-self-naming",
+		"owner-writes", "owner-reads", "config-file", "stored-one-schema", "stored-self-naming",
 		"retained-stream", "uncoordinated", "lock-step", "third-party-format",
 	}
 	all := Scenarios()
@@ -60,6 +60,28 @@ func TestFamilyDeclarationAcceptsEachScenarioName(t *testing.T) {
 		d, err := ParseFamilyDeclaration([]byte(declarationFor(all[i])))
 		require.NoError(t, err, name)
 		assert.Equal(t, name, d.Scenario)
+	}
+}
+
+// Scenarios 1 and 2 were named for who writes and who reads. They are named for what the owner does
+// now, and the old names are refused rather than read as aliases.
+func TestFamilyDeclarationRefusesRenamedScenarios(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ name, old, renamed string }{
+		{"family.yml naming provider-first is refused with a message naming owner-writes", "provider-first", "owner-writes"},
+		{"family.yml naming consumer-first is refused with a message naming owner-reads", "consumer-first", "owner-reads"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ParseFamilyDeclaration([]byte("scenario: " + tc.old + "\n"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "scenario "+tc.old+" is now "+tc.renamed)
+
+			_, err = FamilySpec{Scenario: Scenario(tc.old)}.content()
+			require.Error(t, err, "a new family is refused the same way")
+			assert.Contains(t, err.Error(), "scenario "+tc.old+" is now "+tc.renamed)
+		})
 	}
 }
 
@@ -94,7 +116,7 @@ func TestFamilyDeclarationRequiresDocumentsLiveWhereItVaries(t *testing.T) {
 		require.NoError(t, err, s)
 		assert.Equal(t, DocumentsLiveIndefinitely, d.Facts.DocumentsLive)
 	}
-	assert.False(t, ScenarioProviderFirst.DocumentsLiveVaries())
+	assert.False(t, ScenarioOwnerWrites.DocumentsLiveVaries())
 	assert.False(t, Scenario("nonsense").DocumentsLiveVaries())
 }
 
@@ -102,7 +124,7 @@ func TestFamilyDeclarationOverridesAFact(t *testing.T) {
 	t.Parallel()
 
 	d, err := ParseFamilyDeclaration([]byte(`
-scenario: provider-first
+scenario: owner-writes
 ahead: either
 documentsLive: retention
 readerPicksSchema: true
@@ -110,7 +132,7 @@ schema: describes
 oldestLive: 1.2.0
 `))
 	require.NoError(t, err)
-	assert.Equal(t, ScenarioProviderFirst, d.Scenario)
+	assert.Equal(t, ScenarioOwnerWrites, d.Scenario)
 	assert.Equal(t, FamilyFacts{AheadEither, DocumentsLiveRetention, true, SchemaDescribes}, d.Facts)
 	assert.Equal(t, SemVer{1, 2, 0}, d.OldestLive)
 }
@@ -142,11 +164,11 @@ func TestFamilyDeclarationRequiresOldestLiveForRetention(t *testing.T) {
 	for name, tt := range map[string]struct{ content, want string }{
 		"scenario implies it": {"scenario: retained-stream", "oldestLive"},
 		"override asks for it": {
-			"scenario: provider-first\ndocumentsLive: retention", "oldestLive",
+			"scenario: owner-writes\ndocumentsLive: retention", "oldestLive",
 		},
 		"not a version":     {"scenario: retained-stream\noldestLive: soon", "not a version"},
 		"bad version parts": {"scenario: retained-stream\noldestLive: 0.1.0", "not a version"},
-		"without retention": {"scenario: provider-first\noldestLive: 1.0.0", "only applies"},
+		"without retention": {"scenario: owner-writes\noldestLive: 1.0.0", "only applies"},
 	} {
 		_, err := ParseFamilyDeclaration([]byte(tt.content))
 		require.Error(t, err, name)
@@ -238,7 +260,7 @@ func TestRegistryFamilyDeclaration(t *testing.T) {
 		_, err := r.FamilyDeclaration(key)
 		var missing *MissingFamilyDeclarationError
 		require.ErrorAs(t, err, &missing)
-		assert.Contains(t, err.Error(), "scenario: provider-first")
+		assert.Contains(t, err.Error(), "scenario: owner-writes")
 		assert.Contains(t, err.Error(), ScenariosDoc)
 		require.ErrorAs(t, r.RequireFamilyDeclared(key), &missing)
 	})
@@ -331,7 +353,7 @@ func TestCreateSchemaWritesDeclarationBesideVersions(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
 		require.NoError(t, os.WriteFile(path, []byte("scenario: lock-step"), 0o600))
 
-		_, err := r.CreateSchema("domain/family", FamilySpec{Scenario: ScenarioProviderFirst})
+		_, err := r.CreateSchema("domain/family", FamilySpec{Scenario: ScenarioOwnerWrites})
 
 		var declared *FamilyAlreadyDeclaredError
 		require.ErrorAs(t, err, &declared)
@@ -364,7 +386,7 @@ func TestFamilyFactsNeedingMigrationStatement(t *testing.T) {
 	t.Parallel()
 
 	want := map[Scenario]bool{
-		ScenarioProviderFirst: false, ScenarioConsumerFirst: false, ScenarioConfigFile: true,
+		ScenarioOwnerWrites: false, ScenarioOwnerReads: false, ScenarioConfigFile: true,
 		ScenarioStoredOneSchema: true, ScenarioStoredSelfNaming: false, ScenarioRetainedStream: false,
 		ScenarioLockStep: false,
 	}

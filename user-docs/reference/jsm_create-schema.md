@@ -24,8 +24,8 @@ directories. It names a scenario, and may override the facts the scenario implie
   migrations:
     2: Readers replaying the log handle both majors until the old events have gone.
 
-The scenarios, and what to choose, are in user-docs/scenarios.md. They are provider-first,
-consumer-first, config-file, stored-one-schema, stored-self-naming, retained-stream, uncoordinated,
+The scenarios, and what to choose, are in user-docs/scenarios.md. They are owner-writes,
+owner-reads, config-file, stored-one-schema, stored-self-naming, retained-stream, uncoordinated,
 lock-step and third-party-format.
 
 How long documents live varies in the scenarios uncoordinated and third-party-format, so a family in
@@ -47,7 +47,7 @@ jsm create-schema [domain/family] [flags]
 ```
 
 jsm create-schema "domain-a/family-a"
-jsm create-schema "domain-a/family-a" --scenario provider-first
+jsm create-schema "domain-a/family-a" --scenario owner-writes
 jsm create-schema "domain-a/subdomain-b/family-c" --scenario uncoordinated --documents-live indefinitely
 
 ```
@@ -57,7 +57,7 @@ jsm create-schema "domain-a/subdomain-b/family-c" --scenario uncoordinated --doc
 ```
       --documents-live string   How long documents outlive their writer: moment, retention or indefinitely. Required for the scenarios uncoordinated and third-party-format. If you don't know, choose indefinitely
   -h, --help[=true|false]       help for create-schema
-      --scenario string         The scenario the family serves: provider-first, consumer-first, config-file, stored-one-schema, stored-self-naming, retained-stream, uncoordinated, lock-step, third-party-format
+      --scenario string         The scenario the family serves: owner-writes, owner-reads, config-file, stored-one-schema, stored-self-naming, retained-stream, uncoordinated, lock-step, third-party-format
 ```
 
 ### Options inherited from parent commands

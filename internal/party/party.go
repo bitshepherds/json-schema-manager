@@ -204,22 +204,63 @@ func checkEntry(ctx context.Context, r *schema.Registry, role Role, entry string
 	return sr, nil
 }
 
+// scenarioWhy says, for a scenario whose own facts leave a party unharmed, why: who moves first, as the
+// scenarios page says, in owner and follower terms. Scenarios whose families are always checked, and
+// stored-self-naming, whose reason is that of any family whose reader picks its schema, aren't listed.
+var scenarioWhy = map[schema.Scenario]string{
+	schema.ScenarioOwnerWrites: "the owner writes the documents, and moves to a new version before its followers, " +
+		"who read them",
+	schema.ScenarioOwnerReads: "the owner reads the documents, and moves to a new version before its followers, " +
+		"who write them",
+	schema.ScenarioConfigFile: "the tool that owns the file reads it, and moves first, with a new release, " +
+		"before the people who write the file",
+	schema.ScenarioStoredOneSchema: "the service that owns the data reads it, and moves first, against its own past: " +
+		"a new release reads what old releases saved, never the other way round",
+	schema.ScenarioLockStep: "one team owns both sides, and they move together, in one release",
+	schema.ScenarioThirdPartyFormat: "another organisation owns the format and moves first, " +
+		"and you can't ask it to wait: each later version records a change that has already reached you",
+}
+
 // whyNoHarm says why no later version can harm a party in the role, in a family which doesn't hold its
-// versions to the rule that protects that role.
+// versions to the rule that protects that role. The scenario's own reason holds only while the family
+// keeps the scenario's facts that reason rests on; a family that overrides one gets the plain reason.
 func whyNoHarm(decl *schema.FamilyDeclaration, role Role, k schema.Key) string {
-	var why string
-	switch {
-	case decl.Facts.ReaderPicksSchema:
-		why = "a reader validates each document against the version the document names"
-	case decl.Facts.Ahead == schema.AheadNeither:
-		why = "both sides move together"
-	case role == RoleReader:
-		why = "readers move to a new version before writers do"
-	default:
-		why = "writers move to a new version before readers do"
+	why, ok := scenarioWhy[decl.Scenario]
+	if !ok || !keepsWhoMovesFirst(decl) {
+		why = plainWhy(decl.Facts, role)
 	}
 	return fmt.Sprintf("This family is declared %s: %s, so no later version can harm a %s on %s.",
 		decl.Scenario, why, role, k)
+}
+
+// keepsWhoMovesFirst reports whether the family keeps the scenario's facts its reason rests on: who can be
+// ahead, whether the reader picks its schema, and whether the schema prescribes or describes, which says
+// whose format it is. How long documents live doesn't change who moves first, and some scenarios leave
+// it for the family to state, so it doesn't count.
+func keepsWhoMovesFirst(decl *schema.FamilyDeclaration) bool {
+	for _, info := range schema.Scenarios() {
+		if info.Name == decl.Scenario {
+			return info.Facts.Ahead == decl.Facts.Ahead &&
+				info.Facts.ReaderPicksSchema == decl.Facts.ReaderPicksSchema &&
+				info.Facts.Schema == decl.Facts.Schema
+		}
+	}
+	return false
+}
+
+// plainWhy says why no later version can harm a party in the role, from the family's facts alone.
+func plainWhy(facts schema.FamilyFacts, role Role) string {
+	switch {
+	case facts.ReaderPicksSchema:
+		return "each document names its version and is checked against that version, " +
+			"so it doesn't matter who moves first"
+	case facts.Ahead == schema.AheadNeither:
+		return "both sides move together"
+	case role == RoleReader:
+		return "readers move to a new version before writers do"
+	default:
+		return "writers move to a new version before readers do"
+	}
 }
 
 // listedSchema resolves a manifest entry to its key and schema, or returns why it cannot.

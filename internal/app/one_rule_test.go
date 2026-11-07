@@ -702,7 +702,7 @@ func TestFailureNamesRuleVersionsAndDocument(t *testing.T) {
 		t.Parallel()
 		out, err := newBehaviourRegistry(t, family).jsm("validate", later, "-C")
 		require.ErrorIs(t, err, ErrTestsFailed)
-		for _, want := range []string{"no-tightening", earlier, later, doc, "consumer-first"} {
+		for _, want := range []string{"no-tightening", earlier, later, doc, "owner-reads"} {
 			assert.Contains(t, out, want)
 		}
 	})
@@ -720,7 +720,7 @@ func TestFailureNamesRuleVersionsAndDocument(t *testing.T) {
 		assert.Equal(t, schema.Key(earlier), failed[0].DocumentFrom)
 		assert.Equal(t, schema.Key(later), failed[0].ValidatedBy)
 		assert.Contains(t, failed[0].Path, doc)
-		assert.Contains(t, failed[0].Error, "consumer-first")
+		assert.Contains(t, failed[0].Error, "owner-reads")
 	})
 
 	t.Run("an own document names its rule", func(t *testing.T) {

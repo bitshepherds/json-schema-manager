@@ -43,10 +43,10 @@ func TestCreateSchemaCmd(t *testing.T) {
 		require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o755))
 		require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte("{}"), 0o600))
 
-		mgr.On("CreateSchema", domainAndFamily, schema.FamilySpec{Scenario: schema.ScenarioProviderFirst}).
+		mgr.On("CreateSchema", domainAndFamily, schema.FamilySpec{Scenario: schema.ScenarioOwnerWrites}).
 			Return(key, nil).Once()
 
-		cmd.SetArgs([]string{domainAndFamily, "--scenario", "provider-first"})
+		cmd.SetArgs([]string{domainAndFamily, "--scenario", "owner-writes"})
 		err := cmd.ExecuteContext(context.Background())
 		require.NoError(t, err)
 		mgr.AssertExpectations(t)
@@ -72,10 +72,10 @@ func TestCreateSchemaCmd(t *testing.T) {
 		t.Parallel()
 		mgr, cmd := setup(t)
 		domainAndFamily := "test-domain/test-family"
-		mgr.On("CreateSchema", domainAndFamily, schema.FamilySpec{Scenario: schema.ScenarioProviderFirst}).
+		mgr.On("CreateSchema", domainAndFamily, schema.FamilySpec{Scenario: schema.ScenarioOwnerWrites}).
 			Return(schema.Key(""), errors.New("manager error")).Once()
 
-		cmd.SetArgs([]string{domainAndFamily, "--scenario", "provider-first"})
+		cmd.SetArgs([]string{domainAndFamily, "--scenario", "owner-writes"})
 		err := cmd.ExecuteContext(context.Background())
 		require.Error(t, err)
 		assert.Equal(t, "manager error", err.Error())
@@ -123,15 +123,41 @@ func TestCreateSchemaWritesDeclaration(t *testing.T) {
 		assert.Equal(t, schema.ScenarioLockStep, d.Scenario)
 		assert.Contains(t, out, "Which scenario")
 		assert.Contains(t, out, "scenarios.md")
-		assert.Contains(t, out, "1. provider-first")
+		assert.Contains(t, out, "1. owner-writes")
 		assert.Contains(t, out, "9. third-party-format")
 	})
 
 	t.Run("asks for the scenario, by name", func(t *testing.T) {
 		t.Parallel()
-		d, _, err := run(t, "consumer-first\n")
+		d, _, err := run(t, "owner-reads\n")
 		require.NoError(t, err)
-		assert.Equal(t, schema.ScenarioConsumerFirst, d.Scenario)
+		assert.Equal(t, schema.ScenarioOwnerReads, d.Scenario)
+	})
+
+	t.Run("create-schema offers owner-writes and owner-reads, and not the old names", func(t *testing.T) {
+		t.Parallel()
+		_, out, err := run(t, "1\n")
+		require.NoError(t, err)
+		assert.Contains(t, out, "1. owner-writes: Owner writes:")
+		assert.Contains(t, out, "2. owner-reads: Owner reads:")
+
+		help := NewCreateSchemaCmd(nil)
+		var usage bytes.Buffer
+		help.SetOut(&usage)
+		require.NoError(t, help.Usage())
+		assert.Contains(t, help.Long, "owner-writes")
+		assert.Contains(t, usage.String(), "owner-writes, owner-reads")
+
+		for _, old := range []string{"provider-first", "consumer-first"} {
+			assert.NotContains(t, out, old)
+			assert.NotContains(t, help.Long, old)
+			assert.NotContains(t, usage.String(), old)
+
+			_, _, oErr := run(t, "", "--scenario", old)
+			require.ErrorContains(t, oErr, "scenario "+old+" is now owner-", "--scenario refuses the old name")
+			_, _, aErr := run(t, old+"\n")
+			require.ErrorContains(t, aErr, "scenario "+old+" is now owner-", "the prompt refuses the old name")
+		}
 	})
 
 	t.Run("a number off the menu is refused", func(t *testing.T) {

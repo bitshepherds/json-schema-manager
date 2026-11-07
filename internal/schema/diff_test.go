@@ -111,8 +111,8 @@ func TestDiffFollowsTheScenario(t *testing.T) {
 		wantAdded, wantRemoved []structdiff.Effect
 		wantAltered            []structdiff.Effect
 	}{
-		{"scenario: provider-first\n", []structdiff.Effect{widens}, nil, []structdiff.Effect{widens}},
-		{"scenario: consumer-first\n", nil, []structdiff.Effect{narrows}, []structdiff.Effect{narrows}},
+		{"scenario: owner-writes\n", []structdiff.Effect{widens}, nil, []structdiff.Effect{widens}},
+		{"scenario: owner-reads\n", nil, []structdiff.Effect{narrows}, []structdiff.Effect{narrows}},
 		{
 			"scenario: retained-stream\noldestLive: 1.0.0\n",
 			[]structdiff.Effect{widens},
@@ -153,7 +153,7 @@ func TestDiffFollowsTheScenario(t *testing.T) {
 
 	t.Run("documents of a version between the two count, as they do for validate", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{
 			"d_f_1_0_0": v100, "d_f_1_1_0": v110, "d_f_1_2_0": v110,
 		})
 		writeDoc(t, r, "d_f_1_1_0", TestDocTypePass, "c.json", `{"s": "c"}`)
@@ -164,7 +164,7 @@ func TestDiffFollowsTheScenario(t *testing.T) {
 
 	t.Run("a pair validate doesn't compare is listed, and nothing flagged", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{
 			"d_f_1_0_0": v100, "d_f_1_1_0": v110, "d_f_2_0_0": v110,
 		})
 		for name, pair := range map[string][2]Key{
@@ -200,7 +200,7 @@ func TestDiffFollowsTheScenario(t *testing.T) {
 
 	t.Run("versions which can't be listed stop it", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemas())
+		r := realRegistry(t, "scenario: owner-writes\n", schemas())
 		o, err := r.GetSchemaByKey("d_f_1_0_0")
 		require.NoError(t, err)
 		n, err := r.GetSchemaByKey("d_f_1_1_0")

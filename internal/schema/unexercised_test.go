@@ -82,13 +82,13 @@ func TestUnexercisedWarningFollowsScenario(t *testing.T) {
 	}{
 		{
 			name:         "writer ahead needs evidence for widenings",
-			scenario:     "scenario: provider-first\n",
+			scenario:     "scenario: owner-writes\n",
 			wantWidening: []string{`d_f_1_0_0 widens adds "c"`},
 			wantNarrow:   []string{},
 		},
 		{
 			name:         "reader ahead needs evidence for narrowings",
-			scenario:     "scenario: consumer-first\n",
+			scenario:     "scenario: owner-reads\n",
 			wantWidening: []string{},
 			wantNarrow:   []string{`d_f_1_0_0 narrows removes "b"`},
 		},
@@ -119,7 +119,7 @@ func TestUnexercisedWarningFollowsScenario(t *testing.T) {
 
 	t.Run("a pass document clears a widening", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
 		writeDoc(t, r, "d_f_1_1_0", TestDocTypePass, "c.json", `{"s": "c"}`)
 		assert.Empty(t, warned(runAll(t, r), "d_f_1_1_0"))
 	})
@@ -128,7 +128,7 @@ func TestUnexercisedWarningFollowsScenario(t *testing.T) {
 		t.Parallel()
 		r := realRegistry(
 			t,
-			"scenario: consumer-first\n",
+			"scenario: owner-reads\n",
 			schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Removed},
 		)
 		writeDoc(t, r, "d_f_1_1_0", TestDocTypeFail, "b.json", `{"s": "b"}`)
@@ -139,7 +139,7 @@ func TestUnexercisedWarningFollowsScenario(t *testing.T) {
 		t.Parallel()
 		r := realRegistry(
 			t,
-			"scenario: consumer-first\n",
+			"scenario: owner-reads\n",
 			schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Removed},
 		)
 		writeDoc(t, r, "d_f_1_1_0", TestDocTypeFail, "z.json", `{"s": "z"}`)
@@ -148,7 +148,7 @@ func TestUnexercisedWarningFollowsScenario(t *testing.T) {
 
 	t.Run("the same whichever version is selected", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
 		report, err := NewTester(r).TestSingleSchema(context.Background(), "d_f_1_0_0")
 		require.NoError(t, err)
 		assert.Equal(t, []string{`d_f_1_0_0 widens adds "c"`}, warned(report, "d_f_1_1_0"))
@@ -172,8 +172,8 @@ func TestChangeGoingBothWaysWarnsInTheDirectionProtected(t *testing.T) {
 		wantConst    []string
 		wantMultiple []string
 	}{
-		{"writer ahead", "scenario: provider-first\n", []string{widensConst}, []string{widensMultiple}},
-		{"reader ahead", "scenario: consumer-first\n", []string{narrowsConst}, []string{narrowsMultiple}},
+		{"writer ahead", "scenario: owner-writes\n", []string{widensConst}, []string{widensMultiple}},
+		{"reader ahead", "scenario: owner-reads\n", []string{narrowsConst}, []string{narrowsMultiple}},
 		{
 			"either",
 			"scenario: retained-stream\noldestLive: 1.0.0\n",
@@ -194,14 +194,14 @@ func TestChangeGoingBothWaysWarnsInTheDirectionProtected(t *testing.T) {
 
 	t.Run("a fail document showing the old value clears the narrowing half", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: consumer-first\n", maps.Clone(consts))
+		r := realRegistry(t, "scenario: owner-reads\n", maps.Clone(consts))
 		writeDoc(t, r, "d_f_1_1_0", TestDocTypeFail, "a.json", `"a"`)
 		assert.Empty(t, warned(runAll(t, r), "d_f_1_1_0"))
 	})
 
 	t.Run("a divisor only widens", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: consumer-first\n",
+		r := realRegistry(t, "scenario: owner-reads\n",
 			schemaMap{"d_f_1_0_0": `{"multipleOf": 4}`, "d_f_1_1_0": `{"multipleOf": 2}`})
 		assert.Empty(t, warned(runAll(t, r), "d_f_1_1_0"))
 	})
@@ -217,13 +217,13 @@ func TestAltersChangeNeedsEvidenceInProtectedDirection(t *testing.T) {
 
 	t.Run("writer ahead asks for a pass document", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemas())
+		r := realRegistry(t, "scenario: owner-writes\n", schemas())
 		assert.Equal(t, []string{"d_f_1_0_0 widens " + detail}, warned(runAll(t, r), "d_f_1_1_0"))
 	})
 
 	t.Run("reader ahead asks for a fail document", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: consumer-first\n", schemas())
+		r := realRegistry(t, "scenario: owner-reads\n", schemas())
 		assert.Equal(t, []string{"d_f_1_0_0 narrows " + detail}, warned(runAll(t, r), "d_f_1_1_0"))
 	})
 
@@ -253,7 +253,7 @@ func TestUnexercisedWarningComparesEveryEarlierVersion(t *testing.T) {
 		t.Parallel()
 		// 1.2.0 narrows 1.1.0, but still accepts more than 1.0.0. A document 1.1.0 holds shows the first
 		// widening, and one at 6 long would show this one too. 1.1.0 has no such document
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{
 			"d_f_1_0_0": `{"maxLength": 5}`, "d_f_1_1_0": `{"maxLength": 10}`, "d_f_1_2_0": `{"maxLength": 7}`,
 		})
 		report := runAll(t, r)
@@ -263,7 +263,7 @@ func TestUnexercisedWarningComparesEveryEarlierVersion(t *testing.T) {
 
 	t.Run("a document of a version between counts", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{
 			"d_f_1_0_0": `{"maxLength": 5}`, "d_f_1_1_0": `{"maxLength": 10}`, "d_f_1_2_0": `{"maxLength": 7}`,
 		})
 		writeDoc(t, r, "d_f_1_1_0", TestDocTypePass, "six.json", `"123456"`)
@@ -274,7 +274,7 @@ func TestUnexercisedWarningComparesEveryEarlierVersion(t *testing.T) {
 
 	t.Run("a change carried over unchanged belongs to the version which made it", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{
 			"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added, "d_f_1_2_0": v110Added,
 		})
 		report := runAll(t, r)
@@ -284,7 +284,7 @@ func TestUnexercisedWarningComparesEveryEarlierVersion(t *testing.T) {
 
 	t.Run("each pair is compared once however many versions are selected", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
 		tr := NewTester(r)
 		_, err := tr.TestSingleSchema(context.Background(), "d_f_1_0_0")
 		require.NoError(t, err)
@@ -317,7 +317,7 @@ func TestWarnsOnFailDocumentWithSeveralReasons(t *testing.T) {
 
 	t.Run("two faults at two locations", func(t *testing.T) {
 		t.Parallel()
-		report := reasons(t, "scenario: provider-first\n", `{"a": 1, "status": "lost", "quantity": "two"}`)
+		report := reasons(t, "scenario: owner-writes\n", `{"a": 1, "status": "lost", "quantity": "two"}`)
 		assert.Equal(t, []string{"/quantity", "/status"}, several(report))
 		assert.True(t, report.HasWarnings())
 		assert.Equal(t, 1, report.FailDocumentsWithSeveralReasons())
@@ -325,14 +325,14 @@ func TestWarnsOnFailDocumentWithSeveralReasons(t *testing.T) {
 
 	t.Run("one fault has one reason", func(t *testing.T) {
 		t.Parallel()
-		report := reasons(t, "scenario: provider-first\n", `{"a": 1, "status": "lost"}`)
+		report := reasons(t, "scenario: owner-writes\n", `{"a": 1, "status": "lost"}`)
 		assert.Nil(t, several(report))
 		assert.False(t, report.HasWarnings())
 	})
 
 	t.Run("an anyOf whose arms fail at different locations is one fault", func(t *testing.T) {
 		t.Parallel()
-		assert.Nil(t, several(reasons(t, "scenario: provider-first\n", `{"b": 1}`)))
+		assert.Nil(t, several(reasons(t, "scenario: owner-writes\n", `{"b": 1}`)))
 	})
 
 	t.Run("a family with no pairs doesn't run the document on another version", func(t *testing.T) {
@@ -350,7 +350,7 @@ func TestExceptionFileAcknowledgesDiffWarning(t *testing.T) {
 	const newer = `{"allOf": [{"maxLength": 5}]}`
 	const removed = "/: maxLength removes the limit of 5"
 	schemas := func() schemaMap { return schemaMap{"d_f_1_0_0": older, "d_f_1_1_0": newer} }
-	const writerAhead = "scenario: provider-first\n"
+	const writerAhead = "scenario: owner-writes\n"
 
 	t.Run("no pass document can clear it", func(t *testing.T) {
 		t.Parallel()
@@ -582,7 +582,7 @@ func TestStaleAmong(t *testing.T) {
 	}
 	widened := func(t *testing.T) *Registry {
 		t.Helper()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
 		writeDoc(t, r, "d_f_1_0_0", TestDocTypeFail, "bad.json", `{"s": "c"}`)
 		writeDoc(t, r, "d_f_1_0_0", TestDocTypeFail, "worse.json", `{"s": "z"}`)
 		return r
@@ -591,13 +591,13 @@ func TestStaleAmong(t *testing.T) {
 
 	t.Run("an entry for a change which still warns clears something", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
 		assert.Empty(t, stale(t, r, changeEntry(realChange)))
 	})
 
 	t.Run("an entry for a change which isn't there clears nothing", func(t *testing.T) {
 		t.Parallel()
-		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		r := realRegistry(t, "scenario: owner-writes\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
 		got := stale(t, r, changeEntry("/s: enum adds nothing")+changeEntry(realChange))
 		require.Len(t, got, 1)
 		assert.Equal(t, "/s: enum adds nothing", got[0].Change)

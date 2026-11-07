@@ -16,7 +16,7 @@
   - [Test results in CI](#test-results-in-ci)
   - [Git history in CI](#git-history-in-ci)
 - [Why semantic versioning?](#why-semantic-versioning)
-  - [Compatibility when the provider moves first](#compatibility-when-the-provider-moves-first)
+  - [Compatibility when the owner writes](#compatibility-when-the-owner-writes)
   - [Innocuous changes which are actually breaking](#innocuous-changes-which-are-actually-breaking)
     - [Adding enum values](#adding-enum-values)
     - [Relaxing a constraint](#relaxing-a-constraint)
@@ -42,21 +42,21 @@ jsm create-registry ./my-registry
 export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
 
 # Create the first version, 1.0.0, of a schema family
-jsm create-schema "customer/b2c-customer" --scenario provider-first
+jsm create-schema "orders/order-placed" --scenario owner-writes
 ```
 
-The scenario says how the family is used: see [Schema Family Scenarios](./scenarios.md#how-to-choose-a-scenario). Leave out `--scenario` and the command asks for it.
+The scenario says how the family is used. Here it is an event that the Orders service owns and publishes, so the owner writes the documents: see [Schema Family Scenarios](./scenarios.md#how-to-choose-a-scenario). Leave out `--scenario` and the command asks for it.
 
-Edit `my-registry/customer/b2c-customer/1/0/0/customer_b2c-customer_1_0_0.schema.json`, add JSON documents the schema should accept to the `pass` directory next to it, and documents it should reject to the `fail` directory. Then test it:
+Edit `my-registry/orders/order-placed/1/0/0/orders_order-placed_1_0_0.schema.json`, add JSON documents the schema should accept to the `pass` directory next to it, and documents it should reject to the `fail` directory. Then test it:
 
 ```bash
-jsm validate customer_b2c-customer_1_0_0
+jsm validate orders_order-placed_1_0_0
 ```
 
-To change the schema once it is deployed, create a new version and test the whole registry, which also runs the documents across versions that the family's scenario calls for. For `provider-first`, that looks for a new version which would break consumers still on the old one:
+To change the schema once it is deployed, create a new version and test the whole registry, which also runs the documents across versions that the family's scenario calls for. For `owner-writes`, where the family's owner writes the documents, that looks for a new version which would break a reader still on the old one:
 
 ```bash
-jsm create-schema-version customer_b2c-customer_1_0_0 minor
+jsm create-schema-version orders_order-placed_1_0_0 minor
 jsm validate all
 ```
 
@@ -216,7 +216,7 @@ So for a minor version which adds an enum value, add one `pass` document which u
 
 Each schema is tested against its own test documents: every document in its `pass` directory must be accepted, and every document in its `fail` directory must be rejected.
 
-`jsm validate` also checks each version against every other version with the same major version. Which documents run across versions depends on the scenario the family [declares](./scenarios.md#declaring-a-familys-scenario), as [the rule](./scenarios.md#the-rule) says. The same pairs run however you select a version, so validating an earlier version also shows a later version that breaks it, and the failure appears under the later version. In a family where the provider moves first, see [Compatibility when the provider moves first](#compatibility-when-the-provider-moves-first).
+`jsm validate` also checks each version against every other version with the same major version. Which documents run across versions depends on the scenario the family [declares](./scenarios.md#declaring-a-familys-scenario), as [the rule](./scenarios.md#the-rule) says. The same pairs run however you select a version, so validating an earlier version also shows a later version that breaks it, and the failure appears under the later version. In a family whose owner writes the documents, see [Compatibility when the owner writes](#compatibility-when-the-owner-writes).
 
 If a break is deliberate, or is between versions already deployed, list that one run in the later version's `compat-exceptions.yml`, with a reason: see [Deliberate exceptions](./scenarios.md#deliberate-exceptions). The report shows it as excepted, and it doesn't fail.
 
@@ -267,7 +267,7 @@ Every schema `jsm validate` tests is listed in its report, and one with no `pass
 
 Documents count if they are in the version's own directory, or inherited from an earlier version in its major. The first version of a major, including `1.0.0`, has nothing to inherit, so it needs its own, and the copies a major bump makes are its own. Nothing is inherited from a version [below `oldestLive`](./scenarios.md#how-long-a-version-lasts). A family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so each of its versions needs its own.
 
-Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions. So a `provider-first` `1.1.0` with no `pass` document of its own passes `--strict`, with nothing showing what it accepts. In a reader-ahead family, the same goes for earlier `fail` documents, so a `consumer-first` `1.1.0` with no `fail` document of its own passes `--strict`, with nothing showing what it rejects. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
+Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions. So an `owner-writes` `1.1.0` with no `pass` document of its own passes `--strict`, with nothing showing what it accepts. In a reader-ahead family, the same goes for earlier `fail` documents, so an `owner-reads` `1.1.0` with no `fail` document of its own passes `--strict`, with nothing showing what it rejects. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
 
 With `--verbose`, the report also shows how many documents a schema inherits, how much of the schema its own `pass` documents reach, and which keywords reject each of its own `fail` documents:
 
@@ -325,7 +325,12 @@ The family's [scenario](./scenarios.md) decides what can harm the party. The che
 | Writer | Reader-ahead or either | The listed version's `pass` documents on later versions, and later `fail` documents on the listed version | A reader on the later version rejects a document this writer sends |
 | Any other combination | | Nothing | No later version can harm this party, so it gets a notice saying why, and the check exits `0` |
 
-For example, a team running a service which takes requests from old clients declares `consumer-first`. The client team is a writer, and lags behind the service, so its check is the one that can fail: if `1.1.0` rejects a document `1.0.0` accepted, the client on `1.0.0` is broken. The service team's own check, as a reader, gives a notice, since it always moves first.
+For example, the Payments service owns a refunds API, and partners send it refund requests. The request body is an `owner-reads` family: Payments owns it and reads it, and the partners follow it and write it.
+
+- **A partner's check can fail.** Its manifest says `role: writer`. It lags behind Payments, so if `1.1.0` rejects a request `1.0.0` accepted, the partner still sending `1.0.0` requests is refused. That's what its check looks for.
+- **Payments' own check gives a notice.** Its manifest says `role: reader`. As the owner, it moves first, so no later version can harm it, and the check says so and exits `0`.
+
+The API's response body is a separate, `owner-writes` family, with the same owner and the roles turned round: Payments writes the responses, and a partner reading them has a manifest saying `role: reader`. That partner's check is the one that can fail. See [What JSM covers in an API](./scenarios.md#what-jsm-covers-in-an-api).
 
 A failure is reported as `validate` reports it, under the later version, naming the rule, both versions and the document. A [deliberate exception](./scenarios.md#deliberate-exceptions) applies here too, and the report shows it with its reason. A stale exception entry fails `validate`, not this check, since it doesn't harm the party.
 
@@ -423,7 +428,9 @@ In a shallow clone without the tag, both commands fail with exit code `2` rather
 
 # Why semantic versioning?
 
-A JSON Schema is a contract between whoever writes a document and whoever reads it: a provider and the consumers of its events, a person editing a settings file and the tool which loads it, or a service and the records it saved years ago. Both sides can validate - in test and production - that what they write or read is valid.
+A JSON Schema is a contract between whoever writes a document and whoever reads it: a service and the services which read its events, a person editing a settings file and the tool which loads it, or a service and the records it saved years ago. Both sides can validate - in test and production - that what they write or read is valid.
+
+Every contract has an owner, who decides what it says and changes it, and followers, who work to the version they have and catch up later. The owner may write the documents or read them. See [Owners and followers](./scenarios.md#owners-and-followers).
 
 Over time, the contract changes, and the two sides are rarely on the same version when it does. Whichever side lags still expects the contract it has to hold.
 
@@ -435,49 +442,49 @@ JSON Schema Manager uses your test documents to look for changes which would bre
 
 JSON Schema Manager interprets semantic versioning as follows:
 
-- **major** version changes signal changes the family's [rule](./scenarios.md#the-rule) forbids within a major. No document crosses a major, and what the change then asks of you depends on the scenario: see [What a major bump means](./scenarios.md#what-a-major-bump-means). Where messages flow from a provider to consumers, for example, run the old and new majors side by side, and give consumers a deprecation window to migrate.
-- **minor** version changes signal feature changes which stay compatible in the direction the family protects. Where the provider moves first, if a consumer is checking against version `1.2.3`, it should be safe for the provider to start sending messages conforming to version `1.3.0`. Where the reader moves first, a document valid under `1.2.3` should still be valid under `1.3.0`.
+- **major** version changes signal changes the family's [rule](./scenarios.md#the-rule) forbids within a major. No document crosses a major, and what the change then asks of you depends on the scenario: see [What a major bump means](./scenarios.md#what-a-major-bump-means). Where an owner sends messages to its followers, for example, run the old and new majors side by side, and give the followers a deprecation window to move to the new one.
+- **minor** version changes signal feature changes which stay compatible in the direction the family protects. Where the owner writes the documents, if a follower is checking against version `1.2.3`, it should be safe for the owner to start sending documents conforming to version `1.3.0`. Where the owner reads them, a document a follower writes under `1.2.3` should still be valid under `1.3.0`.
 - **patch** version changes signal adjustments to the schema which have no new features, but represent a change nevertheless. For example, adding a description to a property. JSM's checks treat them as they treat minor versions.
 
-## Compatibility when the provider moves first
+## Compatibility when the owner writes
 
-This is one way of using a schema: a writer-ahead family, where data flows from a provider to its consumers, and the provider moves first. It starts sending documents which conform to the new version, while its consumers are still checking against an earlier one. Consumers catch up later, in their own time. That is scenario 1 of the [Schema Family Scenarios](./scenarios.md), which describes the others, and what JSM checks for each.
+This is one way of using a schema: a writer-ahead family, where the contract's owner writes the documents, and its followers read them. The owner moves first. It starts sending documents which conform to the new version, while its followers are still checking against an earlier one, and they catch up later, in their own time. That is scenario 1, [owner writes](./scenarios.md#1-owner-writes), of the [Schema Family Scenarios](./scenarios.md), which describes the others, and what JSM checks for each.
 
-For such a family, JSM checks compatibility in that one direction. For every minor or patch version, its `pass` documents must be accepted by each earlier version with the same major version, and each earlier version's `fail` documents must be rejected by it. If not, a consumer still on the earlier version would reject what the provider now sends, and `jsm validate` fails, naming both versions.
+For such a family, JSM checks compatibility in that one direction. For every minor or patch version, its `pass` documents must be accepted by each earlier version with the same major version, and each earlier version's `fail` documents must be rejected by it. If not, a follower still on the earlier version would reject what the owner now sends, and `jsm validate` fails, naming both versions.
 
 A family declared this way doesn't check the other way, that documents valid under an earlier version are accepted by a newer one, so it does not protect:
 
-- a consumer which upgrades before its provider does, and rejects what the provider still sends;
-- a client whose requests a newly upgraded service now refuses;
-- a new consumer replaying events kept from earlier versions;
+- a reader which upgrades before the writer does, and rejects what the writer still sends;
+- a partner whose requests the API's owner, newly upgraded, now refuses: the owner reads those, so they are an [owner-reads](./scenarios.md#2-owner-reads) family;
+- a new reader replaying events kept from earlier versions;
 - stored data or config files, read long after they were written.
 
 If any of those describes your family, declare the [scenario](./scenarios.md) it serves, and JSM checks what that scenario needs instead.
 
-In a writer-ahead family, consumers should follow the robustness principle: be strict in what you send, and tolerant in what you accept. A consumer which ignores the fields it does not need can stay on its version while a provider adds new ones. That covers additions only. It does not help a consumer which upgrades to a version that requires a new field, when the provider has not started sending it.
+In a writer-ahead family, readers should follow the robustness principle: be strict in what you send, and tolerant in what you accept. A reader which ignores the fields it does not need can stay on its version while the owner adds new ones. That covers additions only. It does not help a reader which upgrades to a version that requires a new field, when the owner has not started sending it.
 
-So in a writer-ahead family, if a change needs consumers to move first, for example because a newer version would reject documents which the current one accepts, treat it as a breaking change. Make it a new major version, run the old and new major versions side by side, and give consumers a deprecation window to move to the new one before the provider stops sending the old.
+So in a writer-ahead family, if a change needs the readers to move first, for example because a newer version would reject documents which the current one accepts, treat it as a breaking change. Make it a new major version, run the old and new major versions side by side, and give the followers a deprecation window to move to the new one before the owner stops sending the old.
 
 ## Innocuous changes which are actually breaking
 
-Whether a change breaks anyone depends on which versions can meet, so the same change can be harmless in one family and breaking in another: see [the rule](./scenarios.md#the-rule). The changes below seem innocuous, but act as breaking changes in a writer-ahead family, where the provider moves first, as in [scenario 1](./scenarios.md#1-provider-moves-first), and in an either family.
+Whether a change breaks anyone depends on which versions can meet, so the same change can be harmless in one family and breaking in another: see [the rule](./scenarios.md#the-rule). The changes below seem innocuous, but act as breaking changes in a writer-ahead family, where the owner writes the documents, as in [scenario 1](./scenarios.md#1-owner-writes), and in an either family.
 
 In those families, `jsm validate` fails if a document shows such a change, and [warns](#unexercised-changes) if none does. If you have already deployed the earlier version, it can't change to make room, so you are left with a new major version, or a [deliberate exception](./scenarios.md#deliberate-exceptions), for a change you could have avoided.
 
-A reader-ahead family, as in [scenario 2](./scenarios.md#2-consumer-moves-first), allows them, and is broken by the opposite changes instead. A family with neither side ahead holds its versions to neither.
+A reader-ahead family, such as one whose owner reads the documents, as in [scenario 2](./scenarios.md#2-owner-reads), allows them, and is broken by the opposite changes instead. A family with neither side ahead holds its versions to neither.
 
 ### Adding enum values
 
-E.g. If a property `status` is defined as `enum ["pending", "approved", "rejected"]`, and you add `"cancelled"`, consumers on an earlier minor version of a writer-ahead family will break when they receive a message with a `status` of `"cancelled"`. In a reader-ahead family this is safe, since the reader is ready before any writer uses the new value.
+E.g. If a property `status` is defined as `enum ["pending", "approved", "rejected"]`, and you add `"cancelled"`, readers on an earlier minor version of a writer-ahead family will break when they receive a message with a `status` of `"cancelled"`. In a reader-ahead family this is safe, since the reader is ready before any writer uses the new value.
 
 ### Relaxing a constraint
 
-E.g. raising a property's `maxLength` from 10 to 20 lets a provider in a writer-ahead family send values which consumers on the earlier version reject. Tightening a constraint, by contrast, is safe for those consumers. In a reader-ahead family it's the reverse: relaxing is safe, and tightening rejects documents which writers still send, or saved long ago.
+E.g. raising a property's `maxLength` from 10 to 20 lets the writer in a writer-ahead family send values which readers on the earlier version reject. Tightening a constraint, by contrast, is safe for those readers. In a reader-ahead family it's the reverse: relaxing is safe, and tightening rejects documents which writers still send, or saved long ago.
 
 ### additionalProperties
 
 In a writer-ahead family, only set `"additionalProperties": false` in a schema when you are certain that you will not need to create a new version of the schema with additional properties, since adding one to a closed schema is a loosening.
 
-If omitted, the default is to allow additional properties, which is usually what such a family wants. Configure consumers to ignore properties they're not expecting, which allows for the safe deployment of individual components in a distributed system.
+If omitted, the default is to allow additional properties, which is usually what such a family wants. Configure readers to ignore properties they're not expecting, which allows for the safe deployment of individual components in a distributed system.
 
 In other families, a closed schema can be the right choice. [Config file](./scenarios.md#3-config-files) schemas are often closed, so that a mistyped option is an error, and adding a new option is an allowed loosening.

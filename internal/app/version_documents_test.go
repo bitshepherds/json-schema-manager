@@ -19,8 +19,8 @@ const (
 
 // familiesThatInherit are declarations of families whose rule runs earlier documents across versions.
 var familiesThatInherit = map[string]string{
-	"writer ahead":               "scenario: provider-first\n",
-	"reader ahead":               "scenario: consumer-first\n",
+	"writer ahead":               "scenario: owner-writes\n",
+	"reader ahead":               "scenario: owner-reads\n",
 	"either":                     "scenario: uncoordinated\ndocumentsLive: indefinitely\n",
 	"lock-step, writer override": "scenario: lock-step\nahead: writer\n",
 }
@@ -29,8 +29,8 @@ var familiesThatInherit = map[string]string{
 var familiesThatDoNot = map[string]string{
 	"lock-step":                 "scenario: lock-step\n",
 	"stored, naming versions":   "scenario: stored-self-naming\n",
-	"reader picks, by override": "scenario: provider-first\nreaderPicksSchema: true\n",
-	"neither, by override":      "scenario: provider-first\nahead: neither\n",
+	"reader picks, by override": "scenario: owner-writes\nreaderPicksSchema: true\n",
+	"neither, by override":      "scenario: owner-writes\nahead: neither\n",
 }
 
 // newVersionDocsRegistry returns a family with the given declaration, whose 1.1.0 has a pass and a fail

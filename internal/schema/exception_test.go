@@ -35,7 +35,7 @@ func TestExceptionsApplyToOneDocument(t *testing.T) {
 
 	t.Run("the run it names is excepted", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		behaves(t, r, ruleEarlier)
 		writeExceptions(t, r, earlierFailDocException)
 
@@ -48,7 +48,7 @@ func TestExceptionsApplyToOneDocument(t *testing.T) {
 
 	t.Run("a run it names which doesn't fail is stale", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		behaves(t, r, ruleEarlier, ruleLater)
 		writeExceptions(t, r, earlierFailDocException)
 
@@ -60,7 +60,7 @@ func TestExceptionsApplyToOneDocument(t *testing.T) {
 
 	t.Run("a file which can't be used stops the run", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		writeExceptions(t, r, "exceptions: [")
 
 		_, err := NewTester(r).TestSpecificDocument(context.Background(), ruleEarlier, earlierFailDoc(r))
@@ -76,7 +76,7 @@ func TestInvalidExceptionsErrorUnwraps(t *testing.T) {
 
 func TestWatchMapsExceptionFileToItsVersion(t *testing.T) {
 	t.Parallel()
-	r := ruleRegistry(t, "scenario: provider-first\n")
+	r := ruleRegistry(t, "scenario: owner-writes\n")
 	w := NewWatcher(r, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	home := New(ruleLater, r).Path(HomeDir)

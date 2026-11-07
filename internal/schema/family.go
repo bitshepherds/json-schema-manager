@@ -35,8 +35,8 @@ type Role string
 
 // The scenarios a family can declare.
 const (
-	ScenarioProviderFirst    Scenario = "provider-first"
-	ScenarioConsumerFirst    Scenario = "consumer-first"
+	ScenarioOwnerWrites      Scenario = "owner-writes"
+	ScenarioOwnerReads       Scenario = "owner-reads"
 	ScenarioConfigFile       Scenario = "config-file"
 	ScenarioStoredOneSchema  Scenario = "stored-one-schema"
 	ScenarioStoredSelfNaming Scenario = "stored-self-naming"
@@ -103,11 +103,11 @@ type ScenarioInfo struct {
 // scenarios lists the scenarios in the docs' order. The facts are the table in ScenariosDoc.
 var scenarios = []ScenarioInfo{
 	{
-		ScenarioProviderFirst, "Provider moves first: events from a service, API responses",
+		ScenarioOwnerWrites, "Owner writes: events from a service, API responses, a CLI's JSON output",
 		FamilyFacts{AheadWriter, DocumentsLiveMoment, false, SchemaPrescribes},
 	},
 	{
-		ScenarioConsumerFirst, "Consumer moves first: API request bodies, partners submitting to one service",
+		ScenarioOwnerReads, "Owner reads: API request bodies, partners submitting to one service",
 		FamilyFacts{AheadReader, DocumentsLiveMoment, false, SchemaPrescribes},
 	},
 	{
@@ -127,7 +127,7 @@ var scenarios = []ScenarioInfo{
 		FamilyFacts{AheadEither, DocumentsLiveRetention, false, SchemaPrescribes},
 	},
 	{
-		ScenarioUncoordinated, "Uncoordinated parties: several providers on a bus, syncing mobile clients",
+		ScenarioUncoordinated, "Uncoordinated parties: several writers on a bus, syncing mobile clients",
 		FamilyFacts{AheadEither, "", false, SchemaPrescribes},
 	},
 	{
@@ -138,6 +138,14 @@ var scenarios = []ScenarioInfo{
 		ScenarioThirdPartyFormat, "A format someone else owns: a third party's API response or file format",
 		FamilyFacts{AheadReader, "", false, SchemaDescribes},
 	},
+}
+
+// renamedScenarios maps each name a scenario once had to the name it has now. Scenarios 1 and 2 were
+// named for who writes and who reads, and are now named for what the contract's owner does. A family
+// naming an old name is refused, with a message naming the new one: nothing reads them as aliases.
+var renamedScenarios = map[Scenario]Scenario{
+	"provider-first": ScenarioOwnerWrites,
+	"consumer-first": ScenarioOwnerReads,
 }
 
 // Scenarios returns the scenarios a family can declare, in the docs' order.
@@ -227,7 +235,10 @@ func ParseFamilyDeclaration(data []byte) (*FamilyDeclaration, error) {
 
 	if f.Scenario == "" {
 		return nil, fmt.Errorf("it must name a scenario, such as \"scenario: %s\". The scenarios are: %s",
-			ScenarioProviderFirst, ScenarioNames())
+			ScenarioOwnerWrites, ScenarioNames())
+	}
+	if renamed, ok := renamedScenarios[f.Scenario]; ok {
+		return nil, fmt.Errorf("scenario %s is now %s", f.Scenario, renamed)
 	}
 	info, ok := scenarioInfo(f.Scenario)
 	if !ok {

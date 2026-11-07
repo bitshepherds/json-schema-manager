@@ -77,19 +77,30 @@ func TestRuleTable(t *testing.T) {
 	noTightening := []string{"1.0.0 pass on 1.1.0", "1.1.0 fail on 1.0.0"}
 
 	for _, tc := range []struct {
+		name        string // the declaration, unless it says more
 		declaration string
 		want        []string
 	}{
-		{"scenario: provider-first\n", slices.Concat(own, noLoosening)},
-		{"scenario: consumer-first\n", slices.Concat(own, noTightening)},
-		{"scenario: uncoordinated\ndocumentsLive: moment\n", slices.Concat(own, noLoosening, noTightening)},
-		{"scenario: lock-step\n", own},
-		{"scenario: stored-self-naming\n", own},
-		{"scenario: provider-first\nreaderPicksSchema: true\n", own},
-		{"scenario: lock-step\nahead: writer\n", slices.Concat(own, noLoosening)},
-		{"scenario: third-party-format\ndocumentsLive: moment\n", slices.Concat(own, noTightening)},
+		{
+			"a family declaring owner-writes needs no loosening", "scenario: owner-writes\n",
+			slices.Concat(own, noLoosening),
+		},
+		{
+			"a family declaring owner-reads needs no tightening", "scenario: owner-reads\n",
+			slices.Concat(own, noTightening),
+		},
+		{"", "scenario: uncoordinated\ndocumentsLive: moment\n", slices.Concat(own, noLoosening, noTightening)},
+		{"", "scenario: lock-step\n", own},
+		{"", "scenario: stored-self-naming\n", own},
+		{"", "scenario: owner-writes\nreaderPicksSchema: true\n", own},
+		{"", "scenario: lock-step\nahead: writer\n", slices.Concat(own, noLoosening)},
+		{"", "scenario: third-party-format\ndocumentsLive: moment\n", slices.Concat(own, noTightening)},
 	} {
-		t.Run(tc.declaration, func(t *testing.T) {
+		name := tc.name
+		if name == "" {
+			name = tc.declaration
+		}
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			slices.Sort(tc.want)
 			for name, run := range map[string]func(tr *Tester) (*TestReport, error){
@@ -117,7 +128,7 @@ func TestRuleTable(t *testing.T) {
 
 func TestRuleFailureIsReportedUnderTheLaterVersion(t *testing.T) {
 	t.Parallel()
-	r := ruleRegistry(t, "scenario: provider-first\n")
+	r := ruleRegistry(t, "scenario: owner-writes\n")
 	behaves(t, r, ruleEarlier)
 
 	tr := NewTester(r)
@@ -142,7 +153,7 @@ func TestRuleFailureIsReportedUnderTheLaterVersion(t *testing.T) {
 
 func TestOwnFailureDoesNotSkipTheVersionsPairs(t *testing.T) {
 	t.Parallel()
-	r := ruleRegistry(t, "scenario: provider-first\n")
+	r := ruleRegistry(t, "scenario: owner-writes\n")
 	behaves(t, r, ruleLater)
 
 	tr := NewTester(r)
@@ -155,7 +166,7 @@ func TestOwnFailureDoesNotSkipTheVersionsPairs(t *testing.T) {
 
 func TestStopOnFirstFailureStopsAcrossVersions(t *testing.T) {
 	t.Parallel()
-	r := ruleRegistry(t, "scenario: provider-first\n")
+	r := ruleRegistry(t, "scenario: owner-writes\n")
 	behaves(t, r, ruleEarlier)
 	// Accepting own fail documents is the only other way to fail, so only the run on 1.0.0 fails
 	require.NoError(t, os.RemoveAll(filepath.Join(New(ruleLater, r).Path(HomeDir), "fail")))
@@ -171,7 +182,7 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 
 	t.Run("an undeclared family", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		require.NoError(t, os.Remove(filepath.Join(New(ruleEarlier, r).Path(FamilyDir), FamilyDeclarationFile)))
 		_, err := NewTester(r).TestSingleSchema(context.Background(), ruleEarlier)
 		require.ErrorAs(t, err, new(*MissingFamilyDeclarationError))
@@ -189,13 +200,13 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 
 	t.Run("another version's documents can't be read", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		createTestDocs(t, r, ruleLater, TestDocTypePass, map[string]string{"bad.json": `{`})
 		_, err := NewTester(r).TestSingleSchema(context.Background(), ruleEarlier)
 		require.Error(t, err)
 		require.ErrorAs(t, err, new(InvalidTestDocumentError))
 
-		r = ruleRegistry(t, "scenario: provider-first\n")
+		r = ruleRegistry(t, "scenario: owner-writes\n")
 		createTestDocs(t, r, ruleEarlier, TestDocTypeFail, map[string]string{"bad.json": `{`})
 		_, err = NewTester(r).TestSingleSchema(context.Background(), ruleLater)
 		require.Error(t, err)
@@ -204,7 +215,7 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 
 	t.Run("another version does not render", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		mc, ok := r.compiler.(*mockCompiler)
 		require.True(t, ok)
 		mc.CompileFunc = func(id string) (validator.Validator, error) {
@@ -222,7 +233,7 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 	t.Run("another version has no schema", func(t *testing.T) {
 		t.Parallel()
 		for _, k := range []Key{ruleEarlier, ruleLater} {
-			r := ruleRegistry(t, "scenario: provider-first\n")
+			r := ruleRegistry(t, "scenario: owner-writes\n")
 			other := ruleLater
 			if k == ruleLater {
 				other = ruleEarlier
@@ -239,7 +250,7 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 		// to count inherited documents, then again for the pairs, so failing on each call after that
 		// fails the next listing: the earlier versions for the pairs, then the later versions.
 		for _, succeeding := range []int{0, 3, 6} {
-			r := ruleRegistry(t, "scenario: provider-first\n")
+			r := ruleRegistry(t, "scenario: owner-writes\n")
 			_, err := r.GetSchemaByKey(ruleEarlier)
 			require.NoError(t, err)
 			calls := 0
@@ -278,7 +289,7 @@ func TestRuleErrorsStopTheRun(t *testing.T) {
 
 	t.Run("cancelled", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		_, err := NewTester(r).TestSingleSchema(ctx, ruleEarlier)
@@ -302,22 +313,22 @@ func TestTestSpecificDocumentRunsAcrossVersions(t *testing.T) {
 		want        []string
 	}{
 		{
-			"a later pass document, writer ahead", "scenario: provider-first\n",
+			"a later pass document, writer ahead", "scenario: owner-writes\n",
 			ruleLater, TestDocTypePass, "p.json",
 			[]string{"1.1.0 pass on 1.0.0", "1.1.0 pass on 1.1.0"},
 		},
 		{
-			"an earlier fail document, writer ahead", "scenario: provider-first\n",
+			"an earlier fail document, writer ahead", "scenario: owner-writes\n",
 			ruleEarlier, TestDocTypeFail, "f.json",
 			[]string{"1.0.0 fail on 1.0.0", "1.0.0 fail on 1.1.0"},
 		},
 		{
-			"an earlier pass document, writer ahead", "scenario: provider-first\n",
+			"an earlier pass document, writer ahead", "scenario: owner-writes\n",
 			ruleEarlier, TestDocTypePass, "p.json",
 			[]string{"1.0.0 pass on 1.0.0"},
 		},
 		{
-			"a later fail document, reader ahead", "scenario: consumer-first\n",
+			"a later fail document, reader ahead", "scenario: owner-reads\n",
 			ruleLater, TestDocTypeFail, "f.json",
 			[]string{"1.1.0 fail on 1.0.0", "1.1.0 fail on 1.1.0"},
 		},
@@ -340,7 +351,7 @@ func TestTestSpecificDocumentRunsAcrossVersions(t *testing.T) {
 
 	t.Run("a failure across versions stops the run if asked", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		behaves(t, r, ruleEarlier)
 		report, err := NewTester(r).TestSpecificDocument(context.Background(), ruleLater,
 			doc(r, ruleLater, TestDocTypePass, "p.json"))
@@ -350,7 +361,7 @@ func TestTestSpecificDocumentRunsAcrossVersions(t *testing.T) {
 
 	t.Run("an undeclared family", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		require.NoError(t, os.Remove(filepath.Join(New(ruleLater, r).Path(FamilyDir), FamilyDeclarationFile)))
 		_, err := NewTester(r).TestSpecificDocument(context.Background(), ruleLater,
 			doc(r, ruleLater, TestDocTypePass, "p.json"))
@@ -359,7 +370,7 @@ func TestTestSpecificDocumentRunsAcrossVersions(t *testing.T) {
 
 	t.Run("another version has no schema", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		path := doc(r, ruleLater, TestDocTypePass, "p.json")
 		require.NoError(t, os.Remove(New(ruleEarlier, r).Path(FilePath)))
 		_, err := NewTester(r).TestSpecificDocument(context.Background(), ruleLater, path)
@@ -368,7 +379,7 @@ func TestTestSpecificDocumentRunsAcrossVersions(t *testing.T) {
 
 	t.Run("cancelled while running", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		ctx, cancel := context.WithCancel(context.Background())
 		mc, ok := r.compiler.(*mockCompiler)
 		require.True(t, ok)
@@ -386,7 +397,7 @@ func TestTestSpecificDocumentRunsAcrossVersions(t *testing.T) {
 func TestRunsOnLaterVersions(t *testing.T) {
 	t.Parallel()
 
-	const provider = "scenario: provider-first\n"
+	const ownerWrites = "scenario: owner-writes\n"
 
 	run := func(r *Registry, k Key, rule Rule) ([]Spec, error) {
 		return NewTester(r).RunsOnLaterVersions(context.Background(), k, rule)
@@ -394,7 +405,7 @@ func TestRunsOnLaterVersions(t *testing.T) {
 
 	t.Run("runs the rule's documents with each later version, leaving the outcome on each run", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, provider)
+		r := ruleRegistry(t, ownerWrites)
 		behaves(t, r, ruleEarlier)
 		runs, err := run(r, ruleEarlier, RuleNoLoosening)
 		require.NoError(t, err)
@@ -406,14 +417,14 @@ func TestRunsOnLaterVersions(t *testing.T) {
 
 	t.Run("a rule the family doesn't hold has no runs", func(t *testing.T) {
 		t.Parallel()
-		runs, err := run(ruleRegistry(t, provider), ruleEarlier, RuleNoTightening)
+		runs, err := run(ruleRegistry(t, ownerWrites), ruleEarlier, RuleNoTightening)
 		require.NoError(t, err)
 		assert.Empty(t, runs)
 	})
 
 	t.Run("no later version", func(t *testing.T) {
 		t.Parallel()
-		runs, err := run(ruleRegistry(t, provider), ruleLater, RuleNoLoosening)
+		runs, err := run(ruleRegistry(t, ownerWrites), ruleLater, RuleNoLoosening)
 		require.NoError(t, err)
 		assert.Empty(t, runs)
 	})
@@ -426,14 +437,14 @@ func TestRunsOnLaterVersions(t *testing.T) {
 		_, err = run(ruleRegistry(t, "scenario: nonsense\n"), ruleEarlier, RuleNoLoosening)
 		require.ErrorAs(t, err, new(*InvalidFamilyDeclarationError))
 
-		r := ruleRegistry(t, provider)
+		r := ruleRegistry(t, ownerWrites)
 		mc, ok := r.compiler.(*mockCompiler)
 		require.True(t, ok)
 		mc.CompileFunc = func(_ string) (validator.Validator, error) { return nil, errors.New("render failure") }
 		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.ErrorContains(t, err, "render failure")
 
-		r = ruleRegistry(t, provider)
+		r = ruleRegistry(t, ownerWrites)
 		mc, ok = r.compiler.(*mockCompiler)
 		require.True(t, ok)
 		mc.CompileFunc = func(id string) (validator.Validator, error) {
@@ -445,12 +456,12 @@ func TestRunsOnLaterVersions(t *testing.T) {
 		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.ErrorContains(t, err, "later render failure")
 
-		r = ruleRegistry(t, provider)
+		r = ruleRegistry(t, ownerWrites)
 		require.NoError(t, os.Remove(New(ruleLater, r).Path(FilePath)))
 		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.Error(t, err, "a later version with no schema")
 
-		r = ruleRegistry(t, provider)
+		r = ruleRegistry(t, ownerWrites)
 		_, sErr := r.GetSchemaByKey(ruleEarlier)
 		require.NoError(t, sErr)
 		r.pathResolver = &mockPathResolver{getUintSubdirectories: func(string) ([]uint64, error) {
@@ -459,12 +470,12 @@ func TestRunsOnLaterVersions(t *testing.T) {
 		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.ErrorContains(t, err, "listing error")
 
-		r = ruleRegistry(t, provider)
+		r = ruleRegistry(t, ownerWrites)
 		createTestDocs(t, r, ruleLater, TestDocTypePass, map[string]string{"bad.json": `{`})
 		_, err = run(r, ruleEarlier, RuleNoLoosening)
 		require.Error(t, err, "a later document which isn't JSON")
 
-		r = ruleRegistry(t, provider)
+		r = ruleRegistry(t, ownerWrites)
 		require.NoError(t, os.WriteFile(filepath.Join(New(ruleLater, r).Path(HomeDir), ExceptionsFile),
 			[]byte("exceptions: ["), 0o600))
 		_, err = run(r, ruleEarlier, RuleNoLoosening)
@@ -472,7 +483,7 @@ func TestRunsOnLaterVersions(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err = NewTester(ruleRegistry(t, provider)).RunsOnLaterVersions(ctx, ruleEarlier, RuleNoLoosening)
+		_, err = NewTester(ruleRegistry(t, ownerWrites)).RunsOnLaterVersions(ctx, ruleEarlier, RuleNoLoosening)
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -492,13 +503,13 @@ func TestRuleBrokenErrorSaysWhatItMeans(t *testing.T) {
 	}{
 		{
 			"a loosening", RuleNoLoosening, TestDocTypePass,
-			declared(ScenarioProviderFirst, DocumentsLiveMoment, SchemaPrescribes),
-			[]string{"no-loosening broken", "was rejected by", "provider-first", "a writer on", "new major version"},
+			declared(ScenarioOwnerWrites, DocumentsLiveMoment, SchemaPrescribes),
+			[]string{"no-loosening broken", "was rejected by", "owner-writes", "a writer on", "new major version"},
 		},
 		{
 			"a tightening of documents read and gone", RuleNoTightening, TestDocTypePass,
-			declared(ScenarioConsumerFirst, DocumentsLiveMoment, SchemaPrescribes),
-			[]string{"no-tightening broken", "consumer-first", "a writer still on", "new major version"},
+			declared(ScenarioOwnerReads, DocumentsLiveMoment, SchemaPrescribes),
+			[]string{"no-tightening broken", "owner-reads", "a writer still on", "new major version"},
 		},
 		{
 			"a tightening of documents kept", RuleNoTightening, TestDocTypeFail,
@@ -586,7 +597,7 @@ func TestSummaryCountsInheritedDocuments(t *testing.T) {
 
 	t.Run("an earlier version's documents count, and its own stay apart", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		report, err := NewTester(r).TestSingleSchema(context.Background(), ruleLater)
 		require.NoError(t, err)
 		summary := report.Summaries[ruleLater]
@@ -611,7 +622,7 @@ func TestSummaryCountsInheritedDocuments(t *testing.T) {
 
 	t.Run("an earlier document which can't be read stops the run", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		createTestDocs(t, r, ruleEarlier, TestDocTypePass, map[string]string{"bad.json": `{`})
 		_, err := NewTester(r).TestSingleSchema(context.Background(), ruleLater)
 		require.Error(t, err)
@@ -619,7 +630,7 @@ func TestSummaryCountsInheritedDocuments(t *testing.T) {
 
 	t.Run("an earlier version which can't be loaded stops the run", func(t *testing.T) {
 		t.Parallel()
-		r := ruleRegistry(t, "scenario: provider-first\n")
+		r := ruleRegistry(t, "scenario: owner-writes\n")
 		require.NoError(t, os.Remove(New(ruleEarlier, r).Path(FilePath)))
 		_, err := NewTester(r).TestSingleSchema(context.Background(), ruleLater)
 		require.Error(t, err)

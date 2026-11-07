@@ -171,7 +171,7 @@ environments:
 			[]byte(`{"type":"object"}`), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(homeDir, "fail", "accepted.json"), []byte(`{}`), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(regDir, "domain", "family", schema.FamilyDeclarationFile),
-			[]byte("scenario: provider-first"), 0o600))
+			[]byte("scenario: owner-writes"), 0o600))
 
 		var stdout, stderr bytes.Buffer
 		err := Run(context.Background(), []string{"jsm", "validate", "domain_family_1_0_0"}, &stdout, &stderr, env)
@@ -195,7 +195,7 @@ environments:
 		require.NoError(t, os.WriteFile(filepath.Join(regDir, "domain", "family", "1", "0", "0",
 			"domain_family_1_0_0.schema.json"), []byte(`{"type":"object"}`), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(regDir, "domain", "family", schema.FamilyDeclarationFile),
-			[]byte("scenario: provider-first"), 0o600))
+			[]byte("scenario: owner-writes"), 0o600))
 
 		for _, tt := range []struct {
 			cause    error

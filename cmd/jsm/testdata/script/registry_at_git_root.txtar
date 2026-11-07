@@ -50,4 +50,4 @@ environments:
 -- fail.json --
 {}
 -- family-decl.yml --
-scenario: provider-first
+scenario: owner-writes

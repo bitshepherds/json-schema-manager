@@ -222,8 +222,8 @@ func TestCheckPartyNoticeExitsZeroEvenWhenStrict(t *testing.T) {
 	out, err := f.check("text", true)
 	require.NoError(t, err)
 	assert.Contains(t, out, "[NOTICE] shop_order_1_0_0\n")
-	assert.Contains(t, out, "This family is declared lock-step: both sides move together, "+
-		"so no later version can harm a reader on shop_order_1_0_0.")
+	assert.Contains(t, out, "This family is declared lock-step: one team owns both sides, and they move together, "+
+		"in one release, so no later version can harm a reader on shop_order_1_0_0.")
 	assert.Contains(t, out, "0 passed, 0 failed, 0 warnings, 1 notice\n")
 
 	out, err = f.check("json", true)
@@ -265,7 +265,7 @@ func TestCheckPartyNewerMajorAdviceFollowsTheRole(t *testing.T) {
 
 	f := newPartyFixture(t, `{}`)
 	f.addVersion(t, "shop_order_2_0_0", `{}`)
-	f.declare(t, "scenario: consumer-first\n")
+	f.declare(t, "scenario: owner-reads\n")
 	require.NoError(t, os.WriteFile(f.manifest, []byte("role: writer\nschemas: [shop_order_1_0_0]\n"), 0o600))
 
 	out, err := f.check("text", false)

@@ -106,7 +106,7 @@ environments:
 	if err := os.MkdirAll(familyDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	declaration := []byte("scenario: provider-first\n")
+	declaration := []byte("scenario: owner-writes\n")
 	if err := os.WriteFile(filepath.Join(familyDir, "family.yml"), declaration, 0o600); err != nil {
 		t.Fatal(err)
 	}
