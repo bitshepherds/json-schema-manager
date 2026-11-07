@@ -2,6 +2,7 @@ package schema
 
 import (
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -60,6 +61,15 @@ type TestReport struct {
 
 	// Summaries describe, for each schema tested against its own documents, how well they cover it.
 	Summaries map[Key]*Summary
+
+	// NotTested counts the schemas in the run's scope which it didn't test, because it stopped at the
+	// first failure. The report holds nothing for them.
+	NotTested int
+}
+
+// StoppedEarly reports whether the run stopped at the first failure before testing every schema.
+func (r *TestReport) StoppedEarly() bool {
+	return r.NotTested > 0
 }
 
 // Summary describes how well a schema's test documents cover it.
@@ -160,6 +170,21 @@ func NewTestReport() *TestReport {
 		AcknowledgedChanges: make(map[Key][]AcknowledgedChange),
 		Summaries:           make(map[Key]*Summary),
 	}
+}
+
+// dropUnless takes out of the report everything it holds for each schema for which keep is false.
+func (r *TestReport) dropUnless(keep func(Key) bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	drop := func(k Key) bool { return !keep(k) }
+	maps.DeleteFunc(r.PassedTests, func(k Key, _ []Spec) bool { return drop(k) })
+	maps.DeleteFunc(r.FailedTests, func(k Key, _ []Spec) bool { return drop(k) })
+	maps.DeleteFunc(r.ExceptedTests, func(k Key, _ []Spec) bool { return drop(k) })
+	maps.DeleteFunc(r.StaleExceptions, func(k Key, _ []StaleException) bool { return drop(k) })
+	maps.DeleteFunc(r.MissingMigrations, func(k Key, _ MissingMigration) bool { return drop(k) })
+	maps.DeleteFunc(r.UnexercisedChanges, func(k Key, _ []UnexercisedChange) bool { return drop(k) })
+	maps.DeleteFunc(r.AcknowledgedChanges, func(k Key, _ []AcknowledgedChange) bool { return drop(k) })
+	maps.DeleteFunc(r.Summaries, func(k Key, _ *Summary) bool { return drop(k) })
 }
 
 // AddSummary adds the summary of the schema with the given key's test documents.

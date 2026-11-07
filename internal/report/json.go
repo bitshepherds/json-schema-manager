@@ -152,7 +152,10 @@ type jsonOutput struct {
 		TotalMigrations  int `json:"totalMissingMigrations"`
 		TotalUnexercised int `json:"totalUnexercised"`
 		TotalMissingDocs int `json:"totalMissingDocuments"`
+		TotalNotTested   int `json:"totalNotTested"` // schemas not tested, as the run stopped at the first failure
 	} `json:"stats"`
+	// StoppedEarly says the run stopped at the first failure, so results leaves out the schemas it didn't test.
+	StoppedEarly        bool                             `json:"stoppedEarly"`
 	Results             map[schema.Key]jsonSchemaResults `json:"results"`
 	UnexercisedChanges  []jsonUnexercisedChange          `json:"unexercisedChanges"`
 	AcknowledgedChanges []jsonAcknowledgedChange         `json:"acknowledgedChanges"`
@@ -181,6 +184,8 @@ func (jr *JSONReporter) Write(w io.Writer, r *schema.TestReport) error {
 		out.Results[k] = res
 	}
 	out.Stats.TotalMissingDocs = r.MissingDocuments()
+	out.Stats.TotalNotTested = r.NotTested
+	out.StoppedEarly = r.StoppedEarly()
 
 	out.UnexercisedChanges = unexercisedChanges(r)
 	out.AcknowledgedChanges = acknowledgedChanges(r)

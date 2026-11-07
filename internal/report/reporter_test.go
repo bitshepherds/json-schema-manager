@@ -479,3 +479,36 @@ func TestReportersShowNarrowingNeedsFailDocument(t *testing.T) {
 	assert.Contains(t, js.String(), `"later": "d_f_1_2_0"`)
 	assert.Contains(t, js.String(), `"direction": "narrows"`)
 }
+
+func TestJSONReporter_StoppedEarly(t *testing.T) {
+	t.Parallel()
+
+	write := func(r *schema.TestReport) map[string]any {
+		t.Helper()
+		var buf bytes.Buffer
+		require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+		return out
+	}
+
+	r := schema.NewTestReport()
+	r.AddFailedTest("d_b_1_0_0", &schema.Spec{
+		TestInfo:    schema.TestInfo{Path: "bad.json"},
+		TestDocType: schema.TestDocTypePass,
+		Err:         assert.AnError,
+	})
+	r.NotTested = 2
+	out := write(r)
+	assert.Equal(t, true, out["stoppedEarly"])
+	stats, ok := out["stats"].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 2, stats["totalNotTested"], 0)
+	results, ok := out["results"].(map[string]any)
+	require.True(t, ok)
+	assert.Len(t, results, 1, "only the schema which ran is listed")
+	assert.Contains(t, results, "d_b_1_0_0")
+
+	out = write(schema.NewTestReport())
+	assert.Equal(t, false, out["stoppedEarly"])
+}

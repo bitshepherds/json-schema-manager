@@ -150,8 +150,19 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	if err != nil {
 		return err
 	}
+	tr.writeStopped(w, r)
 	_, err = fmt.Fprintf(w, "%s\n", divider)
 	return err
+}
+
+// writeStopped says how many schemas the run didn't test, if it stopped at the first failure before
+// testing them all.
+func (tr *TextReporter) writeStopped(w io.Writer, r *schema.TestReport) {
+	if r.StoppedEarly() {
+		_, _ = fmt.Fprintln(w, tr.cs(colYellow, fmt.Sprintf(
+			"Stopped at the first failure: %d %s not tested. Run with -C to test them all.",
+			r.NotTested, plural(r.NotTested, "schema"))))
+	}
 }
 
 // countsSuffix says how a schema's runs went, leaving out excepted runs if there are none.

@@ -287,7 +287,7 @@ The points are the properties a schema declares, its enum values, the types of a
 
 The warnings, for unexercised changes, for missing documents and for `fail` documents with several reasons, do not change the exit code unless you add `--strict`, which makes `jsm validate` exit `1` on any warning.
 
-By default, `jsm validate` stops at the first failing test. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, `--output junit` for a JUnit XML report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
+By default, `jsm validate` stops at the first failing test. The report then lists only the schemas it finished testing, and the one that failed, and ends by saying how many it didn't test, as `Stopped at the first failure: 7 schemas not tested.` A JSON report gives that count as `totalNotTested`, and sets `stoppedEarly`. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, `--output junit` for a JUnit XML report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
 
 ### Rendering and building schemas
 

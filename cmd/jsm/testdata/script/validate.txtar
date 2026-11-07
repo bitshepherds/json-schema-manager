@@ -49,6 +49,30 @@ stdout '^\[PASS\] shop_order_1_0_0.schema.json \(runs: 2 passed, 0 failed\)$'
 stdout '^\[PASS\] shop_order_1_0_1.schema.json \(runs: 4 passed, 0 failed\)$'
 stdout '^Test summary: 6 runs passed, 0 failed$'
 
+# Without -C, validate stops at the first failure, and reports a schema it never ran as not tested, never
+# as passed (#155). With one worker, shop/a passes, shop/b fails, and shop/c and shop/d never run.
+env JSM_REGISTRY_ROOT_DIR=stopped
+env GOMAXPROCS=1
+! exec jsm validate all -c
+stdout '^\[PASS\] shop_a_1_0_0.schema.json \(runs: 2 passed, 0 failed\)$'
+stdout '^\[FAIL\] shop_b_1_0_0.schema.json '
+! stdout 'shop_c_1_0_0'
+! stdout 'shop_d_1_0_0'
+stdout '^Stopped at the first failure: 2 schemas not tested. Run with -C to test them all.$'
+! exec jsm validate all -c -o json
+stdout '"stoppedEarly": true'
+stdout '"totalNotTested": 2'
+! stdout 'shop_c_1_0_0'
+! exec jsm validate all -c -o junit
+! stdout 'shop_c_1_0_0'
+
+# With -C, every schema is tested, and none is left out
+! exec jsm validate all -c -C
+stdout '^\[PASS\] shop_c_1_0_0.schema.json \(runs: 2 passed, 0 failed\)$'
+stdout '^\[PASS\] shop_d_1_0_0.schema.json \(runs: 2 passed, 0 failed\)$'
+! stdout 'Stopped at the first failure'
+env GOMAXPROCS=
+
 -- ok/json-schema-manager-config.yml --
 environments:
   production:
@@ -156,3 +180,65 @@ scenario: owner-writes
 {"status": "paid"}
 -- runs/shop/order/1/0/1/fail/missing.json --
 {}
+-- stopped/json-schema-manager-config.yml --
+environments:
+  production:
+    privateUrlRoot: "https://json-schemas.internal.myorg.io/"
+    publicUrlRoot: "https://json-schemas.myorg.io/"
+    isProduction: true
+-- stopped/shop/a/family.yml --
+scenario: owner-writes
+-- stopped/shop/a/1/0/0/shop_a_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- stopped/shop/a/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- stopped/shop/a/1/0/0/fail/lost.json --
+{"status": "lost"}
+-- stopped/shop/b/family.yml --
+scenario: owner-writes
+-- stopped/shop/b/1/0/0/shop_b_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- stopped/shop/b/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- stopped/shop/b/1/0/0/fail/lost.json --
+{"status": "paid"}
+-- stopped/shop/c/family.yml --
+scenario: owner-writes
+-- stopped/shop/c/1/0/0/shop_c_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- stopped/shop/c/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- stopped/shop/c/1/0/0/fail/lost.json --
+{"status": "lost"}
+-- stopped/shop/d/family.yml --
+scenario: owner-writes
+-- stopped/shop/d/1/0/0/shop_d_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": { "status": { "enum": ["placed", "paid"] } },
+  "required": ["status"]
+}
+-- stopped/shop/d/1/0/0/pass/placed.json --
+{"status": "placed"}
+-- stopped/shop/d/1/0/0/fail/lost.json --
+{"status": "lost"}

@@ -37,6 +37,10 @@ type Tester struct {
 	comparedPairs map[versionPair]bool
 	// listed stands in for the exception files of these versions.
 	listed map[Key][]Exception
+	// finished are the versions whose runs all finished, in TestFoundSchemas.
+	finished map[Key]bool
+	// stopped says a run of TestFoundSchemas stopped at a failure.
+	stopped bool
 }
 
 // NewTester creates a new tester for the given registry.
@@ -48,6 +52,7 @@ func NewTester(r *Registry) *Tester {
 		numWorkers:       runtime.GOMAXPROCS(0),
 		ranPairs:         make(map[versionPair]bool),
 		comparedPairs:    make(map[versionPair]bool),
+		finished:         make(map[Key]bool),
 	}
 }
 
@@ -196,8 +201,32 @@ func (t *Tester) TestFoundSchemas(ctx context.Context, ss SearchScope) (*TestRep
 	if ctx.Err() != nil {
 		return t.report, ctx.Err()
 	}
+	if finalErr != nil {
+		return t.report, finalErr
+	}
+	if t.stopped {
+		return t.report, t.dropUntested(ctx, searcher)
+	}
+	return t.report, nil
+}
 
-	return t.report, finalErr
+// dropUntested takes out of the report every schema whose runs didn't all finish when the run stopped
+// at a failure, but for one with a failure, and counts those of the searcher's schemas it took out, or
+// never reached, as not tested. A schema cut short would otherwise show as passed.
+func (t *Tester) dropUntested(ctx context.Context, searcher *Searcher) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	keep := func(k Key) bool { return t.finished[k] || len(t.report.FailedTests[k]) > 0 }
+	for res := range searcher.Schemas(ctx) {
+		if res.Err != nil {
+			return res.Err
+		}
+		if !keep(res.Key) {
+			t.report.NotTested++
+		}
+	}
+	t.report.dropUnless(keep)
+	return nil
 }
 
 func (t *Tester) processSearchResult(
@@ -230,7 +259,12 @@ func (t *Tester) processSearchResult(
 		defer wg.Done()
 		defer func() { <-sem }() // Release slot when finished
 
-		if tErr := t.testVersion(ctx, k); tErr != nil {
+		tErr := t.testVersion(ctx, k)
+		t.mu.Lock()
+		t.finished[k] = tErr == nil
+		t.stopped = t.stopped || errors.Is(tErr, ErrStopTesting)
+		t.mu.Unlock()
+		if tErr != nil {
 			errOnce.Do(func() {
 				if !errors.Is(tErr, ErrStopTesting) {
 					*finalErr = tErr
