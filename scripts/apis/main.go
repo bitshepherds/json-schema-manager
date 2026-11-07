@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -92,11 +93,22 @@ func expectRejected(b broken, name string, args ...string) {
 	if err := cmd.Run(); err == nil {
 		fail(fmt.Sprintf("%s accepted the broken example %s", name, b.file))
 	}
-	if !strings.Contains(out.String(), b.rule) {
+	if !reportsRule(out.String(), b.rule) {
 		fail(fmt.Sprintf("%s rejected %s, but didn't report %q", name, b.file, b.rule))
 	}
 	fmt.Printf("✅ %s was rejected, as expected\n", b.file)
 }
+
+// reportsRule reports whether a validator's output names the rule. Redocly colours the rule name
+// when CI and GITHUB_ACTIONS are set, on Windows, or at a terminal, which splits the text with
+// escape sequences, so they are removed before matching.
+func reportsRule(out, rule string) bool {
+	return strings.Contains(ansiEscape.ReplaceAllString(out, ""), rule)
+}
+
+// ansiEscape matches a terminal escape sequence: a CSI sequence such as a colour, or an OSC
+// sequence such as a hyperlink.
+var ansiEscape = regexp.MustCompile(`\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
 
 func check(err error) {
 	if err != nil {
