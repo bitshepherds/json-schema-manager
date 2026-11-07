@@ -2,7 +2,8 @@
 // that the AsyncAPI and OpenAPI examples in examples/apis, which refer to them, are valid. It
 // also checks that each validator rejects the deliberately broken examples in
 // scripts/apis/testdata, so an upgrade which stops a validator catching mistakes fails the check.
-// It needs Node.js.
+// It needs Bun, and runs the validators with bunx --bun, so they run on Bun's runtime even where
+// Node.js is installed.
 package main
 
 import (
@@ -30,8 +31,8 @@ type broken struct {
 }
 
 func main() {
-	if _, err := exec.LookPath("npx"); err != nil {
-		fail("npx not found: install Node.js to check the API examples")
+	if _, err := exec.LookPath("bunx"); err != nil {
+		fail("bunx not found: install Bun (make setup) to check the API examples")
 	}
 	repoRoot, err := os.Getwd()
 	check(err)
@@ -43,24 +44,24 @@ func main() {
 	// build-dist writes to dist/ at the root of the git repository, where the examples refer
 	run(jsm, "-r", filepath.Join(repoRoot, "demo-registry"), "build-dist", "prod", "--all", "--collapse")
 
-	asyncapiArgs := []string{"--yes", asyncapi, "validate"}
-	redoclyArgs := []string{"--yes", redocly, "lint", "--extends=minimal"}
+	asyncapiArgs := []string{"--bun", asyncapi, "validate"}
+	redoclyArgs := []string{"--bun", redocly, "lint", "--extends=minimal"}
 	examples := filepath.Join("examples", "apis")
-	run("npx", append(asyncapiArgs, filepath.Join(examples, "customer-events.asyncapi.yaml"))...)
-	run("npx", append(redoclyArgs, filepath.Join(examples, "customer.openapi.yaml"))...)
+	run("bunx", append(asyncapiArgs, filepath.Join(examples, "customer-events.asyncapi.yaml"))...)
+	run("bunx", append(redoclyArgs, filepath.Join(examples, "customer.openapi.yaml"))...)
 
 	testdata := filepath.Join("scripts", "apis", "testdata")
 	for _, b := range []broken{
 		{filepath.Join(testdata, "invalid-document.asyncapi.yaml"), "asyncapi-document-resolved"},
 		{filepath.Join(testdata, "missing-schema.asyncapi.yaml"), "invalid-ref"},
 	} {
-		expectRejected(b, "npx", append(asyncapiArgs, b.file)...)
+		expectRejected(b, "bunx", append(asyncapiArgs, b.file)...)
 	}
 	for _, b := range []broken{
 		{filepath.Join(testdata, "invalid-document.openapi.yaml"), "the struct rule"},
 		{filepath.Join(testdata, "missing-schema.openapi.yaml"), "the no-unresolved-refs rule"},
 	} {
-		expectRejected(b, "npx", append(redoclyArgs, b.file)...)
+		expectRejected(b, "bunx", append(redoclyArgs, b.file)...)
 	}
 
 	_ = os.RemoveAll(work)

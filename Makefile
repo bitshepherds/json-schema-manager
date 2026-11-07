@@ -56,11 +56,11 @@ fmt:
 docs:
 	@go run scripts/docs/main.go
 
-# Check that the commands in user-docs/generating-models.md generate models which compile (needs Node.js)
+# Check that the commands in user-docs/generating-models.md generate models which compile (needs Bun)
 check-models:
 	@go run scripts/models/main.go
 
-# Check that the AsyncAPI and OpenAPI examples in examples/apis, which refer to JSM schemas, are valid, and that the validators reject the broken examples in scripts/apis/testdata (needs Node.js)
+# Check that the AsyncAPI and OpenAPI examples in examples/apis, which refer to JSM schemas, are valid, and that the validators reject the broken examples in scripts/apis/testdata (needs Bun)
 check-apis:
 	@go run scripts/apis/main.go
 

@@ -34,7 +34,7 @@ Welcome! This document provides guidelines for developing and contributing to th
     - **Windows**: Run `winget install -e --id GoLang.Go` or download from [go.dev/dl](https://go.dev/dl/).
     - **Note on Race Detection (Windows)**: The `test-race` command on Windows requires a C compiler (e.g., Mingw-w64). If not present, `win-make.ps1` will fallback to standard tests.
 
-- **mise**: Installs the other development tools (golangci-lint, gofumpt, gotestsum, goreleaser, lefthook and Node.js) at the versions in `mise.toml`, which CI uses too.
+- **mise**: Installs the other development tools (golangci-lint, gofumpt, gotestsum, goreleaser, lefthook and Bun) at the versions in `mise.toml`, which CI uses too.
     - Install it by following [mise.jdx.dev/getting-started](https://mise.jdx.dev/getting-started.html). On Windows, run `winget install jdx.mise`.
     - [Activate it in your shell](https://mise.jdx.dev/getting-started.html#activate-mise), so the tools are on your `PATH` in this repository.
     - Run `mise trust` in the repository once, so mise reads its `mise.toml`.
@@ -149,8 +149,8 @@ make test-race
 | `make test-cover`    | Runs tests with coverage report.                                                          |
 | `make cover-html`    | Opens test coverage report in browser.                                                    |
 | `make lint`          | Runs the linter.                                                                          |
-| `make check-models`  | Checks that the commands in `user-docs/generating-models.md` generate models which compile (needs Node.js). |
-| `make check-apis`    | Checks that the AsyncAPI and OpenAPI examples in `examples/apis` are valid, and that the validators reject the deliberately broken ones in `scripts/apis/testdata` (needs Node.js). |
+| `make check-models`  | Checks that the commands in `user-docs/generating-models.md` generate models which compile (needs Bun). |
+| `make check-apis`    | Checks that the AsyncAPI and OpenAPI examples in `examples/apis` are valid, and that the validators reject the deliberately broken ones in `scripts/apis/testdata` (needs Bun). |
 | `make docs`          | Regenerates the command reference in `user-docs/reference` after a command or flag change. |
 | `make snapshot`      | Runs a GoReleaser snapshot build to verify release configuration locally.                 |
 | `make release-check` | Validates the GoReleaser configuration file.                                              |

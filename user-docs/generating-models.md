@@ -86,4 +86,4 @@ Do not set `"additionalProperties": false` just to get tighter types, since in a
 
 ## How this guide is tested
 
-`make check-models` runs this guide's commands against the [demo registry](../demo-registry), whose customer schema refers to two other schemas, and checks that the generated TypeScript compiles with `tsc --strict`, and the generated Go with `go vet`. It needs Node.js.
+`make check-models` runs this guide's commands against the [demo registry](../demo-registry), whose customer schema refers to two other schemas, and checks that the generated TypeScript compiles with `tsc --strict`, and the generated Go with `go vet`. It runs them with `bunx --bun` in place of `npx`, so it needs Bun rather than Node.js.
