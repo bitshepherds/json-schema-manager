@@ -56,6 +56,8 @@ func TestHelpSaysWhatTheCommandDoes(t *testing.T) {
 		"validate fails a major with no migration statement": {NewValidateCmd(&MockManager{}), []string{
 			"migration statement", "writer-ahead family an inherited pass document doesn't run on the later version",
 			"reader-ahead family nor does an inherited fail document",
+			"a pass document the later version rejects shows a narrowing",
+			"a fail document it accepts shows a widening",
 		}},
 		"create-schema gives the three declaration changes": {NewCreateSchemaCmd(&MockManager{}), []string{
 			"moving oldestLive forward", "adding or changing a migration statement",

@@ -259,7 +259,7 @@ Add the document. If the rule then fails, the failure says what to do. If no doc
 
 **A `fail` document should hold one fault.** Where a family runs documents across versions, a document rejected for several independent reasons can hide a change to one of them, so `validate` warns, naming the locations. An `anyOf` or `oneOf` counts once however its arms fail.
 
-`jsm diff <older> <newer>` lists every structural change between two versions, in any family. It names the documents which show each, and notes where the family needs one and none does, as `no pass document uses it` or `no fail document shows it`. It doesn't read `compat-exceptions.yml`, so that note stays on a change an entry acknowledges, which `validate` no longer warns about.
+`jsm diff <older> <newer>` lists every structural change between two versions, in any family. It names the documents which show each, and notes where the family needs one and none does, as `no pass document uses it` or `no fail document shows it`. It doesn't read `compat-exceptions.yml`, so that note stays on a change an entry acknowledges, which `validate` no longer warns about. Nor does it run documents across versions, so the note also stays on a change one of the earlier version's own documents shows, by the later version's verdict on it, which `validate` counts.
 
 **What the comparison can tell.** It's structural, and it doesn't try to prove one schema contains another.
 
@@ -275,21 +275,24 @@ Documents count if they are in the version's own directory, or inherited from an
 
 Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions. So an `owner-writes` `1.1.0` with no `pass` document of its own passes `--strict`, with nothing showing what it accepts. In a reader-ahead family, the same goes for earlier `fail` documents, so an `owner-reads` `1.1.0` with no `fail` document of its own passes `--strict`, with nothing showing what it rejects. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
 
-With `--verbose`, the report also shows how many documents a schema inherits, how much of the schema its own `pass` documents reach, and which keywords reject each of its own `fail` documents:
+With `--verbose`, the report also lists each run that passed, and shows how many documents a schema inherits, how much of the schema its own `pass` documents reach, and which keywords reject each of its own `fail` documents:
 
 ```
 [PASS] shop_order_1_0_0.schema.json (runs: 3 passed, 0 failed)
+  ✓ shop/order/1/0/0/pass/paid.json (passed)
+  ✓ shop/order/1/0/0/pass/placed.json (passed)
+  ✓ shop/order/1/0/0/fail/lost.json (failed, as expected)
   coverage: 3 of 5 points reached by pass documents
     - /: property note
     - /status: enum "refunded"
-  .../fail/lost.json is rejected by #/properties/status/enum
+  shop/order/1/0/0/fail/lost.json is rejected by #/properties/status/enum
 ```
 
 The points are the properties a schema declares, its enum values, the types of a `type` list, its `anyOf` and `oneOf` subschemas, and the two paths through each `if`. The JSON report (`--output json`) always includes this, under each schema's `summary`, with `inheritedPassDocuments` and `inheritedFailDocuments`.
 
 The warnings, for unexercised changes, for missing documents and for `fail` documents with several reasons, do not change the exit code unless you add `--strict`, which makes `jsm validate` exit `1` on any warning.
 
-By default, `jsm validate` stops at the first failing test. The report then lists only the schemas it finished testing, and the one that failed, and ends by saying how many it didn't test, as `Stopped at the first failure: 7 schemas not tested.` What a finished schema found still shows, even when it belongs to a schema the run didn't test: a stale exception or a missing migration statement shows under that schema, on a line marked `(not tested)`, and an unexercised change shows with the other warnings. A JSON report gives that count as `totalNotTested`, and sets `stoppedEarly`. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, `--output junit` for a JUnit XML report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
+By default, `jsm validate` stops at the first failing test. The report then lists only the schemas it finished testing, and the one that failed, and ends by saying how many it didn't test, as `Stopped at the first failure: 7 schemas not tested. Run with -C to test them all.` What a schema it finished found still shows, even when it's filed under a schema the run didn't test. A missing migration statement, say, is filed under its major's first version, `2.0.0`, but every version in the major finds it. A stale exception or a missing migration statement shows under a line such as `[FAIL] shop_order_2_0_0.schema.json (not tested)`, and an unexercised change shows with the other warnings. A JSON report gives that count as `totalNotTested`, and sets `stoppedEarly`. Use `--continue-on-error` (`-C`) to run them all, `--output json` for a machine-readable report, `--output junit` for a JUnit XML report, and `--watch` to rerun the tests when files change. See [jsm validate](./reference/jsm_validate.md) for every option.
 
 ### Rendering and building schemas
 
