@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1573,6 +1574,59 @@ func writeBuildDistSchema(t *testing.T, r *schema.Registry, failDoc bool) {
 	}
 }
 
+// The refusal says what stopped the build, and only what can fix that.
+func TestBuildRefusal(t *testing.T) {
+	t.Parallel()
+	const key = schema.Key("domain_family_1_0_0")
+	const failing = "fix the failing tests, or if a break between versions is deliberate, list it in " +
+		schema.ExceptionsFile
+	const stale = "remove the stale entries from " + schema.ExceptionsFile
+	const migration = "add the missing migration statements to " + schema.FamilyDeclarationFile
+	const warnings = "--strict fails on warnings"
+
+	failed := func(tr *schema.TestReport) { tr.AddFailedTest(key, &schema.Spec{}) }
+	staleEntry := func(tr *schema.TestReport) { tr.AddStaleException(key, &schema.Exception{}, "why") }
+	noMigration := func(tr *schema.TestReport) { tr.AddMissingMigration(key, schema.MissingMigration{Major: 2}) }
+	warned := func(tr *schema.TestReport) { tr.AddSummary(key, &schema.Summary{}) }
+
+	all := []string{failing, stale, migration, warnings}
+	tests := map[string]struct {
+		adds   []func(*schema.TestReport)
+		strict bool
+		says   []string
+	}{
+		"a failing test":        {adds: []func(*schema.TestReport){failed}, says: []string{failing}},
+		"a stale entry":         {adds: []func(*schema.TestReport){staleEntry}, says: []string{stale}},
+		"a missing migration":   {adds: []func(*schema.TestReport){noMigration}, says: []string{migration}},
+		"warnings under strict": {adds: []func(*schema.TestReport){warned}, strict: true, says: []string{warnings}},
+		"a failing test beside warnings, not strict": {
+			adds: []func(*schema.TestReport){failed, warned}, says: []string{failing},
+		},
+		"everything at once": {
+			adds: []func(*schema.TestReport){failed, staleEntry, noMigration, warned}, strict: true, says: all,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			tr := schema.NewTestReport()
+			for _, add := range tt.adds {
+				add(tr)
+			}
+			got := buildRefusal(tr, tt.strict)
+			assert.True(t, strings.HasPrefix(got, "Not building: "), got)
+			assert.NotContains(t, got, "--skip-tests")
+			for _, part := range all {
+				if slices.Contains(tt.says, part) {
+					assert.Contains(t, got, part)
+				} else {
+					assert.NotContains(t, got, part)
+				}
+			}
+		})
+	}
+}
+
 func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -1603,6 +1657,20 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 			assert.NotContains(t, out.String(), "--skip-tests")
 		})
 	}
+
+	t.Run("warnings alone under --strict say no test failed", func(t *testing.T) {
+		t.Parallel()
+		r := setupTestRegistry(t)
+		writeBuildDistSchema(t, r, false) // no documents, so it only warns
+		var out bytes.Buffer
+		mgr := NewCLIManager(logger, r, schema.NewTester(r), &MockGitter{}, unexpectedBuild, &out)
+
+		err := mgr.BuildDist(context.Background(), "prod", true, false, false, true)
+		require.ErrorIs(t, err, ErrTestsFailed)
+		assert.Contains(t, out.String(), "Not building: --strict fails on warnings")
+		assert.NotContains(t, out.String(), "fix the failing tests")
+		assert.NotContains(t, out.String(), "--skip-tests")
+	})
 
 	t.Run("passing tests let the build run", func(t *testing.T) {
 		t.Parallel()

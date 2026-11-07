@@ -53,11 +53,13 @@ func TestHelpSaysWhatTheCommandDoes(t *testing.T) {
 			NewCheckPartyCmd(&MockManager{}), []string{"below its family's oldestLive"},
 		},
 		"validate fails a major with no migration statement": {NewValidateCmd(&MockManager{}), []string{
-			"migration statement", "doesn't run on the later version",
+			"migration statement", "writer-ahead family an inherited pass document doesn't run on the later version",
+			"reader-ahead family nor does an inherited fail document",
 		}},
 		"create-schema gives the three declaration changes": {NewCreateSchemaCmd(&MockManager{}), []string{
 			"moving oldestLive forward", "adding or changing a migration statement",
 			"adding a declaration to a family with none", "migrations:", "refused otherwise",
+			"must name a version the family has",
 		}},
 		"check-changes lets an entry go once it clears nothing": {
 			NewCheckChangesCmd(&MockManager{}), []string{"while it clears something"},
@@ -77,7 +79,7 @@ func TestHelpSaysWhatTheCommandDoes(t *testing.T) {
 	}
 }
 
-// Readers copy the sample in the help, so it must be a declaration the parser accepts.
+// Readers copy the sample in the help into a new family, so it must hold in a family with only 1.0.0.
 func TestFamilyFileHelpSampleIsValid(t *testing.T) {
 	t.Parallel()
 
@@ -87,7 +89,13 @@ func TestFamilyFileHelpSampleIsValid(t *testing.T) {
 	require.True(t, found)
 	require.Contains(t, sample, "scenario:")
 
-	_, err := schema.ParseFamilyDeclaration([]byte(sample))
+	r := setupTestRegistry(t)
+	s := schema.New("domain_family_1_0_0", r)
+	require.NoError(t, os.MkdirAll(s.Path(schema.HomeDir), 0o750))
+	require.NoError(t, os.WriteFile(s.Path(schema.FilePath), []byte(`{}`), 0o600))
+	require.NoError(t, os.WriteFile(r.FamilyDeclarationPath(s.Key()), []byte(sample), 0o600))
+
+	_, err := r.FamilyDeclaration(s.Key())
 	require.NoError(t, err, sample)
 }
 

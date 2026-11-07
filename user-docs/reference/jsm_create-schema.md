@@ -17,8 +17,8 @@ directories. It names a scenario, and may override the facts the scenario implie
   documentsLive: retention  # moment | retention | indefinitely
   readerPicksSchema: false
   schema: prescribes        # prescribes | describes
-  # Required when documentsLive is retention, and refused otherwise:
-  oldestLive: 1.2.0
+  # Required when documentsLive is retention, and refused otherwise. It must name a version the family has:
+  oldestLive: 1.0.0
   # For each major past the first. Required when documents live indefinitely and the reader doesn't
   # pick its schema, and allowed otherwise:
   migrations:

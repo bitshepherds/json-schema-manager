@@ -54,8 +54,9 @@ between two versions.
 
 It also warns about each schema with no pass document, or no fail document, and each fail document
 rejected for several independent reasons, where its family runs documents across versions. Documents
-inherited from an earlier version in the major count as a schema's own here, so in a writer-ahead family
-an inherited pass document counts, though it doesn't run on the later version. With --verbose, the
+inherited from an earlier version in the major count as a schema's own here, though not all of them run on
+it: in a writer-ahead family an inherited pass document doesn't run on the later version, and in a
+reader-ahead family nor does an inherited fail document. With --verbose, the
 report shows how much of each schema its pass documents reach (its properties, enum values, types,
 anyOf and oneOf subschemas, and the paths through each if), and which keywords reject each fail
 document. The JSON report always includes these.

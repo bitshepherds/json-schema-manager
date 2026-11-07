@@ -1063,7 +1063,26 @@ func (m *CLIManager) testBeforeBuild(ctx context.Context, strict bool) error {
 	if !tr.HasFailures() && !strict {
 		return nil
 	}
-	_, _ = fmt.Fprintln(m.reporterWriter, "Not building: fix the failing tests, or if a break between versions is "+
-		"deliberate, list it in "+schema.ExceptionsFile)
+	_, _ = fmt.Fprintln(m.reporterWriter, buildRefusal(tr, strict))
 	return ErrTestsFailed
+}
+
+// buildRefusal says what to do about each thing in the report which stopped the build.
+func buildRefusal(tr *schema.TestReport, strict bool) string {
+	var todo []string
+	if len(tr.FailedTests) > 0 {
+		todo = append(todo, "fix the failing tests, or if a break between versions is deliberate, list it in "+
+			schema.ExceptionsFile)
+	}
+	if len(tr.StaleExceptions) > 0 {
+		todo = append(todo, "remove the stale entries from "+schema.ExceptionsFile)
+	}
+	if len(tr.MissingMigrations) > 0 {
+		todo = append(todo, "add the missing migration statements to "+schema.FamilyDeclarationFile)
+	}
+	if strict && tr.HasWarnings() {
+		todo = append(todo, "--strict fails on warnings, so add the documents they ask for, split a fail document "+
+			"with several reasons, or list a change no document can show in "+schema.ExceptionsFile)
+	}
+	return "Not building: " + strings.Join(todo, "; ")
 }

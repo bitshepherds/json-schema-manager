@@ -388,7 +388,7 @@ func TestFamilyDeclarationLive(t *testing.T) {
 	assert.True(t, retained.Live(SemVer{2, 0, 0}))
 }
 
-// Readers copy the samples in the docs, so each must be a declaration the parser accepts.
+// Readers copy the samples in the docs into a new family, so each must hold in a family with only 1.0.0.
 func TestFamilyDeclarationSamplesInTheDocsAreValid(t *testing.T) {
 	t.Parallel()
 
@@ -397,8 +397,14 @@ func TestFamilyDeclarationSamplesInTheDocsAreValid(t *testing.T) {
 
 	samples := regexp.MustCompile("(?s)```yaml\n(scenario:.*?)```").FindAllSubmatch(data, -1)
 	require.NotEmpty(t, samples)
+
+	r := setupTestRegistry(t)
+	s := New("domain_family_1_0_0", r)
+	require.NoError(t, os.MkdirAll(s.Path(HomeDir), 0o750))
+	require.NoError(t, os.WriteFile(s.Path(FilePath), []byte(`{}`), 0o600))
 	for _, sample := range samples {
-		_, pErr := ParseFamilyDeclaration(sample[1])
-		assert.NoError(t, pErr, string(sample[1]))
+		require.NoError(t, os.WriteFile(r.FamilyDeclarationPath(s.Key()), sample[1], 0o600))
+		_, dErr := r.FamilyDeclaration(s.Key())
+		assert.NoError(t, dErr, string(sample[1]))
 	}
 }
