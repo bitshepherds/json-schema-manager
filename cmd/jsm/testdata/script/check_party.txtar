@@ -30,10 +30,10 @@ stdout '"status": "fail"'
 stdout '"later": "shop_order_1_1_0"'
 stdout '"rule": "no-loosening"'
 
-# A writer in the same family isn't harmed by it: writers move first, so it gets a notice, and exits 0
+# A writer in the same family isn't harmed by it: the owner writes, and moves first, so it gets a notice, and exits 0
 exec jsm check-party -c writer.yml --strict
 stdout '\[NOTICE\] shop_order_1_0_0'
-stdout 'This family is declared owner-writes: writers move to a new version before readers do, so no later version can harm a writer on shop_order_1_0_0'
+stdout 'This family is declared owner-writes: the owner writes the documents, and moves to a new version before its followers, who read them, so no later version can harm a writer on shop_order_1_0_0'
 stdout 'Party check summary: 0 passed, 0 failed, 0 warnings, 1 notice'
 
 # A declared exception clears the reader's failure, and the report says so

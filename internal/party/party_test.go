@@ -209,22 +209,71 @@ func TestCheckPartyChecksEveryLaterVersionInMajor(t *testing.T) {
 func TestCheckPartyGivesNoticeWhenNoLaterVersionCanHarm(t *testing.T) {
 	t.Parallel()
 
+	// Each notice says what the scenarios page says about who moves first in that scenario, in owner and
+	// follower terms. A family that overrides the facts deciding who moves first gets the plain reason,
+	// since its scenario's story no longer holds for it.
+	const selfNamingWhy = "each document names its version and is checked against that version, " +
+		"so it doesn't matter who moves first"
 	tests := []struct {
 		name        string
 		declaration string
 		role        Role
 		why         string
 	}{
-		{"reader in reader-ahead", readerAhead, RoleReader, "readers move to a new version before writers"},
-		{"reader in a config file family", "scenario: config-file\n", RoleReader, "readers move"},
-		{"writer in writer-ahead", writerAhead, RoleWriter, "writers move to a new version before readers"},
-		{"reader in neither", lockStep, RoleReader, "both sides move together"},
-		{"writer in neither", lockStep, RoleWriter, "both sides move together"},
-		{"reader when a document names its version", selfNaming, RoleReader, "the document names"},
-		{"writer when a document names its version", selfNaming, RoleWriter, "the document names"},
+		{
+			"owner-writes: the owner, a writer, moves first", writerAhead, RoleWriter,
+			"the owner writes the documents, and moves to a new version before its followers, who read them",
+		},
+		{
+			"owner-reads: the owner, a reader, moves first", readerAhead, RoleReader,
+			"the owner reads the documents, and moves to a new version before its followers, who write them",
+		},
+		{
+			"config-file: the tool that owns the file moves first", "scenario: config-file\n", RoleReader,
+			"the tool that owns the file reads it, and moves first, with a new release, " +
+				"before the people who write the file",
+		},
+		{
+			"stored-one-schema: the owner moves first, against its own past",
+			"scenario: stored-one-schema\n", RoleReader,
+			"the service that owns the data reads it, and moves first, against its own past: " +
+				"a new release reads what old releases saved, never the other way round",
+		},
+		{
+			"third-party-format: the other organisation moves first",
+			"scenario: third-party-format\ndocumentsLive: moment\n", RoleReader,
+			"another organisation owns the format and moves first, and you can't ask it to wait: " +
+				"each later version records a change that has already reached you",
+		},
+		{
+			"lock-step: a reader moves with the writer", lockStep, RoleReader,
+			"one team owns both sides, and they move together, in one release",
+		},
+		{
+			"lock-step: a writer moves with the reader", lockStep, RoleWriter,
+			"one team owns both sides, and they move together, in one release",
+		},
+		{"stored-self-naming: a reader", selfNaming, RoleReader, selfNamingWhy},
+		{"stored-self-naming: a writer", selfNaming, RoleWriter, selfNamingWhy},
+		{
+			"a config file naming its version gets the self-naming reason",
+			"scenario: config-file\nreaderPicksSchema: true\n", RoleWriter, selfNamingWhy,
+		},
 		{
 			"the effective fact decides, not the scenario",
-			writerAhead + "readerPicksSchema: true\n", RoleReader, "the document names",
+			writerAhead + "readerPicksSchema: true\n", RoleReader, selfNamingWhy,
+		},
+		{
+			"ahead: reader overriding owner-writes gives the plain reason",
+			writerAhead + "ahead: reader\n", RoleReader, "readers move to a new version before writers do",
+		},
+		{
+			"ahead: writer overriding owner-reads gives the plain reason",
+			readerAhead + "ahead: writer\n", RoleWriter, "writers move to a new version before readers do",
+		},
+		{
+			"ahead: neither overriding owner-reads gives the plain reason",
+			readerAhead + "ahead: neither\n", RoleWriter, "both sides move together",
 		},
 	}
 	for _, tt := range tests {
@@ -239,12 +288,19 @@ func TestCheckPartyGivesNoticeWhenNoLaterVersionCanHarm(t *testing.T) {
 
 			sr := checkOne(t, r, tt.role, v100)
 
+			decl, err := r.FamilyDeclaration(v100)
+			require.NoError(t, err)
 			assert.Equal(t, Notice, sr.Status())
-			assert.Contains(t, sr.Notice, tt.why)
-			assert.Contains(t, sr.Notice, "no later version can harm a "+string(tt.role)+" on "+string(v100))
+			assert.Equal(t, "This family is declared "+string(decl.Scenario)+": "+tt.why+
+				", so no later version can harm a "+string(tt.role)+" on "+string(v100)+".", sr.Notice)
 			assert.Empty(t, sr.Runs)
 		})
 	}
+
+	t.Run("an unknown scenario keeps no scenario's story", func(t *testing.T) {
+		t.Parallel()
+		assert.False(t, keepsWhoMovesFirst(&schema.FamilyDeclaration{Scenario: "unknown"}))
+	})
 
 	t.Run("a newer major still warns", func(t *testing.T) {
 		t.Parallel()
