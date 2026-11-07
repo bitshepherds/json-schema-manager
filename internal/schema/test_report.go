@@ -63,7 +63,9 @@ type TestReport struct {
 	Summaries map[Key]*Summary
 
 	// NotTested counts the schemas in the run's scope which it didn't test, because it stopped at the
-	// first failure. The report holds nothing for them.
+	// first failure. The report holds no runs or summary for them, only what a schema whose checks
+	// finished found under one: a stale exception, a missing migration statement or an unexercised change.
+	// notTested names those.
 	NotTested int
 	// notTested are the schemas the run didn't test, of those NotTested counts, which the report holds a
 	// finding for all the same, found by a schema whose checks finished.

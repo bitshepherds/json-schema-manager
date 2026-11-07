@@ -550,7 +550,117 @@ func TestJSONAndJUnitReporters_StoppedEarlyShowFindingsForUntestedSchemas(t *tes
 	assert.Contains(t, junit, `<testcase name="stale exception: version 1.0.0, change /: gone" `+
 		`classname="d_f_1_1_0.schema.json">`)
 	assert.Contains(t, junit, `<testcase name="migration statement for major 2" classname="d_m_2_0_0.schema.json">`)
-	assert.Contains(t, junit, `<testsuite name="d_f_1_1_0.schema.json" tests="1" failures="1"`)
+	assert.Contains(t, junit, `<testsuite name="d_f_1_1_0.schema.json" tests="2" failures="1" skipped="1"`)
+	assert.Contains(t, junit, `<testsuite name="d_m_2_0_0.schema.json" tests="2" failures="1" skipped="1"`)
+	assert.Contains(t, junit, `<testsuite name="d_b_1_0_0.schema.json" tests="1" failures="1">`,
+		"a tested schema has no not-tested case")
+}
+
+// untestedWarningReport is a report which stopped at the first failure, and whose only finding under a
+// schema it didn't test is an unexercised change, which a tested schema found.
+func untestedWarningReport() *schema.TestReport {
+	r := schema.NewTestReport()
+	r.AddFailedTest("d_b_1_0_0", &schema.Spec{
+		TestInfo:    schema.TestInfo{Path: "bad.json"},
+		TestDocType: schema.TestDocTypePass,
+		Err:         assert.AnError,
+	})
+	r.AddUnexercisedChange("d_f_1_1_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_0_0", Later: "d_f_1_1_0", Direction: structdiff.Widens,
+		Change: structdiff.Change{Location: "/w", Effect: structdiff.Widens, Detail: "w"},
+	})
+	r.MarkNotTested("d_f_1_1_0")
+	r.NotTested = 1
+	return r
+}
+
+// TestJUnitReporter_StoppedEarlyShowsUntestedSchemaAsSkipped checks that a schema a stopped run didn't
+// test, whose only finding is a warning, shows in JUnit as a skipped "not tested" case carrying the
+// warning, never as a passing suite with no tests.
+func TestJUnitReporter_StoppedEarlyShowsUntestedSchemaAsSkipped(t *testing.T) {
+	t.Parallel()
+
+	suiteOf := func(t *testing.T, strict bool) junitTestSuite {
+		t.Helper()
+		var buf bytes.Buffer
+		require.NoError(t, (&JUnitReporter{Strict: strict}).Write(&buf, untestedWarningReport()))
+		var out junitTestSuites
+		require.NoError(t, xml.Unmarshal(buf.Bytes(), &out))
+		for _, s := range out.Suites {
+			if s.Name == "d_f_1_1_0.schema.json" {
+				return s
+			}
+		}
+		require.Fail(t, "no suite for d_f_1_1_0", buf.String())
+		return junitTestSuite{}
+	}
+	notTestedCase := func(t *testing.T, s junitTestSuite) junitTestCase {
+		t.Helper()
+		for _, c := range s.Cases {
+			if c.Name == "not tested" {
+				return c
+			}
+		}
+		require.Fail(t, "no not-tested case", "%+v", s)
+		return junitTestCase{}
+	}
+
+	t.Run("without strict", func(t *testing.T) {
+		t.Parallel()
+		s := suiteOf(t, false)
+		assert.Equal(t, 1, s.Tests)
+		assert.Equal(t, 1, s.Skipped)
+		assert.Zero(t, s.Failures)
+		c := notTestedCase(t, s)
+		require.NotNil(t, c.Skipped)
+		assert.Nil(t, c.Failure)
+		assert.Contains(t, c.Skipped.Message, "stopped at the first failure")
+		assert.Contains(t, c.Skipped.Message, "-C")
+		assert.Contains(t, c.Skipped.Message, "unexercised change since d_f_1_0_0: /w")
+		assert.Contains(t, s.SystemOut, "WARN unexercised change since d_f_1_0_0: /w")
+	})
+
+	t.Run("with strict", func(t *testing.T) {
+		t.Parallel()
+		s := suiteOf(t, true)
+		assert.Equal(t, 2, s.Tests)
+		assert.Equal(t, 1, s.Skipped)
+		assert.Equal(t, 1, s.Failures, "the warning still fails, as --strict does")
+		require.NotNil(t, notTestedCase(t, s).Skipped)
+	})
+}
+
+// TestJSONReporter_StoppedEarlySaysFindingsAreForUntestedSchemas checks that the JSON report, like the
+// text report, says a finding is filed under a schema the run didn't test.
+func TestJSONReporter_StoppedEarlySaysFindingsAreForUntestedSchemas(t *testing.T) {
+	t.Parallel()
+
+	type finding struct {
+		Schema    string `json:"schema"`
+		NotTested bool   `json:"notTested"`
+	}
+	var out struct {
+		StaleExceptions    []finding `json:"staleExceptions"`
+		MissingMigrations  []finding `json:"missingMigrations"`
+		UnexercisedChanges []finding `json:"unexercisedChanges"`
+	}
+	r := untestedFindingsReport()
+	r.AddUnexercisedChange("d_f_1_1_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_0_0", Later: "d_f_1_1_0", Direction: structdiff.Widens,
+		Change: structdiff.Change{Location: "/w", Effect: structdiff.Widens, Detail: "w"},
+	})
+	r.AddUnexercisedChange("d_b_1_0_0", &schema.UnexercisedChange{
+		Earlier: "d_b_0_9_0", Later: "d_b_1_0_0", Direction: structdiff.Widens,
+		Change: structdiff.Change{Location: "/x", Effect: structdiff.Widens, Detail: "x"},
+	})
+	var buf bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+
+	assert.Equal(t, []finding{{"d_f_1_1_0", true}}, out.StaleExceptions)
+	assert.Equal(t, []finding{{"d_m_2_0_0", true}}, out.MissingMigrations)
+	assert.Equal(t, []finding{{"d_b_1_0_0", false}, {"d_f_1_1_0", true}}, out.UnexercisedChanges)
+	assert.NotContains(t, buf.String(), `"notTested": false`, "a tested schema's finding leaves the field out")
 }
 
 // The JSON report gives the path of a document failing across versions, and its error names it, by its
