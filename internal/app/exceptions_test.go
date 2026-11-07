@@ -631,6 +631,7 @@ func TestCheckChangesOnStaleDeployedExceptions(t *testing.T) {
 		require.Error(t, err, out)
 		assert.Contains(t, out, "cannot change a deployed exception")
 		assert.Contains(t, out, "fail/refunded.json")
+		assert.Contains(t, out, "can't be edited, or removed while it clears something")
 	})
 
 	t.Run("a stale entry's reason may not be edited", func(t *testing.T) {

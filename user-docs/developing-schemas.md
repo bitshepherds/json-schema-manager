@@ -10,7 +10,7 @@
   - [Creating a new version of an existing schema](#creating-a-new-version-of-an-existing-schema)
   - [Testing schemas](#testing-schemas)
   - [Rendering and building schemas](#rendering-and-building-schemas)
-  - [Checking a consumer's schema versions](#checking-a-consumers-schema-versions)
+  - [Checking a party's schema versions](#checking-a-partys-schema-versions)
 - [Exit codes](#exit-codes)
 - [Running JSM in CI](#running-jsm-in-ci)
   - [Test results in CI](#test-results-in-ci)
@@ -53,7 +53,7 @@ Edit `my-registry/customer/b2c-customer/1/0/0/customer_b2c-customer_1_0_0.schema
 jsm validate customer_b2c-customer_1_0_0
 ```
 
-To change the schema once it is deployed, create a new version and test the whole registry, which also checks the new version does not break consumers of the old one:
+To change the schema once it is deployed, create a new version and test the whole registry, which also runs the documents across versions that the family's scenario calls for. For `provider-first`, that looks for a new version which would break consumers still on the old one:
 
 ```bash
 jsm create-schema-version customer_b2c-customer_1_0_0 minor
@@ -200,7 +200,7 @@ A new version carries only the documents for what it changes. Earlier documents 
 | Patch or minor | The schema only | The schema and the given version's documents |
 | Major | The schema and the given version's documents | The schema and the given version's documents |
 
-- **A major bump copies documents as a starting point to edit**, since no document crosses a major and some will legitimately stop holding. In a family whose old documents stay around, it also needs [a migration statement](./scenarios.md#what-a-major-bump-means). It copies the documents of the version you give, not its whole major, so if that version carries few, add what the new major needs: `--strict` tells you if it has no `pass` or no `fail` document.
+- **A major bump copies only the given version's documents, as a starting point to edit**, since no document crosses a major and some will legitimately stop holding. In a family whose old documents stay around, it also needs [a migration statement](./scenarios.md#what-a-major-bump-means). It copies the documents of the version you give, not its whole major, so if that version carries few, add what the new major needs: `--strict` tells you if it has no `pass` or no `fail` document.
 - **A family with no cross-version runs keeps copying**, such as [lock-step](./scenarios.md#8-lock-step) or [a family whose documents name their version](./scenarios.md#5-stored-data-each-document-names-its-version), because nothing else would test the new version.
 - **Only documents are copied**: the `.json` files directly in `pass` and `fail`. Any other file in the version's directory stays behind, and `compat-exceptions.yml` never comes along, as an exception belongs to one version.
 - **Documents already copied into a version are left alone, and still run.** You can delete them from a version which isn't deployed yet, if you want to.
@@ -253,7 +253,7 @@ Add the document. If the rule then fails, the failure says what to do. If no doc
 
 **A `fail` document should hold one fault.** Where a family runs documents across versions, a document rejected for several independent reasons can hide a change to one of them, so `validate` warns, naming the locations. An `anyOf` or `oneOf` counts once however its arms fail.
 
-`jsm diff <older> <newer>` lists every structural change between two versions, and which `pass` documents use each.
+`jsm diff <older> <newer>` lists every structural change between two versions, in any family. It names the documents which show each, and notes where the family needs one and none does, as `no pass document uses it` or `no fail document shows it`. It doesn't read `compat-exceptions.yml`, so that note stays on a change an entry acknowledges, which `validate` no longer warns about.
 
 **What the comparison can tell.** It's structural, and it doesn't try to prove one schema contains another.
 
@@ -267,7 +267,7 @@ Every schema `jsm validate` tests is listed in its report, and one with no `pass
 
 Documents count if they are in the version's own directory, or inherited from an earlier version in its major. The first version of a major, including `1.0.0`, has nothing to inherit, so it needs its own, and the copies a major bump makes are its own. Nothing is inherited from a version [below `oldestLive`](./scenarios.md#how-long-a-version-lasts). A family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so each of its versions needs its own.
 
-Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions, so a version with no `pass` document of its own has nothing showing what it accepts. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
+Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions. So a `provider-first` `1.1.0` with no `pass` document of its own passes `--strict`, with nothing showing what it accepts. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
 
 With `--verbose`, the report also shows how many documents a schema inherits, how much of the schema its own `pass` documents reach, and which keywords reject each of its own `fail` documents:
 
@@ -338,7 +338,7 @@ Every `jsm` command exits with one of these codes, so CI can gate on it without 
 | Code | Meaning |
 |------|---------|
 | `0`  | The command succeeded, and every test and check passed. |
-| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a newer version breaking an earlier one), an entry in a `compat-exceptions.yml` is stale, or a major has no [migration statement](./scenarios.md#what-a-major-bump-means) it needs, `check-changes` found a deployed schema or exception modified, or a deployed version deleted while its documents may still exist, or `check-party` found a listed version missing or harmed by a later one. With `--strict`, a warning also exits `1`. The report says which. |
+| `1`  | JSM ran, and a test or check found a problem: a test document failed in `validate` or `build-dist` (including a run between two versions), an entry in a `compat-exceptions.yml` is stale, or a major has no [migration statement](./scenarios.md#what-a-major-bump-means) it needs, `check-changes` found a deployed schema or exception modified, or a deployed version deleted while its documents may still exist, or `check-party` found a listed version missing or harmed by a later one. With `--strict`, a warning also exits `1`. The report says which. |
 | `2`  | JSM could not run: an unknown command or flag, a missing registry or configuration, a schema that cannot be found or compiled, or a git error. |
 | `130` | JSM was interrupted, by Ctrl+C (SIGINT), before it finished. |
 | `143` | JSM was stopped by SIGTERM, for example when a CI job times out, before it finished. |
@@ -423,27 +423,25 @@ In a shallow clone without the tag, both commands fail with exit code `2` rather
 
 # Why semantic versioning?
 
-Imagine an event is written by a provider to an event bus which has multiple consumers, and imagine the provider and consumers are separate, individually released components in a distributed system.
+A JSON Schema is a contract between whoever writes a document and whoever reads it: a provider and the consumers of its events, a person editing a settings file and the tool which loads it, or a service and the records it saved years ago. Both sides can validate - in test and production - that what they write or read is valid.
 
-A JSON Schema is used to define the contract for the message. This allows both the provider and consumers to validate - in test and production - that what they send or receive is valid.
-
-Over time, the provider may want to change the contract. However, consumers will expect the messages they receive to continue to conform to the contract they have.
+Over time, the contract changes, and the two sides are rarely on the same version when it does. Whichever side lags still expects the contract it has to hold.
 
 [Semantic versioning](https://semver.org/) is an established pattern for managing changes to something over time. JSON Schema Manager utilises semantic versioning to manage breaking and non-breaking changes to JSON schemas. Semantic versions have three components: major, minor and patch.
 
 `<major>.<minor>.<patch>` e.g. `1.2.3`
 
-JSON Schema Manager uses your test documents to look for changes which would break consumers, before you deploy a new version of a provider. Documents only sample what a schema does, so a check which passes shows that none of them exposed a break, not that no break exists. Which changes break a family also depends on how it is used: see [Schema Family Scenarios](./scenarios.md).
+JSON Schema Manager uses your test documents to look for changes which would break the side that lags, before you deploy a new version. Documents only sample what a schema does, so a check which passes shows that none of them exposed a break, not that no break exists. Which changes break a family depends on how it is used: see [Schema Family Scenarios](./scenarios.md).
 
 JSON Schema Manager interprets semantic versioning as follows:
 
-- **major** version changes signal breaking changes. Unless you are in charge of both the provider and consumers, you should plan to deploy breaking changes separately - e.g. create a new API or message bus, and give consumers a deprecation window to migrate.
-- **minor** version changes signal non-breaking feature changes which can be deployed by the provider without breaking a consumer who is using a JSON Schema with an earlier variant of the same major version. Typically, this might include adding new optional properties to a schema. For example, if the consumer is checking against version `1.2.3`, it should be safe for the provider to start sending messages conforming to version `1.3.0`.
-- **patch** version changes signal adjustments to the schema which have no new features, are non-breaking, but represent a change nevertheless. For example, adding a description to a property.
+- **major** version changes signal changes the family's [rule](./scenarios.md#the-rule) forbids within a major. No document crosses a major, and what the change then asks of you depends on the scenario: see [What a major bump means](./scenarios.md#what-a-major-bump-means). Where messages flow from a provider to consumers, for example, run the old and new majors side by side, and give consumers a deprecation window to migrate.
+- **minor** version changes signal feature changes which stay compatible in the direction the family protects. Where the provider moves first, if a consumer is checking against version `1.2.3`, it should be safe for the provider to start sending messages conforming to version `1.3.0`. Where the reader moves first, a document valid under `1.2.3` should still be valid under `1.3.0`.
+- **patch** version changes signal adjustments to the schema which have no new features, but represent a change nevertheless. For example, adding a description to a property. JSM's checks treat them as they treat minor versions.
 
 ## Compatibility when the provider moves first
 
-This is one way of using a schema: a writer-ahead family, where data flows from a provider to its consumers, and the provider moves first. It starts sending documents which conform to the new version, while its consumers are still checking against an earlier one. Consumers catch up later, in their own time. That is scenario 1 of the [Schema Family Scenarios](./scenarios.md), which describes the others, and what JSM does and doesn't do yet for each.
+This is one way of using a schema: a writer-ahead family, where data flows from a provider to its consumers, and the provider moves first. It starts sending documents which conform to the new version, while its consumers are still checking against an earlier one. Consumers catch up later, in their own time. That is scenario 1 of the [Schema Family Scenarios](./scenarios.md), which describes the others, and what JSM checks for each.
 
 For such a family, JSM checks compatibility in that one direction. For every minor or patch version, its `pass` documents must be accepted by each earlier version with the same major version, and each earlier version's `fail` documents must be rejected by it. If not, a consumer still on the earlier version would reject what the provider now sends, and `jsm validate` fails, naming both versions.
 
@@ -462,18 +460,24 @@ So in a writer-ahead family, if a change needs consumers to move first, for exam
 
 ## Innocuous changes which are actually breaking
 
-Be aware of the following changes to a schema which act as breaking changes, even though they seem innocuous. Although JSON Schema Manager will highlight such breaking changes during testing, if you have already deployed the initial schema, then you will be forced to deal with a breaking change that you could have avoided.
+Whether a change breaks anyone depends on which versions can meet, so the same change can be harmless in one family and breaking in another: see [the rule](./scenarios.md#the-rule). The changes below seem innocuous, but act as breaking changes in a writer-ahead family, where the provider moves first, as in [scenario 1](./scenarios.md#1-provider-moves-first), and in an either family.
+
+In those families, `jsm validate` fails if a document shows such a change, and [warns](#unexercised-changes) if none does. If you have already deployed the earlier version, it can't change to make room, so you are left with a new major version, or a [deliberate exception](./scenarios.md#deliberate-exceptions), for a change you could have avoided.
+
+A reader-ahead family, as in [scenario 2](./scenarios.md#2-consumer-moves-first), allows them, and is broken by the opposite changes instead. A family with neither side ahead holds its versions to neither.
 
 ### Adding enum values
 
-E.g. If a property `status` is defined as `enum ["pending", "approved", "rejected"]`, and you add `"cancelled"`, consumers on an earlier minor version will break when they receive a message with a `status` of `"cancelled"`.
+E.g. If a property `status` is defined as `enum ["pending", "approved", "rejected"]`, and you add `"cancelled"`, consumers on an earlier minor version of a writer-ahead family will break when they receive a message with a `status` of `"cancelled"`. In a reader-ahead family this is safe, since the reader is ready before any writer uses the new value.
 
 ### Relaxing a constraint
 
-E.g. raising a property's `maxLength` from 10 to 20 lets the provider send values which consumers on the earlier version reject. Tightening a constraint, by contrast, is safe for those consumers.
+E.g. raising a property's `maxLength` from 10 to 20 lets a provider in a writer-ahead family send values which consumers on the earlier version reject. Tightening a constraint, by contrast, is safe for those consumers. In a reader-ahead family it's the reverse: relaxing is safe, and tightening rejects documents which writers still send, or saved long ago.
 
 ### additionalProperties
 
-Only ever set `"additionalProperties": false` in a schema when you are absolutely certain that you will not need to create a new version of the schema with additional properties.
+In a writer-ahead family, only set `"additionalProperties": false` in a schema when you are certain that you will not need to create a new version of the schema with additional properties, since adding one to a closed schema is a loosening.
 
-If omitted, the default is to allow additional properties, which is usually what you want. It is strongly advised to configure consumers to ignore properties they're not expecting. This allows for the safe deployment of individual components in a distributed system.
+If omitted, the default is to allow additional properties, which is usually what such a family wants. Configure consumers to ignore properties they're not expecting, which allows for the safe deployment of individual components in a distributed system.
+
+In other families, a closed schema can be the right choice. [Config file](./scenarios.md#3-config-files) schemas are often closed, so that a mistyped option is an error, and adding a new option is an allowed loosening.

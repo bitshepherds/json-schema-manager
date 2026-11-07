@@ -11,14 +11,18 @@ The command asks which scenario the family serves, unless --scenario says, and w
 Every family declares how it is used in family.yml, in the family's directory beside its version
 directories. It names a scenario, and may override the facts the scenario implies:
 
-  scenario: provider-first
+  scenario: retained-stream
   # Optional overrides of what the scenario implies:
-  ahead: writer             # writer | reader | either | neither
-  documentsLive: moment     # moment | retention | indefinitely
+  ahead: either             # writer | reader | either | neither
+  documentsLive: retention  # moment | retention | indefinitely
   readerPicksSchema: false
   schema: prescribes        # prescribes | describes
-  # Required when documentsLive is retention:
+  # Required when documentsLive is retention, and refused otherwise:
   oldestLive: 1.2.0
+  # For each major past the first. Required when documents live indefinitely and the reader doesn't
+  # pick its schema, and allowed otherwise:
+  migrations:
+    2: Readers replaying the log handle both majors until the old events have gone.
 
 The scenarios, and what to choose, are in user-docs/scenarios.md. They are provider-first,
 consumer-first, config-file, stored-one-schema, stored-self-naming, retained-stream, uncoordinated,
@@ -28,8 +32,10 @@ How long documents live varies in the scenarios uncoordinated and third-party-fo
 either must state documentsLive. If you don't know how long they live, choose indefinitely.
 
 Every command which reads a family fails if it has no declaration, or an invalid one, except
-render-schema and tag-deployment. Once any version of a family is deployed, check-changes refuses a
-change to its declaration, other than moving oldestLive forward: a changed scenario means a new family.
+render-schema and tag-deployment. Once any version of a family is deployed, where an environment doesn't
+allow schema mutation, check-changes refuses a change to its declaration, other than moving oldestLive
+forward, adding or changing a migration statement, or adding a declaration to a family with none: a
+changed scenario means a new family.
 
 
 ```

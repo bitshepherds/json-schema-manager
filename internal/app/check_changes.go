@@ -31,9 +31,9 @@ In an environment which does not permit schema mutation, these changes since the
   - modifying or deleting a pass/ or fail/ test document of a deployed version
   - changing the environment's privateUrlRoot or publicUrlRoot, which give deployed schemas their IDs
   - changing or removing the family.yml of a family with a deployed version, other than moving its
-    oldestLive forward: a changed scenario means a new family
-  - editing or removing an entry of a compat-exceptions.yml which was there at the deployment, unless
-    the version or document it names has gone, or the version has fallen below oldestLive
+    oldestLive forward or changing its migration statements: a changed scenario means a new family
+  - editing an entry of a compat-exceptions.yml which was there at the deployment, or removing one
+    while it clears something: an entry which clears nothing, as validate judges it, may go
   - deleting a deployed version when documents written under it may still exist: any version if the
     family's documentsLive is indefinitely, or a version at or above oldestLive if it is retention
 Adding new schemas and test documents is allowed, and so is deleting a whole version if its documents

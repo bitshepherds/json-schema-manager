@@ -876,7 +876,8 @@ func (m *CLIManager) lockedExceptionChanges(
 
 	var refused []string
 	refuse := func(e *schema.Exception) {
-		refused = append(refused, fmt.Sprintf("%s: the entry for %s can't be edited or removed", path, e))
+		const why = "can't be edited, or removed while it clears something"
+		refused = append(refused, fmt.Sprintf("%s: the entry for %s %s", path, e, why))
 	}
 	var removed []schema.Exception
 	for i := range deployed {

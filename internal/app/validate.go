@@ -39,6 +39,10 @@ user-docs/scenarios.md.
 A version's compat-exceptions.yml can list a deliberate break of the rule, with its reason. The report
 shows that run as excepted, and it doesn't fail. An entry which clears nothing is stale, and fails.
 
+A family whose documents live indefinitely, and whose reader doesn't pick its schema from the document,
+needs a migration statement in family.yml for each major past its first. Without one, validate fails,
+under that major's first version.
+
 These checks are only as strong as the documents, so validate also compares the same pairs of
 versions structurally, and warns about each change in a direction the family protects which no
 document shows. A writer-ahead family needs a pass document for a change which widens what's accepted,
@@ -49,7 +53,9 @@ document can show is acknowledged in compat-exceptions.yml. 'jsm diff' lists eve
 between two versions.
 
 It also warns about each schema with no pass document, or no fail document, and each fail document
-rejected for several independent reasons, where its family runs documents across versions. With --verbose, the
+rejected for several independent reasons, where its family runs documents across versions. Documents
+inherited from an earlier version in the major count as a schema's own here, so in a writer-ahead family
+an inherited pass document counts, though it doesn't run on the later version. With --verbose, the
 report shows how much of each schema its pass documents reach (its properties, enum values, types,
 anyOf and oneOf subschemas, and the paths through each if), and which keywords reject each fail
 document. The JSON report always includes these.

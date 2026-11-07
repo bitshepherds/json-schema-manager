@@ -5,9 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitshepherds/json-schema-manager/internal/schema"
 )
 
 // TestReferenceIsUpToDate fails when the committed command reference no longer matches the CLI.
@@ -29,6 +34,61 @@ func TestReferenceIsUpToDate(t *testing.T) {
 			t.Errorf("%s/%s is for a command which no longer exists: run 'make docs'", ReferenceDir, name)
 		}
 	}
+}
+
+// The command reference is generated from the help, so the help must say what the command does now.
+func TestHelpSaysWhatTheCommandDoes(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		cmd  *cobra.Command
+		says []string
+	}{
+		"diff follows the scenario": {NewDiffCmd(&MockManager{}), []string{
+			"alters JSM cannot tell", "used by pass/x.json", "shown by fail/y.json",
+			"no pass document uses it", "no fail document shows it", "neither side ahead flags nothing",
+			"Every change is listed", "doesn't read compat-exceptions.yml",
+		}},
+		"check-party warns of a version below oldestLive": {
+			NewCheckPartyCmd(&MockManager{}), []string{"below its family's oldestLive"},
+		},
+		"validate fails a major with no migration statement": {NewValidateCmd(&MockManager{}), []string{
+			"migration statement", "doesn't run on the later version",
+		}},
+		"create-schema gives the three declaration changes": {NewCreateSchemaCmd(&MockManager{}), []string{
+			"moving oldestLive forward", "adding or changing a migration statement",
+			"adding a declaration to a family with none", "migrations:", "refused otherwise",
+		}},
+		"check-changes lets an entry go once it clears nothing": {
+			NewCheckChangesCmd(&MockManager{}), []string{"while it clears something"},
+		},
+		"a major bump copies only the target's own documents": {
+			NewCreateSchemaVersionCmd(&MockManager{}), []string{"not the rest of its major"},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			long := strings.Join(strings.Fields(tt.cmd.Long), " ")
+			for _, says := range tt.says {
+				assert.Contains(t, long, says)
+			}
+		})
+	}
+}
+
+// Readers copy the sample in the help, so it must be a declaration the parser accepts.
+func TestFamilyFileHelpSampleIsValid(t *testing.T) {
+	t.Parallel()
+
+	_, rest, found := strings.Cut(strings.TrimLeft(familyFileHelp, "\n"), "\n\n")
+	require.True(t, found)
+	sample, _, found := strings.Cut(rest, "\n\n")
+	require.True(t, found)
+	require.Contains(t, sample, "scenario:")
+
+	_, err := schema.ParseFamilyDeclaration([]byte(sample))
+	require.NoError(t, err, sample)
 }
 
 func TestWriteReferenceMissingDir(t *testing.T) {

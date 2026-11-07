@@ -36,8 +36,8 @@ What else it carries depends on the bump and on the family's declaration:
 - A patch or minor bump copies the schema only. Earlier documents in the major run on the
   new version as the family's scenario says, and copies would run the same checks twice, so
   add only the documents for what this version changes.
-- A major bump also copies the target's pass/ and fail/ documents, as a starting point to
-  edit, since some of them may legitimately stop holding.
+- A major bump also copies the target's own pass/ and fail/ documents, not the rest of its
+  major, as a starting point to edit, since some of them may legitimately stop holding.
 - A family with no pairs of versions to run, whose scenario has neither side ahead or whose
   reader picks its schema from the document, copies the documents on every bump, because
   nothing else would test the new version.

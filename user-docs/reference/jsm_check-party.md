@@ -32,6 +32,10 @@ between that version and each later version in its major, for the party's side:
   Any other combination, such as a reader in a reader-ahead family, or any party in a neither family:
   no later version can harm this party, so nothing runs, and the check gives a notice saying why.
 
+  A listed version below its family's oldestLive, whatever the party's role: nothing runs, and the
+  check warns, since no check holds later versions to it, so one can harm the party unseen. Move the
+  party to a version the family still checks.
+
 A failure is reported as validate reports it, under the later version, and a deliberate exception in
 that version's compat-exceptions.yml applies here too. The check warns if the family has a newer
 major version: it doesn't look across majors, so plan the party's move to it.
@@ -57,7 +61,7 @@ jsm check-party [manifest] [flags]
 ```
   -h, --help              help for check-party
   -o, --output <format>   Output format (text, json) (default text)
-      --strict            Fail on warnings too, such as a family's newer major version
+      --strict            Fail on warnings too: a family's newer major version, or a listed version below oldestLive
 ```
 
 ### Options inherited from parent commands

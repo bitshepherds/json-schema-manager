@@ -32,7 +32,7 @@ This page describes the common ways schemas are used, what can go wrong in each,
 
 - Every family [declares its scenario](#declaring-a-familys-scenario), and the declaration decides which documents run across versions, within a major, as [the rule](#the-rule) says. `validate` and `build-dist` run the same rule, and `validate --watch` runs it for what changed. Patch and minor are treated alike, and no document crosses a major.
 - The same pairs of versions run however a version is selected: by key, by search scope or with `all`. Validating an earlier version runs its pairs with later versions too, so it can't miss a later breakage. A failure appears under the later version, since that's what changed.
-- A new version carries only the documents for what it changes, so documents aren't copied on a patch or minor bump, except in a family with no pairs of versions to run. `--strict` counts inherited documents. See [What a version carries](./developing-schemas.md#what-a-version-carries).
+- A new version carries only the documents for what it changes, so documents aren't copied on a patch or minor bump, except in a family with no pairs of versions to run. A major bump copies only the documents of the version you give, not its whole major. `--strict` counts inherited documents, so in a writer-ahead family an inherited `pass` document counts, though it doesn't run on the later version. See [What a version carries](./developing-schemas.md#what-a-version-carries).
 - `validate` compares the same pairs of versions structurally, and warns about each change in a direction the family protects which no document shows. A writer-ahead family needs a `pass` document for a change that widens what's accepted, a reader-ahead family a `fail` document for one that narrows it, an either family both, and a neither family none. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
 - A version can list a [deliberate exception](#deliberate-exceptions) to the rule, with a reason, for one run of one document. `validate`, `build-dist` and `check-party` then don't fail on that run, and nothing else is cleared.
 - `check-party` tells a reader or writer whether later versions in its major can harm it, following the family's declaration and the role its manifest states. It runs the same pairs as `validate`, for that side of the rule, and honours the same exceptions. Where no later version can harm the party, such as a reader in a reader-ahead family, it says why and exits `0`. See [Checking a party's schema versions](./developing-schemas.md#checking-a-partys-schema-versions).
@@ -237,17 +237,17 @@ scenario: provider-first
 The scenario implies four facts, and the file may override any of them:
 
 ```yaml
-scenario: provider-first
+scenario: retained-stream
 # Optional overrides of what the scenario implies:
-ahead: writer             # writer | reader | either | neither
-documentsLive: moment     # moment | retention | indefinitely
+ahead: either             # writer | reader | either | neither
+documentsLive: retention  # moment | retention | indefinitely
 readerPicksSchema: false
 schema: prescribes        # prescribes | describes
-# Required when documentsLive is retention:
+# Required when documentsLive is retention, and refused otherwise:
 oldestLive: 1.2.0
-# Required for each major past the first, when documents live indefinitely and the reader doesn't pick its schema:
+# For each major past the first. Required when documents live indefinitely and the reader doesn't pick its schema, and allowed otherwise:
 migrations:
-  2: The Accounts service rewrites each profile as it loads it. See its runbook.
+  2: Readers replaying the log handle both majors until the old events have gone. See the service's runbook.
 ```
 
 Each scenario implies these facts:
@@ -266,7 +266,7 @@ Each scenario implies these facts:
 
 **Two scenarios must state `documentsLive`.** How long documents live varies in `uncoordinated` and `third-party-format`, so the scenario alone is refused, and the family says which it is. A chat app's synced notes may be kept for good, and a webhook's messages may be read and gone. **If you don't know how long your documents live, choose `indefinitely`.** It is always accepted, and it is the safe answer, because it assumes old documents may still be out there.
 
-**A retention family gives its oldest live version.** `retained-stream`, or any family that sets `documentsLive: retention`, must have `oldestLive`. `jsm create-schema` starts it at `1.0.0`. It must be a version the family has, so a mistyped version can't quietly switch the checks off.
+**A retention family gives its oldest live version.** `retained-stream`, or any family that sets `documentsLive: retention`, must have `oldestLive`, and no other family may: it's refused anywhere else. `jsm create-schema` starts it at `1.0.0`. It must be a version the family has, so a mistyped version can't quietly switch the checks off.
 
 **Every command that reads a family needs its declaration.** `validate`, `build-dist`, `check-party`, `check-changes`, `diff` and `create-schema-version` fail on a family with no declaration, or an invalid one, and say how to declare it. Only `create-registry`, `render-schema` and `tag-deployment` don't need one. An existing family with no `family.yml` gets one by hand: there's no migration command.
 
@@ -304,7 +304,7 @@ Deleting a version is safe only if no document still needs it. So what `check-ch
 | `retention` | Allowed below `oldestLive`, refused at it or above | `oldestLive` is the oldest version whose documents may still exist. |
 | `indefinitely` | Refused | A document kept for years would be left with no schema that describes it. |
 
-Deleting a whole family is judged the same way, version by version, by the declaration it was deployed with. So a family whose documents live indefinitely can't be deleted from a deployed environment by accident, or at all.
+Deleting a whole family is judged the same way, version by version, by the declaration it was deployed with. So a deployed family whose documents live indefinitely can't be deleted where an environment doesn't allow schema mutation, by accident or on purpose. Its declaration is fixed too, so there's no way round this, short of an environment that allows mutation.
 
 **`oldestLive` limits the rule's pairs too.** A version below it takes no part: no document runs between it and another version, the [unexercised-change](#unexercised-change-warned) comparison leaves it out, and a later version no longer inherits its documents. So a family can move on from a mistake in `1.0.0` once no `1.0.0` document remains. It's still a version: its own documents still run on it, and `--strict` asks of it what it always did. Across majors the comparison is by version number, so `oldestLive: 2.0.0` retires all of major 1.
 
@@ -313,7 +313,7 @@ Deleting a whole family is judged the same way, version by version, by the decla
 Moving it forward can ask for two things:
 
 - The new oldest live version inherits nothing from below it, so `--strict` says if it now has no `pass` or `fail` document of its own. A deployed version may gain test documents.
-- An entry in a later version's `compat-exceptions.yml` naming a version now below `oldestLive` clears nothing, so it is stale, and fails. `check-changes` lets you remove it, as it does when the version is deleted.
+- An entry in a later version's `compat-exceptions.yml` naming a version now below `oldestLive` clears nothing, so it is stale, and fails. `check-changes` lets you remove it, as it does any entry that clears nothing.
 
 `check-party` warns about a listed version below `oldestLive`, and runs nothing for it, since the rule no longer holds later versions to it. A party still on that version can be harmed unseen, and `--strict` makes that a failure, so move it to a version the family still checks.
 
@@ -380,7 +380,7 @@ exceptions:
 - **`change`** is the change as the warning prints it, without its `(widens)`. It takes the place of `document` and `rule`.
 - **`version`** and **`reason`** are as above.
 
-An entry clears that one warning. A change a later version carries over unchanged warns only under the version that made it, so that later version needs no entry of its own. An entry is stale, and fails, if no such change between those versions needs acknowledging, whether the change has gone, a document now shows it, or the family doesn't protect that direction. `check-changes` locks it once it's deployed, as any other entry. It may be removed once its earlier version has gone.
+An entry clears that one warning. A change a later version carries over unchanged warns only under the version that made it, so that later version needs no entry of its own. An entry is stale, and fails, if no such change between those versions needs acknowledging, whether the change has gone, a document now shows it, or the family doesn't protect that direction. `check-changes` locks it once it's deployed, as any other entry. It may be removed once it clears nothing.
 
 ### The way out of a red deployed version
 
@@ -390,7 +390,7 @@ A new check can fail on versions already deployed, whose schemas and documents c
 2. For each, decide whether it really is harmless, or was already out in the world and has to stand. If it's a change you can still make differently, in a version that isn't deployed, do that instead.
 3. Add `compat-exceptions.yml` to the later version's directory, with one entry for each run, and a reason for each.
 
-`check-changes` allows this, in an environment which doesn't allow schema mutation: a deployed version may gain the file, and a file may gain entries. It refuses editing or removing an entry that was there at the deployment, so the file is reviewed once and then locked, as the schema is. The one exception is an entry whose earlier version or document has since gone, or whose earlier version has fallen below `oldestLive`, which is stale, so it may be removed.
+`check-changes` allows this, in an environment which doesn't allow schema mutation: a deployed version may gain the file, and a file may gain entries. It refuses editing an entry that was there at the deployment, or removing one while it clears something, so the file is reviewed once and then locked, as the schema is. An entry that clears nothing is [stale](#deliberate-exceptions), and fails until it has gone, so it may be removed.
 
 ## The promises
 
@@ -400,13 +400,13 @@ JSM's own tests prove each promise below, on purpose-made schemas in `cmd/jsm/te
 - <a id="no-loosening"></a>**No loosening.** Where a writer can be ahead, a later version in a major accepts nothing an earlier one rejects, as far as the documents show: later `pass` documents run on earlier versions, and earlier `fail` documents on later versions.
 - <a id="no-tightening"></a>**No tightening.** Where a reader can be ahead, a later version in a major rejects nothing an earlier one accepts, as far as the documents show: earlier `pass` documents run on later versions, and later `fail` documents on earlier versions.
 - <a id="only-versions-that-meet"></a>**Only versions that can meet are held to each other.** A writer-ahead family may tighten, a reader-ahead family may loosen, and a family with neither ahead, or whose reader picks its schema from the document, runs only each version's own documents.
-- <a id="version-inherits-documents"></a>**A version inherits documents, where its family runs them across versions.** `--strict` asks each version to have a `pass` and a `fail` document, in its own directory or an earlier version's in its major. The first version of a major has nothing to inherit, nor does a version from below `oldestLive`, and a family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so its versions each need their own.
+- <a id="version-inherits-documents"></a>**A version inherits documents, where its family runs them across versions.** `--strict` asks each version to have a `pass` and a `fail` document, in its own directory or an earlier version's in its major. The first version of a major has nothing to inherit, nor does a version from below `oldestLive`, and a family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so its versions each need their own. Counting isn't running: in a writer-ahead family, an inherited `pass` document counts, though it doesn't run on the later version.
 - <a id="unexercised-change-warned"></a>**Unexercised changes are warned about.** Between any two versions in a major, `validate` warns about a change in a direction the family protects which no document shows, and `--strict` makes that warning a failure. A writer-ahead family is warned about widenings, a reader-ahead family about narrowings, an either family about both, and a neither family about none.
 - <a id="no-document-crosses-a-major"></a>**No document crosses a major.** A new major may change anything, and its documents never run on another major's versions, or theirs on it.
 - <a id="deployed-versions-fixed"></a>**Deployed versions stay fixed.** Where an environment doesn't allow schema mutation, `check-changes` fails if a deployed version's schema or test documents change. A deployed version may gain a test document, or be deleted as a whole if [its documents can't still exist](#version-lifecycle).
 - <a id="version-lifecycle"></a>**A version lasts as long as its documents may.** Where an environment doesn't allow schema mutation, `check-changes` refuses deleting a deployed version whose family's documents live indefinitely, or one at or above `oldestLive` in a retention family, and allows it otherwise. A version below `oldestLive` takes no part in the rule's pairs.
 - <a id="major-needs-migration"></a>**A new major says how old documents move, where they stay around.** Where documents live indefinitely and the reader doesn't pick its schema from the document, `validate` fails on a major past the first with no migration statement in `family.yml`. JSM checks only that it's there.
-- <a id="declared-exception"></a>**An exception clears only what it names.** A version's `compat-exceptions.yml` clears the runs it lists, and each gives a reason. Any other failure still fails, an entry which clears nothing fails, and once deployed, an entry stays as it is, though more can be added.
+- <a id="declared-exception"></a>**An exception clears only what it names.** A version's `compat-exceptions.yml` clears the runs it lists, and each gives a reason. Any other failure still fails, an entry which clears nothing fails, and once deployed, an entry stays as it is while it clears something, though more can be added.
 
 ## What the checks can and cannot show
 

@@ -387,3 +387,18 @@ func TestFamilyDeclarationLive(t *testing.T) {
 	assert.True(t, retained.Live(SemVer{1, 2, 1}))
 	assert.True(t, retained.Live(SemVer{2, 0, 0}))
 }
+
+// Readers copy the samples in the docs, so each must be a declaration the parser accepts.
+func TestFamilyDeclarationSamplesInTheDocsAreValid(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join("..", "..", ScenariosDoc))
+	require.NoError(t, err)
+
+	samples := regexp.MustCompile("(?s)```yaml\n(scenario:.*?)```").FindAllSubmatch(data, -1)
+	require.NotEmpty(t, samples)
+	for _, sample := range samples {
+		_, pErr := ParseFamilyDeclaration(sample[1])
+		assert.NoError(t, pErr, string(sample[1]))
+	}
+}
