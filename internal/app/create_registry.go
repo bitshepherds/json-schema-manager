@@ -82,22 +82,24 @@ pipeline, or one project through a per-project tool such as mise or direnv.
 `, abs, schema.RootDirEnvVar)
 }
 
-// safeInShell matches a path a POSIX shell reads as one word, unquoted; safeInWindowsShell, one
-// that cmd and PowerShell do.
+// safeInShell matches a path a POSIX shell reads as one word, unquoted; safeInPowerShell, one
+// that PowerShell does.
 var (
-	safeInShell        = regexp.MustCompile(`^[A-Za-z0-9_@+=:,./-]+$`)
-	safeInWindowsShell = regexp.MustCompile(`^[A-Za-z0-9_+=:,./\\-]+$`)
+	safeInShell      = regexp.MustCompile(`^[A-Za-z0-9_@+=:,./-]+$`)
+	safeInPowerShell = regexp.MustCompile(`^[A-Za-z0-9_+=:./\\-]+$`)
 )
 
-// shellQuote quotes path so that a command advising it can be pasted into a shell on goos: in
-// double quotes on windows, where a path can't hold one, and in single quotes elsewhere. A path
-// the shell reads as one word is left bare.
+// shellQuote quotes path so that a command advising it can be pasted, as one word with nothing
+// expanded, into the default shell on goos: PowerShell on windows, and a POSIX shell such as sh,
+// bash or zsh elsewhere. Both take single quotes literally; inside them, PowerShell writes a
+// quote as two, and a POSIX shell closes the quotes around an escaped one. A path the shell
+// reads as one word is left bare. On windows, the advice is for PowerShell, not cmd.
 func shellQuote(path, goos string) string {
 	if goos == "windows" {
-		if safeInWindowsShell.MatchString(path) {
+		if safeInPowerShell.MatchString(path) {
 			return path
 		}
-		return `"` + path + `"`
+		return "'" + strings.ReplaceAll(path, "'", "''") + "'"
 	}
 	if safeInShell.MatchString(path) {
 		return path

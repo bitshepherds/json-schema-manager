@@ -70,7 +70,7 @@ The Registry Root is the root directory of the JSON Schema registry. It is the d
 2. the current directory, when it holds a `json-schema-manager-config.yml`;
 3. the environment variable `JSM_REGISTRY_ROOT_DIR`.
 
-When `JSM_REGISTRY_ROOT_DIR` names another registry, or a folder with none, and the current directory holds a registry, `jsm` uses the current directory's and warns that it ignored the variable. `create-schema`, `create-schema-version`, `build-dist` and `tag-deployment` name the registry they use, and where it came from, on every run, for example `Registry: /work/shop-schemas (from the current directory)`. The other commands name it under `--debug`.
+When `JSM_REGISTRY_ROOT_DIR` names another registry, or a folder with none, and the current directory holds a registry, `jsm` uses the current directory's. Every command then warns, on every run, that it ignored the variable, and names the registry it used. `create-schema`, `create-schema-version`, `build-dist` and `tag-deployment` also name the registry they use, and where it came from, on every run, for example `Registry: /work/shop-schemas (from the current directory)`. The other commands print that line only under `--debug`.
 
 Run `jsm` from the registry's folder, or give it with `-r`. `JSM_REGISTRY_ROOT_DIR` suits a pipeline, or one project through a per-project tool such as [mise](https://mise.jdx.dev) or [direnv](https://direnv.net). Don't export it from your shell profile: it would then follow you into every folder that holds no registry.
 
