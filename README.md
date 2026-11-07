@@ -22,10 +22,10 @@ go install github.com/bitshepherds/json-schema-manager/cmd/jsm@latest
 
 jsm create-registry ./my-registry                  # a registry, ideally the root of a git repo
 export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
-jsm create-schema "customer/b2c-customer" --scenario owner-writes     # version 1.0.0, with pass/ and fail/ test directories
+jsm create-schema "orders/order-placed" --scenario owner-writes       # version 1.0.0, with pass/ and fail/ test directories
                                                   # and family.yml, which says how the family is used
 jsm validate all                                   # test every schema, and across versions as each family's scenario says
-jsm create-schema-version customer_b2c-customer_1_0_0 minor
+jsm create-schema-version orders_order-placed_1_0_0 minor
 ```
 
 In CI, run the checks on every pull request. Each exits non-zero when a test or check fails:

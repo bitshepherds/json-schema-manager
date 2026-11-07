@@ -2,7 +2,6 @@
 
 - [Owners and followers](#owners-and-followers)
   - [The owner moves first, and what it does decides the check](#the-owner-moves-first-and-what-it-does-decides-the-check)
-- [What JSM does today](#what-jsm-does-today)
 - [Words used on this page](#words-used-on-this-page)
 - [The four facts](#the-four-facts)
 - [The scenarios](#the-scenarios)
@@ -17,6 +16,7 @@
   - [8. Lock-step](#8-lock-step)
   - [9. A format someone else owns](#9-a-format-someone-else-owns)
 - [What JSM covers in an API](#what-jsm-covers-in-an-api)
+- [What JSM does today](#what-jsm-does-today)
 - [Declaring a family's scenario](#declaring-a-familys-scenario)
 - [The rule](#the-rule)
 - [How long a version lasts](#how-long-a-version-lasts)
@@ -44,32 +44,25 @@ Take a tax return form. The tax office owns it: it decides what the form asks, a
 
 ### The owner moves first, and what it does decides the check
 
-Where a contract has one owner, the owner moves first. A few scenarios differ, such as one with no single owner, and each worked example below says who moves first. What changes from one owned contract to the next is whether the owner **writes** the documents, or **reads** them, and that decides which way the check runs.
+Where a contract has one owner, the owner moves first. A few scenarios differ, such as one with no single owner, and each worked example below says who moves first. For documents that are read once and gone, what changes from one owned contract to the next is whether the owner **writes** the documents, or **reads** them, and that decides which way the check runs. Documents that are kept, or that name their own version, bring other facts in. So ownership settles whether a short-lived document is scenario 1 or scenario 2, and [the four facts](#the-four-facts) settle the rest.
 
 Take an API. The Payments service owns its refunds API, and partners use it. Payments both writes and reads documents through it:
 
 - **Its responses.** Payments writes them, and a partner reads them with code built against an older version. A new version mustn't send anything that older code rejects, so it must accept nothing the old version rejected: **no loosening**.
 - **Its requests.** A partner writes them, with code built against an older version, and Payments reads them. A new version must still take what that older code sends, so it must reject nothing the old version accepted: **no tightening**.
 
-One owner, one API, and opposite checks. That's why the response and the request are two separate families, and why choosing a scenario starts by asking who owns the contract, and then whether the owner writes or reads its documents. See [What JSM covers in an API](#what-jsm-covers-in-an-api).
-
-## What JSM does today
-
-- Every family [declares its scenario](#declaring-a-familys-scenario), and the declaration decides which documents run across versions, within a major, as [the rule](#the-rule) says. `validate` and `build-dist` run the same rule, and `validate --watch` runs it for what changed. Patch and minor are treated alike, and no document crosses a major.
-- The same pairs of versions run however a version is selected: by key, by search scope or with `all`. Validating an earlier version runs its pairs with later versions too, so it can't miss a later breakage. A failure appears under the later version, since that's what changed.
-- A new version carries only the documents for what it changes, so documents aren't copied on a patch or minor bump, except in a family with no pairs of versions to run. A major bump copies only the documents of the version you give, not its whole major. `--strict` counts inherited documents, so an inherited `pass` document counts in a writer-ahead family, and an inherited `fail` document in a reader-ahead family, though neither runs on the later version. See [What a version carries](./developing-schemas.md#what-a-version-carries).
-- `validate` compares the same pairs of versions structurally, and warns about each change in a direction the family protects which no document shows. A writer-ahead family needs a `pass` document for a change that widens what's accepted, a reader-ahead family a `fail` document for one that narrows it, an either family both, and a neither family none. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
-- A version can list a [deliberate exception](#deliberate-exceptions) to the rule, with a reason, for one run of one document. `validate`, `build-dist` and `check-party` then don't fail on that run, and nothing else is cleared.
-- `check-party` tells a reader or writer whether later versions in its major can harm it, following the family's declaration and the role its manifest states. It runs the same pairs as `validate`, for that side of the rule, and honours the same exceptions. Where no later version can harm the party, such as a reader in a reader-ahead family, it says why and exits `0`. See [Checking a party's schema versions](./developing-schemas.md#checking-a-partys-schema-versions).
-- What happens to old versions follows [how long the family's documents live](#how-long-a-version-lasts). `check-changes` refuses deleting a deployed version whose documents may still exist, and a retention family's `oldestLive` takes older versions out of the checks. A new major in a family whose old documents stay around needs [a migration statement](#what-a-major-bump-means).
+One owner, one API, and opposite checks. That's why the response and the request are two separate families, and why choosing a scenario starts by asking who owns the contract. [How to choose a scenario](#how-to-choose-a-scenario) first asks how long documents are kept and whether they name their version, and for documents that are read and gone, whether the owner writes or reads them. See [What JSM covers in an API](#what-jsm-covers-in-an-api).
 
 ## Words used on this page
 
 - **Owner** and **follower**: who decides what the contract says, and who works to it and catches up later. See [Owners and followers](#owners-and-followers).
 - **Writer** and **reader**: whoever produces a document, and whoever validates it. These say which way the documents go, not who owns the contract: an owner may be the writer or the reader. A writer can also be a person editing a file, or a service that saved a record years ago.
-- **Ahead**: on a newer version of the schema than the other side. In a major version, a writer on `1.3.0` is ahead of a reader on `1.1.0`.
+- **Ahead**: on a newer version of the schema than the other side. In a major version, a writer on `1.3.0` is ahead of a reader on `1.1.0`. This is about the version each side checks with, not about who decides the contract: in [scenario 9](#9-a-format-someone-else-owns), your schema follows another organisation's format, yet once it has caught up, it is ahead of the older messages it must still accept.
+- **Open** and **closed** schema: an open schema accepts properties it doesn't list, which is JSON Schema's default. A closed one sets `"additionalProperties": false`, and rejects them.
 - **Loosening**: a later version accepts something an earlier one rejected. Raising a `maxLength` from 10 to 20 is a loosening.
 - **Tightening**: a later version rejects something an earlier one accepted. Lowering that `maxLength` from 20 to 10 is a tightening.
+- **Writer-ahead**, **reader-ahead**, **either** and **neither** family: which side can be on the newer version when a document is read, as [the four facts](#the-four-facts) say. A writer-ahead family needs no loosening, a reader-ahead family no tightening, an either family no loosening and no tightening, and a neither family has no versions that meet.
+- **`pass` and `fail` documents**: the test documents beside each version of a schema, which it should accept and reject. [The rule](#the-rule) says which of them also run on other versions. See [Developing Schemas](./developing-schemas.md).
 
 ## The four facts
 
@@ -92,7 +85,7 @@ Nine scenarios name the common combinations of those facts.
 | 4 | [Stored data, one schema for all](#4-stored-data-one-schema-for-all) | The service that saves and reads the data | A database of mixed versions, validated on read | Reader | Indefinitely |
 | 5 | [Stored data, each document names its version](#5-stored-data-each-document-names-its-version) | The writer, usually | Documents carrying a version tag | Neither, for validation | Indefinitely |
 | 6 | [Retained streams](#6-retained-streams) | The writer, which publishes the events | Replayable event logs, dead-letter queues | Either | A retention period |
-| 7 | [Uncoordinated parties](#7-uncoordinated-parties) | No single owner, or one who can't make followers upgrade | Several writers on a bus, syncing mobile clients, a published standard | Either | Varies: the family states it |
+| 7 | [Uncoordinated parties](#7-uncoordinated-parties) | No single owner, or one whose software writes and reads in copies that upgrade when they like | Several writers on a bus, syncing mobile clients, a published standard | Either | Varies: the family states it |
 | 8 | [Lock-step](#8-lock-step) | One team, which owns both sides | Both sides released together | Neither | A moment |
 | 9 | [A format someone else owns](#9-a-format-someone-else-owns) | Another organisation, not you | A third party's API response or file format | Reader, catching up | Varies: the family states it |
 
@@ -184,7 +177,7 @@ readerPicksSchema: true
 
 **What JSM checks:** only each version's own documents run, since a file is only ever validated against the version it names. `check-changes` refuses deleting a deployed version, since a file may name it for years. A new major needs no migration statement, because the app reads every version.
 
-- **It comes to the same facts as scenario 5.** A config file whose reader picks its schema behaves just as [stored data where each document names its version](#5-stored-data-each-document-names-its-version), so declaring `stored-self-naming` is equally right, and gives the same checks. [How to choose a scenario](#how-to-choose-a-scenario) reaches scenario 5 first, which is right for this variant.
+- **It comes to the same facts as scenario 5.** A config file whose reader picks its schema behaves just as [stored data where each document names its version](#5-stored-data-each-document-names-its-version), so declaring `stored-self-naming` is equally right, and gives the same checks. [How to choose a scenario](#how-to-choose-a-scenario) reaches scenario 5 first, which is right for this variant. Choose either: since the checks are the same, neither choice turns out wrong later. `config-file` with `readerPicksSchema: true` tells someone reading `family.yml` that it's a settings file. Once the family is deployed, keep the one you chose, since [its declaration is fixed](#declaring-a-familys-scenario).
 - **The version in the file must be required, not optional.** If the file may leave it out, the app has to guess which version a file is, and the family should declare plain `config-file`, which holds each version to every earlier one. JSM can't check this for you: it can't know which property holds the version, so make that property required in each version of the schema.
 - **Migration is the app's job, not JSM's.** JSM checks that each version describes its own files, and that no version is deleted while files may name it. Whether the app turns a `1.0.0` file into a correct `1.3.0` one, only the app's own tests can show.
 - **Majors mean little here.** No version is held to another, so a major bump allows nothing a minor doesn't. Use one, if at all, to tell people a change is large.
@@ -197,7 +190,7 @@ Every old document stays valid, however old. A major bump doesn't make old data 
 
 - **Owner:** the Accounts service, which saves the profiles and decides what they hold.
 - **Followers:** its own later releases, which read profiles saved by earlier ones.
-- **Who moves first:** the owner, against its own past: each new release must still read what every old release saved.
+- **Who moves first:** the owner, against its own past: each new release must still read what every old release saved. Here the owner is its own follower, and what lags behind is the data: a profile saved by an old release stays as that release wrote it.
 - **Who writes:** every release of the Accounts service there has ever been, saving profiles over many years. The profiles carry no version.
 - **Who reads:** the current release of the Accounts service, which validates each profile against the newest schema as it loads it.
 - **The change:** version `1.4.0` makes `email` required.
@@ -213,7 +206,7 @@ Every old document stays valid, however old. A major bump doesn't make old data 
 
 ### 5. Stored data, each document names its version
 
-Documents are a mix of versions, each validated against its own. No version may ever be deleted, and the reader or migration code must handle each one.
+Documents are a mix of versions, each validated against its own. No version may ever be deleted, and the reader or migration code must handle each one. Since each document says which version it is, it doesn't matter who moves first, and the owner, usually the writer, may change the schema whenever it likes.
 
 **Worked example: an archive of issued invoices.**
 
@@ -244,7 +237,7 @@ Scenario 1, plus new readers replaying old events. Retention can limit how far b
 - **Who reads:** the Fraud service, which may lag behind the writer on an older version, and a new Analytics service, built against the newest version, which replays the log from its oldest event.
 - **The change:** version `1.3.0` makes `currency` required. Scenario 1 would allow this, and Fraud is unaffected.
 - **What breaks without the check:** Analytics starts up and replays events written three weeks ago under `1.2.0`. Those events have no `currency`, so Analytics rejects them. Adding a value to an enum breaks the other side: Fraud rejects the new value, as in scenario 1.
-- **What retention changes:** once 30 days have passed since the last `1.0.0` event was written, no such event remains, so `1.0.0` no longer constrains later versions.
+- **What retention changes:** once 30 days have passed since the last `1.0.0` event was written, no such event remains, so `1.0.0` no longer constrains later versions. `family.yml` doesn't record the 30 days, since JSM uses no clock: a person who knows the last `1.0.0` event has expired moves `oldestLive` forward.
 
 **What JSM checks:** an either family needs no loosening and no tightening.
 
@@ -253,11 +246,15 @@ Scenario 1, plus new readers replaying old events. Retention can limit how far b
 
 ### 7. Uncoordinated parties
 
-Nobody controls who upgrades when: there's no single owner, or the owner can't make anyone upgrade. So few changes are safe in a minor.
+Nobody controls who upgrades when, so a reader can be on an older version than the writer, or a newer one. That happens when there's no single owner, or when the owner's software both writes and reads the documents, in many copies that each upgrade when they like, as with notes synced between installs of an app. Then a copy of the owner's own software can be behind another. So few changes are safe in a minor.
+
+Followers who upgrade on their own timetables don't make a family uncoordinated on their own. In scenario 2, partners upgrade when they like, but the owner, the one service reading their requests, is always on the newest version, so only the followers lag. Scenario 7 is for when the side that reads may lag too.
+
+A published standard is scenario 7 when you are one of many parties writing and reading documents to it, each adopting new editions on its own timetable. It is [scenario 9](#9-a-format-someone-else-owns) when another organisation's format reaches you and your schema only records what it sends.
 
 **Worked example: notes synced between mobile app installs.**
 
-- **Owner:** no single owner. The app's team releases new versions, but can't make anyone install them, so every install may be ahead of, or behind, the others.
+- **Owner:** the app's team, which decides what a note holds. But it can't make anyone install a new release, and every install both writes and reads notes, so every install may be ahead of, or behind, the others.
 - **Followers:** every install.
 - **Who moves first:** any install.
 - **Who writes:** each install of the app, on whichever release its owner has updated to.
@@ -290,7 +287,7 @@ Only each version's own documents matter, and cross-version checks would be nois
 
 ### 9. A format someone else owns
 
-A new version records a change that has already happened. A failed check means "the real format has changed, and here's how", not "you made a mistake, don't ship". Test documents are captured samples, and old samples usually still need to pass. Choosing a major bump changes nothing, because the documents already exist.
+A new version records a change that has already happened. Your schema is the reader, and it catches up with the format. Once it has, your newest schema is ahead of the old messages still arriving, and of the samples you captured, and it must still accept them. So the checks treat the reader as ahead, as in scenario 2. A failed check means "the real format has changed, and here's how", not "you made a mistake, don't ship". Test documents are captured samples, and old samples usually still need to pass. Choosing a major bump changes nothing, because the documents already exist.
 
 **Worked example: a shipping carrier's tracking webhook.**
 
@@ -318,6 +315,16 @@ Don't model a whole endpoint in JSM, as one schema holding its request and its r
 - **Those parts aren't JSON documents.** A path, a header or a status code isn't a document JSM can validate.
 
 Describe the endpoint in an OpenAPI document, or an AsyncAPI document for messages, that refers to JSM's schemas for its bodies, and let a tool such as oasdiff check the rest of it. See [Referring to JSM Schemas from AsyncAPI and OpenAPI](./api-documents.md).
+
+## What JSM does today
+
+- Every family [declares its scenario](#declaring-a-familys-scenario), and the declaration decides which documents run across versions, within a major, as [the rule](#the-rule) says. `validate` and `build-dist` run the same rule, and `validate --watch` runs it for what changed. Patch and minor are treated alike, and no document crosses a major.
+- The same pairs of versions run however a version is selected: by key, by search scope or with `all`. Validating an earlier version runs its pairs with later versions too, so it can't miss a later breakage. A failure appears under the later version, since that's what changed.
+- A new version carries only the documents for what it changes, so documents aren't copied on a patch or minor bump, except in a family with no pairs of versions to run. A major bump copies only the documents of the version you give, not its whole major. `--strict` counts inherited documents, so an inherited `pass` document counts in a writer-ahead family, and an inherited `fail` document in a reader-ahead family, though neither runs on the later version. See [What a version carries](./developing-schemas.md#what-a-version-carries).
+- `validate` compares the same pairs of versions structurally, and warns about each change in a direction the family protects which no document shows. A writer-ahead family needs a `pass` document for a change that widens what's accepted, a reader-ahead family a `fail` document for one that narrows it, an either family both, and a neither family none. See [Unexercised changes](./developing-schemas.md#unexercised-changes). `--strict` makes every warning a failure, in `validate` and `build-dist`.
+- A version can list a [deliberate exception](#deliberate-exceptions) to the rule, with a reason, for one run of one document. `validate`, `build-dist` and `check-party` then don't fail on that run, and nothing else is cleared.
+- `check-party` tells a reader or writer whether later versions in its major can harm it, following the family's declaration and the role its manifest states. It runs the same pairs as `validate`, for that side of the rule, and honours the same exceptions. Where no later version can harm the party, such as a reader in a reader-ahead family, it says why and exits `0`. See [Checking a party's schema versions](./developing-schemas.md#checking-a-partys-schema-versions).
+- What happens to old versions follows [how long the family's documents live](#how-long-a-version-lasts). `check-changes` refuses deleting a deployed version whose documents may still exist, and a retention family's `oldestLive` takes older versions out of the checks. A new major in a family whose old documents stay around needs [a migration statement](#what-a-major-bump-means).
 
 ## Declaring a family's scenario
 
@@ -357,7 +364,7 @@ Each scenario implies these facts:
 | `lock-step` | neither | moment | no | prescribes |
 | `third-party-format` | reader | states it | no | describes |
 
-**Two scenarios must state `documentsLive`.** How long documents live varies in `uncoordinated` and `third-party-format`, so the scenario alone is refused, and the family says which it is. A chat app's synced notes may be kept for good, and a webhook's messages may be read and gone. **If you don't know how long your documents live, choose `indefinitely`.** It is always accepted, and it is the safe answer, because it assumes old documents may still be out there.
+**Two scenarios must state `documentsLive`.** How long documents live varies in `uncoordinated` and `third-party-format`, so the scenario alone is refused, and the family says which it is. A chat app's synced notes may be kept for good, and a webhook's messages may be read and gone. Count only the documents a reader may validate again. A copy kept just for debugging or audit, which nothing validates, doesn't make documents live longer. **If you don't know how long your documents live, choose `indefinitely`.** It is always accepted, and it is the safe answer, because it assumes old documents may still be out there.
 
 **A retention family gives its oldest live version.** `retained-stream`, or any family that sets `documentsLive: retention`, must have `oldestLive`, and no other family may: it's refused anywhere else. `jsm create-schema` starts it at `1.0.0`. It must be a version the family has, so a mistyped version can't quietly switch the checks off.
 
@@ -524,12 +531,12 @@ Start with who owns the contract: the one party that decides what it says, and c
 1. **Does another organisation own the format, so your schema only records it?** Scenario 9, [a format someone else owns](#9-a-format-someone-else-owns).
 2. **Does each document name its own version, with the reader validating it against that version?** Scenario 5, [stored data, each document names its version](#5-stored-data-each-document-names-its-version). That includes a settings file that names its version, read by an app that migrates it: see [the versioned config-file variant](#variant-versioned-config-files-that-migrate).
 3. **Does one team own both sides, and release writer and reader together, with no documents kept beyond the release?** Scenario 8, [lock-step](#8-lock-step).
-4. **Do documents stay around for good, and are they read by newer code?** If people edit them as settings, and the tool reading them owns them, scenario 3, [config files](#3-config-files). If they are records a service saves and reads, scenario 4, [stored data, one schema for all](#4-stored-data-one-schema-for-all).
+4. **Do documents stay around for good?** If people edit them as settings, and the tool reading them owns them, scenario 3, [config files](#3-config-files). If they are records a service saves and reads, scenario 4, [stored data, one schema for all](#4-stored-data-one-schema-for-all). If they are shared between copies of an app that each write and read them, and each upgrade when their users like, as with notes synced between phones, scenario 7, [uncoordinated parties](#7-uncoordinated-parties), with `documentsLive: indefinitely`.
 5. **Are documents kept for a set period, and can they be read again?** Scenario 6, [retained streams](#6-retained-streams).
 6. **Otherwise, documents are read and gone. Does the owner write them, or read them?**
    - The owner writes them, and its followers read them: scenario 1, [owner writes](#1-owner-writes).
    - The owner reads them, and its followers write them: scenario 2, [owner reads](#2-owner-reads).
-   - There's no single owner, or the owner can't make anyone upgrade, so any side may move first: scenario 7, [uncoordinated parties](#7-uncoordinated-parties).
+   - There's no single owner, or the owner's software both writes and reads the documents, in many copies that each upgrade when they like, so the reader may be behind the writer as well as ahead: scenario 7, [uncoordinated parties](#7-uncoordinated-parties). Followers upgrading on their own timetable aren't enough for this: in scenarios 1 and 2 they do that too.
 
 ## Terms from other schema registries
 

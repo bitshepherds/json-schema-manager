@@ -42,21 +42,21 @@ jsm create-registry ./my-registry
 export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
 
 # Create the first version, 1.0.0, of a schema family
-jsm create-schema "customer/b2c-customer" --scenario owner-writes
+jsm create-schema "orders/order-placed" --scenario owner-writes
 ```
 
-The scenario says how the family is used: see [Schema Family Scenarios](./scenarios.md#how-to-choose-a-scenario). Leave out `--scenario` and the command asks for it.
+The scenario says how the family is used. Here it is an event that the Orders service owns and publishes, so the owner writes the documents: see [Schema Family Scenarios](./scenarios.md#how-to-choose-a-scenario). Leave out `--scenario` and the command asks for it.
 
-Edit `my-registry/customer/b2c-customer/1/0/0/customer_b2c-customer_1_0_0.schema.json`, add JSON documents the schema should accept to the `pass` directory next to it, and documents it should reject to the `fail` directory. Then test it:
+Edit `my-registry/orders/order-placed/1/0/0/orders_order-placed_1_0_0.schema.json`, add JSON documents the schema should accept to the `pass` directory next to it, and documents it should reject to the `fail` directory. Then test it:
 
 ```bash
-jsm validate customer_b2c-customer_1_0_0
+jsm validate orders_order-placed_1_0_0
 ```
 
 To change the schema once it is deployed, create a new version and test the whole registry, which also runs the documents across versions that the family's scenario calls for. For `owner-writes`, where the family's owner writes the documents, that looks for a new version which would break a reader still on the old one:
 
 ```bash
-jsm create-schema-version customer_b2c-customer_1_0_0 minor
+jsm create-schema-version orders_order-placed_1_0_0 minor
 jsm validate all
 ```
 
