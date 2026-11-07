@@ -82,6 +82,7 @@ For prettier test output, we use `gotestsum`, but go test will work fine too.
 - **Compatibility verdicts**: `cmd/jsm/testdata/behaviour-registry` holds one family per [promise](user-docs/scenarios.md#the-promises), each with an `expect.yml` of the verdicts the promise wants, and `cmd/jsm/behaviour_registry_test.go` says how they work. Add a verdict there. CLI surface, output wording, exit codes and error messages stay in the inline `cmd/jsm/testdata/script` tests.
 - **The machine stays out of it**: A test passes or fails alike on a laptop and on CI. Every package with tests has a `TestMain` that calls `testenv.Hide()`, so git sees no global or system configuration and has an identity of its own, `HOME` points nowhere, and no `JSM_` or `GIT_` variable gets through. `internal/testenv` fails if a package lacks it.
 - **Test Runner**: We use `gotestsum` for colorful, enhanced test output. It's automatically installed via `make setup` and used by `make test`.
+- **Time Limit**: Every test run through `scripts/tester` stops a package's tests after 45 seconds, so a stuck run fails quickly. That is every `make` target that runs tests (`test`, `test-race`, `test-cover`, `test-race-coverage`, `cover-html` and `test-badge`), the matching `win-make.ps1` targets, and the pre-commit hook. To allow longer, run `go run scripts/tester/main.go -timeout=2m ./...`.
 
 Code is formatted on save.
 
