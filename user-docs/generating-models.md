@@ -9,7 +9,7 @@
 - [Unknown properties](#unknown-properties)
 - [How this guide is tested](#how-this-guide-is-tested)
 
-Services often want typed models, such as TypeScript interfaces or Go structs, as well as validators. Generating both from the registry keeps providers and consumers on one definition of each document.
+Services often want typed models, such as TypeScript interfaces or Go structs, as well as validators. Generating both from the registry keeps every writer and reader of a document on one definition of it.
 
 ## Generate from rendered, collapsed schemas
 
@@ -80,7 +80,7 @@ Generators name a type after the schema's `title`, or, without one, after its `$
 
 ## Unknown properties
 
-json-schema-to-typescript adds an index signature, `[k: string]: unknown`, to each object which allows additional properties, which is the JSON Schema default. That suits a writer-ahead family, whose consumers ignore the properties they do not know, so that providers can add properties in a minor version. See [Compatibility when the provider moves first](./developing-schemas.md#compatibility-when-the-provider-moves-first), and [Schema Family Scenarios](./scenarios.md) for the other ways a family can be used.
+json-schema-to-typescript adds an index signature, `[k: string]: unknown`, to each object which allows additional properties, which is the JSON Schema default. That suits a writer-ahead family, whose readers ignore the properties they do not know, so that the writer can add properties in a minor version. See [Compatibility when the owner writes](./developing-schemas.md#compatibility-when-the-owner-writes), and [Schema Family Scenarios](./scenarios.md) for the other ways a family can be used.
 
 Do not set `"additionalProperties": false` just to get tighter types, since in a writer-ahead family it means a new property is a breaking change. A family may close its schemas for its own reasons: [config files](./scenarios.md#3-config-files) often do, to catch typos.
 
