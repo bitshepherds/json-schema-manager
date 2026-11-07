@@ -152,6 +152,8 @@ func (g *CLIGitter) TagDeploymentSuccess(ctx context.Context, env config.Env, pu
 }
 
 // GetSchemaChanges identifies files with the given suffix changed between the anchor and HEAD.
+// A file's path says what it is, such as which version a schema is, so a file moved is one deleted and
+// one new, and rename detection stays off.
 func (g *CLIGitter) GetSchemaChanges(ctx context.Context, anchor Revision, sourceDir, suffix string) ([]Change, error) {
 	if !filepath.IsAbs(sourceDir) {
 		sourceDir = filepath.Join(g.repoRoot, sourceDir)
@@ -167,7 +169,8 @@ func (g *CLIGitter) GetSchemaChanges(ctx context.Context, anchor Revision, sourc
 	}
 
 	//nolint:gosec // CMD arguments are internal and path is absolute
-	cmd := exec.CommandContext(ctx, g.gitBinary, "diff", "--name-status", anchor.String(), "--", absSourceDir)
+	cmd := exec.CommandContext(ctx, g.gitBinary, "diff", "--name-status", "--no-renames", anchor.String(), "--",
+		absSourceDir)
 	cmd.Dir = g.repoRoot
 	out, err := cmd.CombinedOutput()
 	if err != nil {

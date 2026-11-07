@@ -67,7 +67,8 @@ mv $WORK/shop registry
 env JSM_REGISTRY_ROOT_DIR=registry
 ! exec jsm build-dist production --all
 stdout 'refunded.json \(no-loosening broken: pass document of 1.1.0 rejected by 1.0.0\)'
-stdout 'Not building: fix the failing tests, or use --skip-tests'
+stdout 'Not building: fix the failing tests, or if a break between versions is deliberate, list it in compat-exceptions.yml'
+! stdout 'skip-tests'
 ! stdout 'Successfully built'
 ! exists dist
 

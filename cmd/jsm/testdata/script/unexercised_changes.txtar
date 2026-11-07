@@ -47,6 +47,33 @@ stdout 'enum adds "refunded" \(used by pass/refunded.json\)'
 ! stdout 'unexercised change'
 stdout 'Test summary: 4 passed, 1 failed$'
 
+# jsm diff follows the family's scenario: a reader-ahead family asks for a fail document for each
+# narrowing, and a widening is harmless to it, so it flags none
+cp consumer-first.yml reg/shop/order/family.yml
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'widens   /status: enum adds "refunded" \(used by pass/refunded.json\)'
+stdout 'narrows  /: required requires "total" \(no fail document shows it\)'
+stdout 'narrows  /note: maxLength tightens the limit from 100 to 50 \(no fail document shows it\)'
+
+# A fail document which shows a narrowing is named
+cp no-total.json reg/shop/order/1/1/0/fail/no-total.json
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'narrows  /: required requires "total" \(shown by fail/no-total.json\)'
+
+# A neither family flags nothing, and still lists every change
+cp lock-step.yml reg/shop/order/family.yml
+rm reg/shop/order/1/1/0/pass/refunded.json
+exec jsm diff shop_order_1_0_0 shop_order_1_1_0
+stdout 'widens   /status: enum adds "refunded"$'
+stdout 'narrows  /note: maxLength tightens the limit from 100 to 50$'
+! stdout 'no (pass|fail) document'
+
+-- consumer-first.yml --
+scenario: consumer-first
+-- lock-step.yml --
+scenario: lock-step
+-- no-total.json --
+{"status": "paid"}
 -- refunded.json --
 {"status": "refunded", "total": 3}
 -- reg/json-schema-manager-config.yml --

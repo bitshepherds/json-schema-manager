@@ -131,8 +131,8 @@ func (c *comparer) constant(l *location, om, nm map[string]any) {
 	case !oHas:
 		c.add(l, "const", Narrows, "requires "+quote(nv), nil)
 	default:
-		c.add(l, "const", Widens, "requires "+quote(nv)+" instead of "+quote(ov),
-			func(v any) bool { return !reflect.DeepEqual(v, ov) })
+		c.add(l, "const", Widens, "allows "+quote(nv), func(v any) bool { return !reflect.DeepEqual(v, ov) })
+		c.add(l, "const", Narrows, "no longer allows "+quote(ov), nil)
 	}
 }
 
@@ -240,9 +240,14 @@ func (c *comparer) multipleOf(l *location, om, nm map[string]any) {
 		c.add(l, "multipleOf", Narrows, fmt.Sprintf("requires a multiple of %v", nv), nil)
 	case isMultiple(nv, ov):
 		c.add(l, "multipleOf", Narrows, fmt.Sprintf("requires a multiple of %v instead of %v", nv, ov), nil)
-	default:
+	case isMultiple(ov, nv):
 		c.add(l, "multipleOf", Widens, fmt.Sprintf("requires a multiple of %v instead of %v", nv, ov),
 			rejectedByOld)
+	default:
+		c.add(l, "multipleOf", Widens, fmt.Sprintf("allows multiples of %v which aren't multiples of %v", nv, ov),
+			rejectedByOld)
+		c.add(l, "multipleOf", Narrows,
+			fmt.Sprintf("no longer allows multiples of %v which aren't multiples of %v", ov, nv), nil)
 	}
 }
 

@@ -2,6 +2,7 @@ package schema
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -152,6 +153,57 @@ func TestUnexercisedWarningFollowsScenario(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{`d_f_1_0_0 widens adds "c"`}, warned(report, "d_f_1_1_0"))
 		assert.Empty(t, warned(report, "d_f_1_0_0"), "a warning appears under the later version")
+	})
+}
+
+// A change between two values goes both ways: a family protected in either direction hears about it.
+func TestChangeGoingBothWaysWarnsInTheDirectionProtected(t *testing.T) {
+	t.Parallel()
+
+	const widensConst, narrowsConst = `d_f_1_0_0 widens allows "b"`, `d_f_1_0_0 narrows no longer allows "a"`
+	const widensMultiple = "d_f_1_0_0 widens allows multiples of 6 which aren't multiples of 4"
+	const narrowsMultiple = "d_f_1_0_0 narrows no longer allows multiples of 4 which aren't multiples of 6"
+	consts := schemaMap{"d_f_1_0_0": `{"const": "a"}`, "d_f_1_1_0": `{"const": "b"}`}
+	multiples := schemaMap{"d_f_1_0_0": `{"multipleOf": 4}`, "d_f_1_1_0": `{"multipleOf": 6}`}
+
+	tests := []struct {
+		name         string
+		scenario     string
+		wantConst    []string
+		wantMultiple []string
+	}{
+		{"writer ahead", "scenario: provider-first\n", []string{widensConst}, []string{widensMultiple}},
+		{"reader ahead", "scenario: consumer-first\n", []string{narrowsConst}, []string{narrowsMultiple}},
+		{
+			"either",
+			"scenario: retained-stream\noldestLive: 1.0.0\n",
+			[]string{widensConst, narrowsConst},
+			[]string{widensMultiple, narrowsMultiple},
+		},
+		{"neither", "scenario: lock-step\n", []string{}, []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.wantConst,
+				warned(runAll(t, realRegistry(t, tt.scenario, maps.Clone(consts))), "d_f_1_1_0"))
+			assert.Equal(t, tt.wantMultiple,
+				warned(runAll(t, realRegistry(t, tt.scenario, maps.Clone(multiples))), "d_f_1_1_0"))
+		})
+	}
+
+	t.Run("a fail document showing the old value clears the narrowing half", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: consumer-first\n", maps.Clone(consts))
+		writeDoc(t, r, "d_f_1_1_0", TestDocTypeFail, "a.json", `"a"`)
+		assert.Empty(t, warned(runAll(t, r), "d_f_1_1_0"))
+	})
+
+	t.Run("a divisor only widens", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: consumer-first\n",
+			schemaMap{"d_f_1_0_0": `{"multipleOf": 4}`, "d_f_1_1_0": `{"multipleOf": 2}`})
+		assert.Empty(t, warned(runAll(t, r), "d_f_1_1_0"))
 	})
 }
 
@@ -508,6 +560,77 @@ func TestExceptionForAChange(t *testing.T) {
 		require.NoError(t, os.WriteFile(r.FamilyDeclarationPath("d_f_1_0_0"),
 			[]byte("scenario: retained-stream\noldestLive: 1.1.0\n"), 0o600))
 		assert.True(t, entries[0].TargetGone(laterDir))
+	})
+}
+
+func TestStaleAmong(t *testing.T) {
+	t.Parallel()
+
+	stale := func(t *testing.T, r *Registry, content string) []Exception {
+		t.Helper()
+		entries, err := ParseExceptions([]byte("exceptions:\n" + content))
+		require.NoError(t, err)
+		got, err := StaleAmong(context.Background(), r, "d_f_1_1_0", entries)
+		require.NoError(t, err)
+		return got
+	}
+	changeEntry := func(change string) string {
+		return "  - version: 1.0.0\n    change: \"" + change + "\"\n    reason: moved\n"
+	}
+	docEntry := func(document string) string {
+		return "  - version: 1.0.0\n    document: " + document + "\n    rule: no-loosening\n    reason: moved\n"
+	}
+	widened := func(t *testing.T) *Registry {
+		t.Helper()
+		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		writeDoc(t, r, "d_f_1_0_0", TestDocTypeFail, "bad.json", `{"s": "c"}`)
+		writeDoc(t, r, "d_f_1_0_0", TestDocTypeFail, "worse.json", `{"s": "z"}`)
+		return r
+	}
+	const realChange = `/s: enum adds \"c\"`
+
+	t.Run("an entry for a change which still warns clears something", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		assert.Empty(t, stale(t, r, changeEntry(realChange)))
+	})
+
+	t.Run("an entry for a change which isn't there clears nothing", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: provider-first\n", schemaMap{"d_f_1_0_0": v100Bounded, "d_f_1_1_0": v110Added})
+		got := stale(t, r, changeEntry("/s: enum adds nothing")+changeEntry(realChange))
+		require.Len(t, got, 1)
+		assert.Equal(t, "/s: enum adds nothing", got[0].Change)
+	})
+
+	t.Run("an entry for a run which fails clears something", func(t *testing.T) {
+		t.Parallel()
+		assert.Empty(t, stale(t, widened(t), docEntry("fail/bad.json")))
+	})
+
+	t.Run("an entry for a run which passes clears nothing", func(t *testing.T) {
+		t.Parallel()
+		got := stale(t, widened(t), docEntry("fail/bad.json")+docEntry("fail/worse.json"))
+		require.Len(t, got, 1)
+		assert.Equal(t, "fail/worse.json", got[0].Document)
+	})
+
+	t.Run("an entry for a document which isn't there clears nothing", func(t *testing.T) {
+		t.Parallel()
+		assert.Len(t, stale(t, widened(t), docEntry("fail/missing.json")), 1)
+	})
+
+	t.Run("what the version's own file says doesn't count", func(t *testing.T) {
+		t.Parallel()
+		r := widened(t)
+		writeExceptionFile(t, r, "d_f_1_1_0", "exceptions:\n"+docEntry("fail/missing.json"))
+		assert.Empty(t, stale(t, r, docEntry("fail/bad.json")))
+	})
+
+	t.Run("a version which can't be tested says so", func(t *testing.T) {
+		t.Parallel()
+		_, err := StaleAmong(context.Background(), widened(t), "d_f_9_0_0", nil)
+		require.Error(t, err)
 	})
 }
 

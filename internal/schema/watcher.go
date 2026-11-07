@@ -85,7 +85,7 @@ func (w *Watcher) Watch(ctx context.Context, target ResolvedTarget, callback fun
 	targetPath := w.registry.RootDirectory()
 	what := "every schema"
 	if target.Scope != nil && *target.Scope != "" {
-		targetPath = filepath.Join(targetPath, filepath.FromSlash(string(*target.Scope)))
+		targetPath = w.scopeWatchPath(*target.Scope)
 		what = "the schemas in " + string(*target.Scope)
 	} else if target.Key != nil {
 		// A version's result depends on its family's declaration and on the versions it pairs with
@@ -107,6 +107,20 @@ func (w *Watcher) Watch(ctx context.Context, target ResolvedTarget, callback fun
 	}
 
 	return w.eventLoop(ctx, watcher, callback)
+}
+
+// scopeWatchPath returns the directory to watch for a search scope: the scope's own, or if the scope is
+// below a family, the family's, as what runs in the scope depends on its family's declaration and on the
+// other versions in its major.
+func (w *Watcher) scopeWatchPath(scope SearchScope) string {
+	root := w.registry.RootDirectory()
+	scopeDir := filepath.FromSlash(string(scope))
+	for dir := scopeDir; dir != "." && dir != string(filepath.Separator); dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(root, dir, FamilyDeclarationFile)); err == nil {
+			return filepath.Join(root, dir)
+		}
+	}
+	return filepath.Join(root, scopeDir)
 }
 
 func (w *Watcher) eventLoop(ctx context.Context, watcher eventWatcher, callback func(WatchEvent)) error {

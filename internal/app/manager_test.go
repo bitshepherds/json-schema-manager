@@ -1598,7 +1598,9 @@ func TestCLIManager_BuildDistRunsTests(t *testing.T) {
 			err := mgr.BuildDist(context.Background(), "prod", all, false, false, false)
 			require.ErrorIs(t, err, ErrTestsFailed)
 			assert.Contains(t, out.String(), "bad.json")
-			assert.Contains(t, out.String(), "Not building: fix the failing tests, or use --skip-tests")
+			assert.Contains(t, out.String(), "Not building: fix the failing tests, or if a break between versions is "+
+				"deliberate, list it in "+schema.ExceptionsFile)
+			assert.NotContains(t, out.String(), "--skip-tests")
 		})
 	}
 
@@ -1670,6 +1672,13 @@ func TestNewBuildDistCmd(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build failed")
 		mockMgr.AssertExpectations(t)
+	})
+
+	t.Run("--skip-tests says it is for a pipeline which has already run validate", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewBuildDistCmd(&MockManager{})
+		assert.Contains(t, cmd.Flags().Lookup("skip-tests").Usage, "already run validate")
+		assert.Contains(t, cmd.Long, "not a way past a failure")
 	})
 
 	t.Run("--skip-tests", func(t *testing.T) {

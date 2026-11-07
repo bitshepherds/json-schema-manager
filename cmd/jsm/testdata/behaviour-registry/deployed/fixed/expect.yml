@@ -1,6 +1,6 @@
 # 1.0.0 is deployed and 1.1.0 is not. A deployed version's schema and documents can't change, but
-# they can gain a document or go as a whole. delete-whole-version removes 1.1.0 too, or git would see
-# the near-identical versions as a rename, which check-changes reads as a modification of 1.0.0.
+# they can gain a document or go as a whole. delete-whole-version leaves the near-identical 1.1.0,
+# which the deletion must not be mistaken for a rename to.
 promise: deployed-versions-fixed
 validate:
   1.0.0: pass
@@ -23,4 +23,4 @@ checkChanges:
       verdict: pass
     delete-whole-version:
       verdict: pass
-      delete: [1/0/0, 1/1/0]
+      delete: [1/0/0]

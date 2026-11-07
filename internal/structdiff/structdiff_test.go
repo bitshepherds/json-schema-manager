@@ -140,8 +140,11 @@ func TestCompare(t *testing.T) {
 			name:  "const changed",
 			older: `{"const": "a"}`,
 			newer: `{"const": "b"}`,
-			want:  []summary{{"/", "const", Widens, `requires "b" instead of "a"`}},
-			used:  []string{`"b"`},
+			want: []summary{
+				{"/", "const", Widens, `allows "b"`},
+				{"/", "const", Narrows, `no longer allows "a"`},
+			},
+			used: []string{`"b"`},
 		},
 		{
 			name:   "const removed",
@@ -284,6 +287,17 @@ func TestCompare(t *testing.T) {
 			newer: `{"multipleOf": 2}`,
 			want:  []summary{{"/", "multipleOf", Widens, "requires a multiple of 2 instead of 4"}},
 			used:  []string{`6`},
+		},
+		{
+			name:  "multipleOf of neither a multiple nor a divisor",
+			older: `{"multipleOf": 4}`,
+			newer: `{"multipleOf": 6}`,
+			want: []summary{
+				{"/", "multipleOf", Widens, "allows multiples of 6 which aren't multiples of 4"},
+				{"/", "multipleOf", Narrows, "no longer allows multiples of 4 which aren't multiples of 6"},
+			},
+			used:   []string{`6`},
+			unused: []string{`8`},
 		},
 		{
 			name:   "required removed",
@@ -509,14 +523,6 @@ func TestCompare(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestChangeMayBreak(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, (&Change{Effect: Widens}).MayBreak())
-	assert.True(t, (&Change{Effect: Alters}).MayBreak())
-	assert.False(t, (&Change{Effect: Narrows}).MayBreak())
 }
 
 func TestChangeString(t *testing.T) {

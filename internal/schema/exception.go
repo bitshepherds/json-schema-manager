@@ -38,6 +38,13 @@ func (e *Exception) String() string {
 	return fmt.Sprintf("version %s, %s, %s", e.Version.String('.'), e.Document, e.Rule)
 }
 
+// SameEntry reports whether other names what the exception names, whatever reason it gives.
+func (e *Exception) SameEntry(other *Exception) bool {
+	a, b := *e, *other
+	a.Reason, b.Reason = "", ""
+	return a == b
+}
+
 // run returns the kind of run which the exception clears.
 func (e *Exception) run() acrossVersionRun {
 	docType := TestDocType(filepath.Dir(filepath.FromSlash(e.Document)))
@@ -161,7 +168,7 @@ func ParseExceptions(data []byte) ([]Exception, error) {
 			return nil, fmt.Errorf("entry %d: %w", i+1, err)
 		}
 		if slices.ContainsFunc(exceptions, func(o Exception) bool {
-			return o.Version == e.Version && o.Document == e.Document && o.Rule == e.Rule && o.Change == e.Change
+			return e.SameEntry(&o)
 		}) {
 			return nil, fmt.Errorf("entry %d: it names %s twice", i+1, &e)
 		}

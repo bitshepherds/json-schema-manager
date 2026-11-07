@@ -556,6 +556,43 @@ func TestWatchRunsSamePairsAsValidate(t *testing.T) {
 		assert.Empty(t, reports.String())
 	})
 
+	t.Run("watching a version by its scope sees its family's declaration", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, family)
+		mgr, _, reports := newWatchManager(t, r)
+		scope := schema.SearchScope(family + "/1/0/0")
+		got := watchUntilReported(t, mgr, reports, schema.ResolvedTarget{Scope: &scope}, func() {
+			r.write(filepath.Join(family, schema.FamilyDeclarationFile), "scenario: lock-step\n")
+		})
+		assert.Equal(t, []string{"1.0.0 fail on 1.0.0", "1.0.0 pass on 1.0.0"}, got.labels())
+	})
+
+	t.Run("watching a version by its scope sees another version in its major", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, family)
+		scope := schema.SearchScope(family + "/1/0/0")
+		want, err := r.runJSON(first)
+		require.ErrorIs(t, err, ErrTestsFailed)
+
+		mgr, logs, reports := newWatchManager(t, r)
+		got := watchUntilReported(t, mgr, reports, schema.ResolvedTarget{Scope: &scope}, func() {
+			touch(t, schemaPath(r, middle))
+		})
+		assert.Equal(t, want.labels(), got.labels())
+		assert.Contains(t, logs.String(), "Schema changed:")
+		assert.NotContains(t, logs.String(), "Declaration changed:")
+	})
+
+	t.Run("a scope below the family ignores another major", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, "major/incompatible-change")
+		mgr, _, reports := newWatchManager(t, r)
+		scope := schema.SearchScope("major/incompatible-change/1/0/0")
+		mgr.handleWatchEvent(context.Background(), schema.WatchEvent{Key: "major_incompatible-change_2_0_0"},
+			schema.ResolvedTarget{Scope: &scope}, false, "json", false, true, false)
+		assert.Empty(t, reports.String())
+	})
+
 	t.Run("a broken declaration is logged, and the watch goes on", func(t *testing.T) {
 		t.Parallel()
 		r := newBehaviourRegistry(t, family)

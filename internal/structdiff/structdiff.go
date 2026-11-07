@@ -56,12 +56,6 @@ type Change struct {
 	uses func(v any) bool
 }
 
-// MayBreak reports whether the change may make the older schema reject documents which the newer
-// one accepts.
-func (c *Change) MayBreak() bool {
-	return c.Effect != Narrows
-}
-
 // String renders the change as its location, keyword and detail.
 func (c *Change) String() string {
 	if c.Keyword == "" {

@@ -282,6 +282,40 @@ func TestCLIGitter_GetSchemaChanges(t *testing.T) {
 		assert.False(t, changes[0].IsNew)
 	})
 
+	t.Run("a file deleted beside a similar new one is both, not a rename", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := setupTestRepo(t)
+		g := NewCLIGitter(cfg, pathResolver, tmpDir)
+		git := func(args ...string) {
+			t.Helper()
+			require.NoError(t, exec.CommandContext(context.Background(), "git",
+				append([]string{"-C", tmpDir}, args...)...).Run())
+		}
+
+		srcDir := filepath.Join(tmpDir, "src", "schemas")
+		require.NoError(t, os.MkdirAll(srcDir, 0o755))
+		content := []byte(`{"type": "object", "properties": {"a": {"type": "string"}, "b": {"type": "string"}}}`)
+		older := filepath.Join(srcDir, "a_1_0_0.schema.json")
+		require.NoError(t, os.WriteFile(older, content, 0o600))
+		git("add", ".")
+		git("commit", "-m", "1")
+		git("tag", "jsm-deploy/prod/v1")
+
+		newer := filepath.Join(srcDir, "a_1_1_0.schema.json")
+		require.NoError(t, os.WriteFile(newer, content, 0o600))
+		git("rm", older)
+		git("add", ".")
+		git("commit", "-m", "2")
+
+		changes, err := g.GetSchemaChanges(context.Background(), "jsm-deploy/prod/v1", srcDir, ".schema.json")
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		for _, c := range changes {
+			assert.Equal(t, filepath.Base(c.Path) == filepath.Base(older), c.IsDeleted, c.Path)
+			assert.Equal(t, filepath.Base(c.Path) == filepath.Base(newer), c.IsNew, c.Path)
+		}
+	})
+
 	t.Run("ignore non-schema files", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := setupTestRepo(t)

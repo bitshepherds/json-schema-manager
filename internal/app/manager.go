@@ -315,8 +315,9 @@ func (m *CLIManager) handleWatchEvent(ctx context.Context, event schema.WatchEve
 }
 
 // watchRunFor returns what to test for a change, or nil if the target doesn't depend on what changed:
-// a whole family, the key of the version watched, or the version changed. A watched version depends on
-// its family's declaration and on the other versions in its major, as its pairs include them.
+// a whole family, the key of the version watched, the scope watched, or the version changed. A watched
+// version depends on its family's declaration and on the other versions in its major, as its pairs
+// include them, and so does a scope below the family.
 func watchRunFor(event schema.WatchEvent, target schema.ResolvedTarget) *schema.ResolvedTarget {
 	switch {
 	case target.Key != nil && event.Family != "":
@@ -327,14 +328,25 @@ func watchRunFor(event schema.WatchEvent, target schema.ResolvedTarget) *schema.
 		if event.Key.SameMajorFamily(*target.Key) {
 			return &schema.ResolvedTarget{Key: target.Key}
 		}
-	case target.Scope != nil && event.Family != "":
-		if target.Scope.Contains(event.Family) {
-			return &schema.ResolvedTarget{Scope: &event.Family}
-		}
 	case target.Scope != nil:
-		if event.Key.InScope(*target.Scope) {
-			return &schema.ResolvedTarget{Key: &event.Key}
-		}
+		return scopeWatchRunFor(event, *target.Scope)
+	}
+	return nil
+}
+
+// scopeWatchRunFor is watchRunFor for a target which is a scope.
+func scopeWatchRunFor(event schema.WatchEvent, scope schema.SearchScope) *schema.ResolvedTarget {
+	switch {
+	case event.Family != "" && scope.Contains(event.Family):
+		return &schema.ResolvedTarget{Scope: &event.Family}
+	case event.Family != "" && event.Family.Contains(scope):
+		return &schema.ResolvedTarget{Scope: &scope}
+	case event.Family != "":
+		return nil
+	case event.Key.InScope(scope):
+		return &schema.ResolvedTarget{Key: &event.Key}
+	case event.Key.MajorScope().Contains(scope):
+		return &schema.ResolvedTarget{Scope: &scope}
 	}
 	return nil
 }
@@ -355,7 +367,11 @@ func (m *CLIManager) runForWatch(ctx context.Context, tester *schema.Tester, eve
 
 	m.registry.Reset()
 	if run.Scope != nil {
-		m.logger.Info("Declaration changed:", "family", *run.Scope)
+		if event.Family != "" {
+			m.logger.Info("Declaration changed:", "family", event.Family)
+		} else {
+			m.logger.Info("Schema changed:", "schema", event.Key)
+		}
 		return tester.TestFoundSchemas(ctx, *run.Scope)
 	}
 	m.logger.Info("Schema changed:", "schema", *run.Key)
@@ -777,7 +793,6 @@ func (m *CLIManager) declarationChange(ctx context.Context, anchor repo.Revision
 	//nolint:gosec // The path comes from git, within the registry
 	current, err := os.ReadFile(path)
 	if err != nil {
-		// git can report a removed declaration as a rename, so go by what's there, not by its status
 		if familyHasVersions(filepath.Dir(path)) {
 			return "it cannot be removed while the family has versions", nil
 		}
@@ -808,7 +823,7 @@ func familyHasVersions(familyDir string) bool {
 // changedExceptions describes each change since the anchor to an exception file which was there at the
 // anchor. A file may be added, and entries added to it, as that's the way out of a check which fails on
 // deployed versions, but what it said at the anchor is locked. A file goes along with its whole version,
-// an entry may go once what it names has gone, and a file invalid at the anchor had nothing to protect.
+// an entry may go once it clears nothing, and a file invalid at the anchor had nothing to protect.
 func (m *CLIManager) changedExceptions(
 	ctx context.Context,
 	anchor repo.Revision,
@@ -827,38 +842,82 @@ func (m *CLIManager) changedExceptions(
 		if err != nil {
 			continue
 		}
-		refused = append(refused, lockedExceptionChanges(c.Path, deployed)...)
+		locked, err := m.lockedExceptionChanges(ctx, c.Path, deployed)
+		if err != nil {
+			return nil, err
+		}
+		refused = append(refused, locked...)
 	}
 	return refused, nil
 }
 
 // lockedExceptionChanges describes each of the deployed exceptions which the file at path no longer
-// holds as it was.
-func lockedExceptionChanges(path string, deployed []schema.Exception) []string {
+// holds as it was. An entry may go if it clears nothing, as removing it weakens no protection, and
+// validate fails until it has gone. It may not be edited, even then.
+func (m *CLIManager) lockedExceptionChanges(
+	ctx context.Context,
+	path string,
+	deployed []schema.Exception,
+) ([]string, error) {
 	versionDir := filepath.Dir(path)
-	// git can report a removed file as a rename, so go by what's there, not by its status
 	//nolint:gosec // The path comes from git, within the registry
 	data, err := os.ReadFile(path)
 	if err != nil {
 		matches, _ := filepath.Glob(filepath.Join(versionDir, "*"+schema.SchemaSuffix))
 		if len(matches) == 0 {
-			return nil
+			return nil, nil
 		}
 		data = nil
 	}
 	current, err := schema.ParseExceptions(data)
 	if err != nil {
-		return []string{fmt.Sprintf("%s: it is no longer valid: %s", path, err)}
+		return []string{fmt.Sprintf("%s: it is no longer valid: %s", path, err)}, nil
 	}
 
 	var refused []string
+	refuse := func(e *schema.Exception) {
+		refused = append(refused, fmt.Sprintf("%s: the entry for %s can't be edited or removed", path, e))
+	}
+	var removed []schema.Exception
 	for i := range deployed {
 		e := &deployed[i]
-		if !slices.Contains(current, *e) && !e.TargetGone(versionDir) {
-			refused = append(refused, fmt.Sprintf("%s: the entry for %s can't be edited or removed", path, e))
+		switch {
+		case slices.Contains(current, *e):
+		case slices.ContainsFunc(current, func(c schema.Exception) bool { return e.SameEntry(&c) }):
+			refuse(e)
+		case !e.TargetGone(versionDir):
+			removed = append(removed, *e)
 		}
 	}
-	return refused
+
+	stale, err := m.staleAmong(ctx, versionDir, removed)
+	if err != nil {
+		return nil, err
+	}
+	for i := range removed {
+		if !slices.Contains(stale, removed[i]) {
+			refuse(&removed[i])
+		}
+	}
+	return refused, nil
+}
+
+// staleAmong returns those of the entries removed from the exception file of the version in versionDir
+// which clear nothing as the registry stands. Without a schema there, it can't tell of any.
+func (m *CLIManager) staleAmong(
+	ctx context.Context,
+	versionDir string,
+	removed []schema.Exception,
+) ([]schema.Exception, error) {
+	matches, _ := filepath.Glob(filepath.Join(versionDir, "*"+schema.SchemaSuffix))
+	if len(removed) == 0 || len(matches) == 0 {
+		return nil, nil
+	}
+	key, err := m.registry.KeyFromSchemaPath(matches[0])
+	if err != nil {
+		return nil, err
+	}
+	return schema.StaleAmong(ctx, m.registry, key, removed)
 }
 
 // TagDeployment ensures that a successful deployment is tagged in git.
@@ -1003,6 +1062,7 @@ func (m *CLIManager) testBeforeBuild(ctx context.Context, strict bool) error {
 	if !tr.HasFailures() && !strict {
 		return nil
 	}
-	_, _ = fmt.Fprintln(m.reporterWriter, "Not building: fix the failing tests, or use --skip-tests")
+	_, _ = fmt.Fprintln(m.reporterWriter, "Not building: fix the failing tests, or if a break between versions is "+
+		"deliberate, list it in "+schema.ExceptionsFile)
 	return ErrTestsFailed
 }

@@ -35,6 +35,8 @@ type Tester struct {
 	ranPairs map[versionPair]bool // the pairs this run has already taken on
 	// comparedPairs are the pairs whose structural changes this run has already looked at.
 	comparedPairs map[versionPair]bool
+	// listed stands in for the exception files of these versions.
+	listed map[Key][]Exception
 }
 
 // NewTester creates a new tester for the given registry.
@@ -47,6 +49,32 @@ func NewTester(r *Registry) *Tester {
 		ranPairs:         make(map[versionPair]bool),
 		comparedPairs:    make(map[versionPair]bool),
 	}
+}
+
+// StaleAmong returns those of the entries which clear nothing as the registry stands, so which validate
+// would report as stale if the exception file of the version with key k listed them. It runs what validate
+// runs on that version, so the answer can't differ from validate's.
+func StaleAmong(ctx context.Context, r *Registry, k Key, entries []Exception) ([]Exception, error) {
+	t := NewTester(r)
+	t.SetStopOnFirstError(false)
+	t.listed = map[Key][]Exception{k: entries}
+	report, err := t.TestSingleSchema(ctx, k)
+	if err != nil {
+		return nil, err
+	}
+	stale := make([]Exception, 0, len(report.StaleExceptions[k]))
+	for _, s := range report.StaleExceptions[k] {
+		stale = append(stale, s.Exception)
+	}
+	return stale, nil
+}
+
+// exceptions returns what the version's exception file lists, or what this run takes it to list.
+func (t *Tester) exceptions(s *Schema) ([]Exception, error) {
+	if entries, ok := t.listed[s.Key()]; ok {
+		return entries, nil
+	}
+	return s.Exceptions()
 }
 
 // TestSingleSchema runs a schema's own documents, then the pairs it is part of, with every earlier
@@ -266,7 +294,7 @@ func (t *Tester) comparePair(earlier, later *Schema, ahead Ahead) error {
 	if err != nil {
 		return err
 	}
-	exceptions, err := later.Exceptions()
+	exceptions, err := t.exceptions(later)
 	if err != nil {
 		return err
 	}
@@ -369,19 +397,30 @@ func newChangeEvidence(earlier, later *Schema, between []*Schema) (*changeEviden
 func (ev *changeEvidence) missing(change *structdiff.Change, ahead Ahead) []structdiff.Effect {
 	var out []structdiff.Effect
 	for _, direction := range protectedDirections(ahead, change.Effect) {
-		shown := slices.ContainsFunc(ev.pass, func(doc TestInfo) bool {
-			return change.UsedBy(doc.Unmarshalled, ev.older)
-		})
-		if direction == structdiff.Narrows {
-			shown = slices.ContainsFunc(ev.fail, func(doc TestInfo) bool {
-				return change.NarrowedBy(doc.Unmarshalled, ev.older, ev.newer)
-			})
-		}
-		if !shown {
+		if len(ev.showing(change, direction)) == 0 {
 			out = append(out, direction)
 		}
 	}
 	return out
+}
+
+// showing returns the paths of the documents which show the change going in the direction.
+func (ev *changeEvidence) showing(change *structdiff.Change, direction structdiff.Effect) []string {
+	var paths []string
+	if direction == structdiff.Narrows {
+		for _, doc := range ev.fail {
+			if change.NarrowedBy(doc.Unmarshalled, ev.older, ev.newer) {
+				paths = append(paths, doc.Path)
+			}
+		}
+		return paths
+	}
+	for _, doc := range ev.pass {
+		if change.UsedBy(doc.Unmarshalled, ev.older) {
+			paths = append(paths, doc.Path)
+		}
+	}
+	return paths
 }
 
 // versionsAfter returns the versions in later's major after earlier, up to and including later, in
@@ -716,7 +755,7 @@ func (t *Tester) reportExceptionsWithoutPairs(s *Schema, decl *FamilyDeclaration
 	if !decl.Live(s.Key().Version()) {
 		return nil
 	}
-	exceptions, err := s.Exceptions()
+	exceptions, err := t.exceptions(s)
 	if err != nil {
 		return err
 	}
@@ -739,7 +778,7 @@ func (t *Tester) reportExceptionsWithoutPairs(s *Schema, decl *FamilyDeclaration
 // applyExceptions marks each of the pair's runs which the later version's exception file names, and
 // adds to the report each entry for the pair which names none of them.
 func (t *Tester) applyExceptions(runs []Spec, earlier, later *Schema, decl *FamilyDeclaration) error {
-	exceptions, err := later.Exceptions()
+	exceptions, err := t.exceptions(later)
 	if err != nil {
 		return err
 	}

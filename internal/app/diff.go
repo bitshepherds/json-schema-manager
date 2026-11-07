@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
 )
 
 // NewDiffCmd returns a new cobra command for listing the structural changes between two schemas.
@@ -57,7 +59,8 @@ The comparison is structural: it follows local $refs, and compares other schemas
 	}
 }
 
-// writeChanges writes the changes from older to newer, one per line.
+// writeChanges writes the changes from older to newer, one per line, each with the documents which
+// show it, and what its family protects that none does.
 func writeChanges(w io.Writer, older, newer schema.Key, changes []schema.Change) {
 	if len(changes) == 0 {
 		_, _ = fmt.Fprintf(w, "No structural changes from %s to %s\n", older, newer)
@@ -66,19 +69,39 @@ func writeChanges(w io.Writer, older, newer schema.Key, changes []schema.Change)
 
 	_, _ = fmt.Fprintf(w, "Changes from %s to %s:\n", older, newer)
 	for i := range changes {
-		c := &changes[i].Change
-		line := fmt.Sprintf("  %-8s %s", c.Effect, c.String())
-		switch {
-		case !c.MayBreak():
-		case len(changes[i].UsedBy) == 0:
-			line += " (no pass document uses it)"
-		default:
-			line += " (used by"
-			for _, p := range changes[i].UsedBy {
-				line += " " + filepath.Join(filepath.Base(filepath.Dir(p)), filepath.Base(p))
-			}
-			line += ")"
+		c := &changes[i]
+		line := fmt.Sprintf("  %-8s %s", c.Change.Effect, c.Change.String())
+		if notes := changeNotes(c); len(notes) > 0 {
+			line += " (" + strings.Join(notes, "; ") + ")"
 		}
 		_, _ = fmt.Fprintln(w, line)
 	}
+}
+
+// changeNotes says which documents show the change, and in which directions the family needs one.
+func changeNotes(c *schema.Change) []string {
+	var notes []string
+	if len(c.UsedBy) > 0 {
+		notes = append(notes, "used by "+documentNames(c.UsedBy))
+	}
+	if len(c.ShownBy) > 0 {
+		notes = append(notes, "shown by "+documentNames(c.ShownBy))
+	}
+	for _, direction := range c.Missing {
+		if direction == structdiff.Narrows {
+			notes = append(notes, "no fail document shows it")
+		} else {
+			notes = append(notes, "no pass document uses it")
+		}
+	}
+	return notes
+}
+
+// documentNames gives each document's path by its directory and name.
+func documentNames(paths []string) string {
+	names := make([]string, len(paths))
+	for i, p := range paths {
+		names[i] = filepath.Join(filepath.Base(filepath.Dir(p)), filepath.Base(p))
+	}
+	return strings.Join(names, " ")
 }

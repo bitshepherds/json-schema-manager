@@ -77,6 +77,142 @@ func TestDiff(t *testing.T) {
 	assert.Equal(t, "refunded.json", filepath.Base(changes[0].UsedBy[0]))
 }
 
+// jsm diff asks what validate asks: evidence in the direction the family protects, and only there.
+func TestDiffFollowsTheScenario(t *testing.T) {
+	t.Parallel()
+
+	const v100 = `{"properties": {"s": {"enum": ["a", "b"]}, "n": {"pattern": "^a"}}}`
+	const v110 = `{"properties": {"s": {"enum": ["a", "c"]}, "n": {"pattern": "^b"}}}`
+	const added, removed, altered = `/s: enum adds "c"`, `/s: enum removes "b"`, "/n: pattern"
+	schemas := func() schemaMap { return schemaMap{"d_f_1_0_0": v100, "d_f_1_1_0": v110} }
+
+	diff := func(t *testing.T, r *Registry, older, newer Key) map[string]Change {
+		t.Helper()
+		o, err := r.GetSchemaByKey(older)
+		require.NoError(t, err)
+		n, err := r.GetSchemaByKey(newer)
+		require.NoError(t, err)
+		changes, err := Diff(o, n)
+		require.NoError(t, err)
+		out := make(map[string]Change, len(changes))
+		for _, c := range changes {
+			text := c.Change.String()
+			if strings.HasPrefix(text, altered) {
+				text = altered
+			}
+			out[text] = c
+		}
+		return out
+	}
+
+	widens, narrows := structdiff.Widens, structdiff.Narrows
+	for _, tt := range []struct {
+		scenario               string
+		wantAdded, wantRemoved []structdiff.Effect
+		wantAltered            []structdiff.Effect
+	}{
+		{"scenario: provider-first\n", []structdiff.Effect{widens}, nil, []structdiff.Effect{widens}},
+		{"scenario: consumer-first\n", nil, []structdiff.Effect{narrows}, []structdiff.Effect{narrows}},
+		{
+			"scenario: retained-stream\noldestLive: 1.0.0\n",
+			[]structdiff.Effect{widens},
+			[]structdiff.Effect{narrows},
+			[]structdiff.Effect{widens, narrows},
+		},
+		{"scenario: lock-step\n", nil, nil, nil},
+	} {
+		t.Run(tt.scenario, func(t *testing.T) {
+			t.Parallel()
+			got := diff(t, realRegistry(t, tt.scenario, schemas()), "d_f_1_0_0", "d_f_1_1_0")
+			require.Len(t, got, 3, "every change is listed, whatever the scenario")
+			assert.Equal(t, tt.wantAdded, got[added].Missing)
+			assert.Equal(t, tt.wantRemoved, got[removed].Missing)
+			assert.Equal(t, tt.wantAltered, got[altered].Missing)
+		})
+	}
+
+	t.Run("documents showing a change are listed, in the direction each shows", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: retained-stream\noldestLive: 1.0.0\n", schemas())
+		writeDoc(t, r, "d_f_1_1_0", TestDocTypePass, "c.json", `{"s": "c"}`)
+		writeDoc(t, r, "d_f_1_1_0", TestDocTypePass, "plain.json", `{"s": "a"}`)
+		writeDoc(t, r, "d_f_1_1_0", TestDocTypeFail, "b.json", `{"s": "b"}`)
+		writeDoc(t, r, "d_f_1_1_0", TestDocTypeFail, "z.json", `{"s": "z"}`)
+		got := diff(t, r, "d_f_1_0_0", "d_f_1_1_0")
+
+		require.Len(t, got[added].UsedBy, 1)
+		assert.Equal(t, "c.json", filepath.Base(got[added].UsedBy[0]))
+		assert.Empty(t, got[added].ShownBy)
+		assert.Empty(t, got[added].Missing)
+
+		require.Len(t, got[removed].ShownBy, 1)
+		assert.Equal(t, "b.json", filepath.Base(got[removed].ShownBy[0]))
+		assert.Empty(t, got[removed].UsedBy)
+		assert.Empty(t, got[removed].Missing)
+	})
+
+	t.Run("documents of a version between the two count, as they do for validate", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: provider-first\n", schemaMap{
+			"d_f_1_0_0": v100, "d_f_1_1_0": v110, "d_f_1_2_0": v110,
+		})
+		writeDoc(t, r, "d_f_1_1_0", TestDocTypePass, "c.json", `{"s": "c"}`)
+		got := diff(t, r, "d_f_1_0_0", "d_f_1_2_0")
+		assert.Len(t, got[added].UsedBy, 1)
+		assert.Empty(t, got[added].Missing)
+	})
+
+	t.Run("a pair validate doesn't compare is listed, and nothing flagged", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: provider-first\n", schemaMap{
+			"d_f_1_0_0": v100, "d_f_1_1_0": v110, "d_f_2_0_0": v110,
+		})
+		for name, pair := range map[string][2]Key{
+			"another major": {"d_f_1_0_0", "d_f_2_0_0"},
+			"backwards":     {"d_f_1_1_0", "d_f_1_0_0"},
+		} {
+			got := diff(t, r, pair[0], pair[1])
+			require.NotEmpty(t, got, name)
+			for text := range got {
+				assert.Empty(t, got[text].Missing, name)
+			}
+		}
+	})
+
+	t.Run("a version below oldestLive takes no part", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: retained-stream\noldestLive: 1.1.0\n", schemas())
+		got := diff(t, r, "d_f_1_0_0", "d_f_1_1_0")
+		require.Len(t, got, 3)
+		assert.Empty(t, got[added].Missing)
+	})
+
+	t.Run("a declaration which can't be read stops it", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: nonsense\n", schemas())
+		o, err := r.GetSchemaByKey("d_f_1_0_0")
+		require.NoError(t, err)
+		n, err := r.GetSchemaByKey("d_f_1_1_0")
+		require.NoError(t, err)
+		_, err = Diff(o, n)
+		require.ErrorContains(t, err, "nonsense")
+	})
+
+	t.Run("versions which can't be listed stop it", func(t *testing.T) {
+		t.Parallel()
+		r := realRegistry(t, "scenario: provider-first\n", schemas())
+		o, err := r.GetSchemaByKey("d_f_1_0_0")
+		require.NoError(t, err)
+		n, err := r.GetSchemaByKey("d_f_1_1_0")
+		require.NoError(t, err)
+		r.pathResolver = &mockPathResolver{getUintSubdirectories: func(string) ([]uint64, error) {
+			return nil, errors.New("cannot list")
+		}}
+		_, err = Diff(o, n)
+		require.ErrorContains(t, err, "cannot list")
+	})
+}
+
 func TestDiff_Errors(t *testing.T) {
 	t.Parallel()
 

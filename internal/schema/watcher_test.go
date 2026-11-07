@@ -454,6 +454,68 @@ func TestWatcher(t *testing.T) {
 	})
 }
 
+// A version's result depends on its family's declaration and the other versions in its major, so a
+// watch on a scope below the family watches the whole family, as a watch by key does.
+func TestWatcher_ScopeBelowTheFamilySeesTheFamily(t *testing.T) {
+	t.Parallel()
+
+	for _, depth := range []string{"/1", "/1/0", "/1/0/0"} {
+		t.Run(depth, func(t *testing.T) {
+			t.Parallel()
+			r := setupTestRegistry(t)
+			watcher := NewWatcher(r, slog.New(slog.DiscardHandler))
+			createSchemaFiles(t, r, schemaMap{"domain_family_1_0_0": `{}`, "domain_family_2_0_0": `{}`})
+			scope := SearchScope("domain/family" + depth)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			events := make(chan WatchEvent, 10)
+			go func() {
+				_ = watcher.Watch(ctx, ResolvedTarget{Scope: &scope}, func(e WatchEvent) { events <- e })
+			}()
+			select {
+			case <-watcher.Ready:
+			case <-time.After(time.Second):
+				t.Fatal("watcher did not become ready in time")
+			}
+
+			declaration := filepath.Join(r.RootDirectory(), "domain", "family", FamilyDeclarationFile)
+			require.NoError(t, os.WriteFile(declaration, []byte("scenario: lock-step\n"), 0o600))
+			select {
+			case event := <-events:
+				assert.Equal(t, SearchScope("domain/family"), event.Family)
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for the declaration's event")
+			}
+
+			other := New("domain_family_2_0_0", r).Path(FilePath)
+			require.NoError(t, os.WriteFile(other, []byte(`{"type":"object"}`), 0o600))
+			select {
+			case event := <-events:
+				assert.Equal(t, Key("domain_family_2_0_0"), event.Key)
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for another version's event")
+			}
+		})
+	}
+
+	t.Run("a scope with no family above it watches itself", func(t *testing.T) {
+		t.Parallel()
+		r := setupTestRegistry(t)
+		dir := filepath.Join(r.RootDirectory(), "domain", "nothing", "1")
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		assert.Equal(t, dir, NewWatcher(r, slog.New(slog.DiscardHandler)).scopeWatchPath("domain/nothing/1"))
+	})
+
+	t.Run("a scope above the family watches itself", func(t *testing.T) {
+		t.Parallel()
+		r := setupTestRegistry(t)
+		createSchemaFiles(t, r, schemaMap{"domain_family_1_0_0": `{}`})
+		assert.Equal(t, filepath.Join(r.RootDirectory(), "domain"),
+			NewWatcher(r, slog.New(slog.DiscardHandler)).scopeWatchPath("domain"))
+	})
+}
+
 func TestWatcher_SaysWhatItWatches(t *testing.T) {
 	t.Parallel()
 

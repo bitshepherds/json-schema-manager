@@ -567,6 +567,127 @@ func TestCheckChangesAllowsWhatLeavesDeployedExceptionsAlone(t *testing.T) {
 	})
 }
 
+// A stale entry fails validate, whose report says to remove it, so check-changes must let it go, as
+// it clears nothing. Any other removal, and any edit, stays refused.
+func TestCheckChangesOnStaleDeployedExceptions(t *testing.T) {
+	t.Parallel()
+	const staleFamily, staleFile = "exception/stale-entry", "exception/stale-entry/1/1/0/compat-exceptions.yml"
+	const staleLater = "exception_stale-entry_1_1_0"
+	const lost = "fail/lost.json"
+	const ackFamily, ackFile = "warned/acknowledged", "warned/acknowledged/1/1/0/compat-exceptions.yml"
+	const staleChange = "  - version: 1.0.0\n    change: \"/status: enum adds nothing\"\n    reason: Reworded.\n"
+
+	t.Run("a stale entry for a document may go, and validate then passes", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, staleFamily)
+		r.deployTo(behaviourEnv)
+		requireStale(t, r, staleLater, lost)
+		r.write(staleFile, "exceptions: []\n")
+		out, err := r.checkChangesAfter()
+		require.NoError(t, err, out)
+		out, err = r.jsm("validate", staleLater)
+		require.NoError(t, err, out)
+	})
+
+	t.Run("the whole file may go when all its entries are stale", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, staleFamily)
+		r.deployTo(behaviourEnv)
+		require.NoError(t, os.Remove(filepath.Join(r.reg, staleFile)))
+		out, err := r.checkChangesAfter()
+		require.NoError(t, err, out)
+	})
+
+	t.Run("a stale entry for a change may go", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, ackFamily)
+		original, err := os.ReadFile(filepath.Join(r.reg, ackFile))
+		require.NoError(t, err)
+		r.write(ackFile, string(original)+staleChange)
+		r.commit("a stale entry")
+		r.deployTo(behaviourEnv)
+		r.write(ackFile, string(original))
+		out, err := r.checkChangesAfter()
+		require.NoError(t, err, out)
+	})
+
+	t.Run("an entry for a change which still warns may not go", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, ackFamily)
+		r.deployTo(behaviourEnv)
+		r.write(ackFile, "exceptions: []\n")
+		out, err := r.checkChangesAfter()
+		require.Error(t, err, out)
+		assert.Equal(t, ExitCheckFailed, ExitCode(err))
+		assert.Contains(t, out, "cannot change a deployed exception")
+		assert.Contains(t, out, "maxLength removes the limit")
+	})
+
+	t.Run("an entry which still clears a run may not go", func(t *testing.T) {
+		t.Parallel()
+		r := deployedExceptions(t)
+		r.write(clearedFile, "exceptions: []\n")
+		out, err := r.checkChangesAfter()
+		require.Error(t, err, out)
+		assert.Contains(t, out, "cannot change a deployed exception")
+		assert.Contains(t, out, "fail/refunded.json")
+	})
+
+	t.Run("a stale entry's reason may not be edited", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, staleFamily)
+		r.deployTo(behaviourEnv)
+		r.write(staleFile, "exceptions:\n"+exceptionEntry("1.0.0", lost, "no-loosening", "Another reason."))
+		out, err := r.checkChangesAfter()
+		require.Error(t, err, out)
+		assert.Contains(t, out, "cannot change a deployed exception")
+		assert.Contains(t, out, lost)
+	})
+
+	t.Run("a registry which can't be tested stops the check", func(t *testing.T) {
+		t.Parallel()
+		r := newBehaviourRegistry(t, staleFamily)
+		r.deployTo(behaviourEnv)
+		r.write(staleFile, "exceptions: []\n")
+		r.write("exception/stale-entry/1/1/0/pass/placed.json", "{")
+		out, err := r.checkChangesAfter()
+		require.Error(t, err, out)
+		assert.Equal(t, ExitCannotRun, ExitCode(err))
+	})
+}
+
+// Git would pair a deleted version with a similar new one as a rename, if it were asked to.
+func TestBuildDistBuildsANewVersionBesideADeletedOne(t *testing.T) {
+	t.Parallel()
+	const family = "deployed/fixed"
+	cfg := "environments:\n  dev:\n    privateUrlRoot: https://d/\n    publicUrlRoot: https://d/\n" +
+		"    allowSchemaMutation: true\n  production:\n    privateUrlRoot: https://p/\n" +
+		"    publicUrlRoot: https://p/\n    isProduction: true\n"
+
+	for _, env := range []string{behaviourEnv, "dev"} {
+		t.Run(env, func(t *testing.T) {
+			t.Parallel()
+			r := newBehaviourRegistry(t, family)
+			r.write("json-schema-manager-config.yml", cfg)
+			require.NoError(t, os.RemoveAll(filepath.Join(r.reg, family, "overlays")))
+			require.NoError(t, os.RemoveAll(filepath.Join(r.reg, family, "1/1/0")))
+			r.commit("only 1.0.0")
+			r.deployTo(env)
+
+			content, err := os.ReadFile(filepath.Join(r.reg, family, "1/0/0/deployed_fixed_1_0_0.schema.json"))
+			require.NoError(t, err)
+			require.NoError(t, os.RemoveAll(filepath.Join(r.reg, family, "1/0/0")))
+			r.write(family+"/1/1/0/deployed_fixed_1_1_0.schema.json", string(content))
+			r.commit("1.1.0 replaces 1.0.0")
+
+			out, err := r.jsm("build-dist", env)
+			require.NoError(t, err, out)
+			assert.Contains(t, out, "Successfully built 1 schemas")
+			assert.FileExists(t, filepath.Join(r.repo, "dist", env, "private", "deployed_fixed_1_1_0.schema.json"))
+		})
+	}
+}
+
 func TestCheckChangesStopsIfDeployedExceptionsCantBeRead(t *testing.T) {
 	t.Parallel()
 	registry := setupTestRegistry(t)
@@ -601,9 +722,19 @@ func TestLockedExceptionChangesLocksAnEntryForAChange(t *testing.T) {
 	deployed, err := schema.ParseExceptions([]byte(entry))
 	require.NoError(t, err)
 
+	m := NewCLIManager(slog.New(slog.DiscardHandler), setupTestRegistry(t), nil, &MockGitter{}, nil, io.Discard)
 	require.NoError(t, os.WriteFile(path, []byte(entry), 0o600))
-	assert.Empty(t, lockedExceptionChanges(path, deployed))
+	refused, err := m.lockedExceptionChanges(context.Background(), path, deployed)
+	require.NoError(t, err)
+	assert.Empty(t, refused)
 
 	require.NoError(t, os.WriteFile(path, []byte(strings.ReplaceAll(entry, "/a: x", "/a: y")), 0o600))
-	assert.Len(t, lockedExceptionChanges(path, deployed), 1)
+	refused, err = m.lockedExceptionChanges(context.Background(), path, deployed)
+	require.NoError(t, err)
+	assert.Len(t, refused, 1)
+
+	// A schema there which isn't in the registry can't be judged
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "d_f_1_1_0"+schema.SchemaSuffix), nil, 0o600))
+	_, err = m.lockedExceptionChanges(context.Background(), path, deployed)
+	require.Error(t, err)
 }

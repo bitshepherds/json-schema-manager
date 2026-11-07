@@ -25,7 +25,8 @@ Before building, it runs every schema's tests, and the documents its family's de
 runs across versions, as 'jsm validate all' does, and a stale entry in a compat-exceptions.yml
 counts as a failure. If any fail, it prints the report, builds nothing and exits with code 1.
 It also prints any warnings, and --strict fails on them, as
-it does for validate. Use --skip-tests if your pipeline already runs validate.
+it does for validate. Use --skip-tests only if an earlier step of your pipeline has already
+run validate: it is not a way past a failure, which is what a compat-exceptions.yml entry is for.
 
 By default, this command only builds schemas that have been added or modified since 
 the last successful deployment to that environment. A mutation check is performed 
@@ -63,7 +64,7 @@ for local troubleshooting or manual overrides.
 	cmd.Flags().BoolVar(&collapse, "collapse", false,
 		"Inline external $ref dependencies into each schema's $defs block")
 	cmd.Flags().BoolVar(&skipTests, "skip-tests", false,
-		"Build without first running the schemas' tests")
+		"Build without first running the schemas' tests, for a pipeline which has already run validate")
 	cmd.Flags().BoolVar(&strict, "strict", false,
 		"Fail on warnings: a schema with no pass or no fail document, a fail document rejected for several "+
 			"reasons, or a change in a direction the family protects which no document shows")

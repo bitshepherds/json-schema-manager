@@ -92,6 +92,13 @@ func (k Key) SameMajorFamily(other Key) bool {
 	return cut(k) == cut(other)
 }
 
+// MajorScope returns the search scope of the key's major in its family.
+func (k Key) MajorScope() SearchScope {
+	parts := strings.Split(string(k), KeySeparatorString)
+	const versionParts = 2 // minor and patch
+	return SearchScope(strings.Join(parts[:len(parts)-versionParts], SearchSeparatorString))
+}
+
 // InScope returns true if the key falls within the given search scope.
 func (k Key) InScope(ss SearchScope) bool {
 	if ss == "" {
