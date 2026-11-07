@@ -24,7 +24,10 @@ const customer = "domain-c_domain-c-a_customer_1_0_0"
 
 func main() {
 	if _, err := exec.LookPath("bunx"); err != nil {
-		fail("bunx not found: install Bun (make setup) to check the generated models")
+		fail(
+			"bunx not found: install Bun with 'make setup' (macOS/Linux) or '.\\win-make.ps1 setup' (Windows) " +
+				"to check the generated models",
+		)
 	}
 	repoRoot, err := os.Getwd()
 	check(err)

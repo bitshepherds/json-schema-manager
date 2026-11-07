@@ -32,7 +32,10 @@ type broken struct {
 
 func main() {
 	if _, err := exec.LookPath("bunx"); err != nil {
-		fail("bunx not found: install Bun (make setup) to check the API examples")
+		fail(
+			"bunx not found: install Bun with 'make setup' (macOS/Linux) or '.\\win-make.ps1 setup' (Windows) " +
+				"to check the API examples",
+		)
 	}
 	repoRoot, err := os.Getwd()
 	check(err)
