@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bitshepherds/json-schema-manager/internal/fsh"
-	"github.com/bitshepherds/json-schema-manager/internal/repo"
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
-	"github.com/bitshepherds/json-schema-manager/internal/validator"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/fsh"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/repo"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/validator"
 )
 
 // CreateRegistryCmdName is the name of the command to create a new registry.

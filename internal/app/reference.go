@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra/doc"
 
-	"github.com/bitshepherds/json-schema-manager/internal/fsh"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/fsh"
 )
 
 // ReferenceDir is where the generated command reference lives, relative to the repo root.

@@ -8,9 +8,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/bitshepherds/json-schema-manager/internal/coverage"
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
-	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/coverage"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/structdiff"
 )
 
 // JSONReporter implements schema.Reporter for JSON output.

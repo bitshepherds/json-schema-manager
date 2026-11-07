@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
 )
 
 // NoDomainError is returned when a schema does not have a domain.

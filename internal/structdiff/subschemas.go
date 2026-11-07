@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/bitshepherds/json-schema-manager/internal/jsonptr"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/jsonptr"
 )
 
 // subschemas compares the subschemas of om and nm, at the pointers oPtr and nPtr, which apply at l.

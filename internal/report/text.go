@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 // TextReporter implements schema.Reporter for plain text output.

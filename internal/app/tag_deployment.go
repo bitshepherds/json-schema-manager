@@ -3,7 +3,7 @@ package app
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
 )
 
 // NewTagDeploymentCmd returns a new cobra command for tagging a deployment.

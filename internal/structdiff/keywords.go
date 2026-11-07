@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bitshepherds/json-schema-manager/internal/jsonptr"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/jsonptr"
 )
 
 // keywords compares the assertion keywords of the subschemas om and nm, which apply at l.

@@ -21,7 +21,7 @@ func main() {
 	versionOut, _ := versionCmd.Output()
 	version := string(versionOut)
 
-	ldflags := fmt.Sprintf("-X github.com/bitshepherds/json-schema-manager/internal/app.Version=%s", version)
+	ldflags := fmt.Sprintf("-X github.com/bitshepherds/json-schema-manager/v2/internal/app.Version=%s", version)
 
 	// Ensure bin directory exists
 	if err := os.MkdirAll("bin", 0o750); err != nil {

@@ -3,7 +3,7 @@ package repo
 import (
 	"context"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
 )
 
 // JSMDeployTagPrefix is the prefix used for deployment tags.

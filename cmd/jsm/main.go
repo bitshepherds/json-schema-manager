@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/bitshepherds/json-schema-manager/internal/app"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/app"
 )
 
 func main() {

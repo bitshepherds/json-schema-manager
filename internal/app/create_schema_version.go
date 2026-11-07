@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 // NewCreateSchemaVersionCmd returns a new cobra command for creating a schema version.

@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bitshepherds/json-schema-manager/internal/jsonptr"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/jsonptr"
 )
 
 // Kind is a kind of point in a schema which a document can reach.

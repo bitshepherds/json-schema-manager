@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitshepherds/json-schema-manager/internal/coverage"
-	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/coverage"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/structdiff"
 )
 
 // Reporter defines the interface for creating formatted test reports.

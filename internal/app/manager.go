@@ -12,11 +12,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
-	"github.com/bitshepherds/json-schema-manager/internal/party"
-	"github.com/bitshepherds/json-schema-manager/internal/repo"
-	"github.com/bitshepherds/json-schema-manager/internal/report"
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/party"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/repo"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/report"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 // ErrTestsFailed is returned by ValidateSchema, after the report is written, when any test failed,
