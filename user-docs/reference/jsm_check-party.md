@@ -59,17 +59,17 @@ jsm check-party [manifest] [flags]
 ### Options
 
 ```
-  -h, --help              help for check-party
-  -o, --output <format>   Output format (text, json) (default text)
-      --strict            Fail on warnings too: a family's newer major version, or a listed version below oldestLive
+  -h, --help[=true|false]     help for check-party
+  -o, --output <format>       Output format (text, json) (default text)
+      --strict[=true|false]   Fail on warnings too: a family's newer major version, or a listed version below oldestLive
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -d, --debug             Enable debug logging
-  -c, --nocolour          Disable colour in output
-  -r, --registry string   path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
+  -d, --debug[=true|false]      Enable debug logging
+  -c, --nocolour[=true|false]   Disable colour in output
+  -r, --registry string         path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
 ```
 
 ### SEE ALSO

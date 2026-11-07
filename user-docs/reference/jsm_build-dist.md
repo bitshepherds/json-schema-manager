@@ -50,19 +50,19 @@ jsm build-dist [environment] [flags]
 ### Options
 
 ```
-  -a, --all          Render and build all schemas, skipping mutation checks
-      --collapse     Inline external $ref dependencies into each schema's $defs block
-  -h, --help         help for build-dist
-      --skip-tests   Build without first running the schemas' tests, for a pipeline which has already run validate
-      --strict       Fail on warnings: a schema with no pass or no fail document, a fail document rejected for several reasons, or a change in a direction the family protects which no document shows
+  -a, --all[=true|false]          Render and build all schemas, skipping mutation checks
+      --collapse[=true|false]     Inline external $ref dependencies into each schema's $defs block
+  -h, --help[=true|false]         help for build-dist
+      --skip-tests[=true|false]   Build without first running the schemas' tests, for a pipeline which has already run validate
+      --strict[=true|false]       Fail on warnings: a schema with no pass or no fail document, a fail document rejected for several reasons, or a change in a direction the family protects which no document shows
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -d, --debug             Enable debug logging
-  -c, --nocolour          Disable colour in output
-  -r, --registry string   path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
+  -d, --debug[=true|false]      Enable debug logging
+  -c, --nocolour[=true|false]   Disable colour in output
+  -r, --registry string         path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
 ```
 
 ### SEE ALSO

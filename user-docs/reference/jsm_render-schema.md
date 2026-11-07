@@ -20,19 +20,19 @@ jsm render-schema [target] [flags]
 ### Options
 
 ```
-      --collapse     Inline external $ref dependencies into the schema's $defs block, failing if the result does not compile or its test documents give different results
-  -e, --env string   The environment to use for rendering (defaults to production)
-  -h, --help         help for render-schema
-  -i, --id string    Identify a target schema by its canonical ID
-  -k, --key string   Identify a target schema by its key
+      --collapse[=true|false]   Inline external $ref dependencies into the schema's $defs block, failing if the result does not compile or its test documents give different results
+  -e, --env string              The environment to use for rendering (defaults to production)
+  -h, --help[=true|false]       help for render-schema
+  -i, --id string               Identify a target schema by its canonical ID
+  -k, --key string              Identify a target schema by its key
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -d, --debug             Enable debug logging
-  -c, --nocolour          Disable colour in output
-  -r, --registry string   path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
+  -d, --debug[=true|false]      Enable debug logging
+  -c, --nocolour[=true|false]   Disable colour in output
+  -r, --registry string         path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
 ```
 
 ### SEE ALSO

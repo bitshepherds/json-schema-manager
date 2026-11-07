@@ -56,16 +56,16 @@ jsm create-schema "domain-a/subdomain-b/family-c" --scenario uncoordinated --doc
 
 ```
       --documents-live string   How long documents outlive their writer: moment, retention or indefinitely. Required for the scenarios uncoordinated and third-party-format. If you don't know, choose indefinitely
-  -h, --help                    help for create-schema
+  -h, --help[=true|false]       help for create-schema
       --scenario string         The scenario the family serves: provider-first, consumer-first, config-file, stored-one-schema, stored-self-naming, retained-stream, uncoordinated, lock-step, third-party-format
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -d, --debug             Enable debug logging
-  -c, --nocolour          Disable colour in output
-  -r, --registry string   path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
+  -d, --debug[=true|false]      Enable debug logging
+  -c, --nocolour[=true|false]   Disable colour in output
+  -r, --registry string         path to the registry root directory (default: $JSM_REGISTRY_ROOT_DIR, or else the current directory)
 ```
 
 ### SEE ALSO
