@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/bitshepherds/json-schema-manager/internal/fsh"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/fsh"
 )
 
 // mockEnvProvider is a test implementation of EnvProvider.

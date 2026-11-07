@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitshepherds/json-schema-manager/internal/fsh"
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/fsh"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 func TestRootCmd(t *testing.T) {

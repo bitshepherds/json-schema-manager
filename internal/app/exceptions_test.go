@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitshepherds/json-schema-manager/internal/repo"
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/repo"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 // These tests run the whole CLI on the exception families of the behaviour registry.

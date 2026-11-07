@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/bitshepherds/json-schema-manager/internal/party"
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/party"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 // WritePartyCheck writes the result of checking a party manifest.

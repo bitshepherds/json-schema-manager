@@ -1,7 +1,7 @@
 package schema
 
 import (
-	"github.com/bitshepherds/json-schema-manager/internal/validator"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/validator"
 )
 
 // Spec defines a single schema test involving the rendered schema and a test JSON document which

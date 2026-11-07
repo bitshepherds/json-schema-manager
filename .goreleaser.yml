@@ -20,7 +20,7 @@ builds:
         goarch: arm64
     main: ./cmd/jsm/main.go
     ldflags:
-      - -s -w -X github.com/bitshepherds/json-schema-manager/internal/app.Version={{.Version}}
+      - -s -w -X github.com/bitshepherds/json-schema-manager/v2/internal/app.Version={{.Version}}
 
 archives:
   - formats: [tar.gz]

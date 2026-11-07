@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bitshepherds/json-schema-manager/internal/jsonptr"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/jsonptr"
 )
 
 // Effect says how a change affects the documents a schema accepts.

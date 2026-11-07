@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
-	"github.com/bitshepherds/json-schema-manager/internal/fsh"
-	"github.com/bitshepherds/json-schema-manager/internal/repo"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/fsh"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/repo"
 )
 
 // RegistryRootAtGitRootError is returned when a distribution is built from a registry whose root is the

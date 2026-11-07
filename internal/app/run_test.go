@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 func TestRun(t *testing.T) {

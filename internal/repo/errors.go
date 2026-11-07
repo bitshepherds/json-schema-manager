@@ -3,7 +3,7 @@ package repo
 import (
 	"fmt"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
 )
 
 // ShallowCloneError is returned when no deployment tag can be found in a shallow clone,

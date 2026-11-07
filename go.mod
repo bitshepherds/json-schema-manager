@@ -1,4 +1,4 @@
-module github.com/bitshepherds/json-schema-manager
+module github.com/bitshepherds/json-schema-manager/v2
 
 go 1.27.3
 

@@ -11,7 +11,7 @@ func TestVersionFrom(t *testing.T) {
 	t.Parallel()
 
 	withVersion := func(v string) *debug.BuildInfo {
-		return &debug.BuildInfo{Main: debug.Module{Path: "github.com/bitshepherds/json-schema-manager", Version: v}}
+		return &debug.BuildInfo{Main: debug.Module{Path: "github.com/bitshepherds/json-schema-manager/v2", Version: v}}
 	}
 
 	tests := []struct {

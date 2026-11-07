@@ -31,7 +31,7 @@ Download the latest binary for your platform from the [GitHub Releases](https://
 Alternatively, if you have Go installed, you can install it directly:
 
 ```bash
-go install github.com/bitshepherds/json-schema-manager/cmd/jsm@latest
+go install github.com/bitshepherds/json-schema-manager/v2/cmd/jsm@latest
 ```
 
 ## Quickstart
@@ -366,7 +366,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - run: go install github.com/bitshepherds/json-schema-manager/cmd/jsm@latest
+      - run: go install github.com/bitshepherds/json-schema-manager/v2/cmd/jsm@latest
       - run: jsm validate all --continue-on-error
       - run: jsm check-changes prod
 
@@ -383,7 +383,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - run: go install github.com/bitshepherds/json-schema-manager/cmd/jsm@latest
+      - run: go install github.com/bitshepherds/json-schema-manager/v2/cmd/jsm@latest
       - run: jsm build-dist prod # runs check-changes and the tests first
       - run: ./publish.sh dist/prod # your own step: copy the schemas to where they are served
       - run: | # tag-deployment makes an annotated tag, which needs a git identity

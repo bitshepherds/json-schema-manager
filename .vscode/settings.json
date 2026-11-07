@@ -16,7 +16,7 @@
   "go.useLanguageServer": true,
   "gopls": {
     "formatting.gofumpt": true,
-    "formatting.local": "github.com/bitshepherds/json-schema-manager"
+    "formatting.local": "github.com/bitshepherds/json-schema-manager/v2"
   },
   "makefile.configureOnOpen": false,
   "[json]": {

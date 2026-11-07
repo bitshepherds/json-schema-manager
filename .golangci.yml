@@ -12,17 +12,17 @@ formatters:
     - golines
   settings:
     gofumpt:
-      module-path: github.com/bitshepherds/json-schema-manager
+      module-path: github.com/bitshepherds/json-schema-manager/v2
     goimports:
       local-prefixes:
-        - github.com/bitshepherds/json-schema-manager
+        - github.com/bitshepherds/json-schema-manager/v2
     golines:
       max-len: 120
     gci:
       sections:
         - standard
         - default
-        - prefix(github.com/bitshepherds/json-schema-manager)
+        - prefix(github.com/bitshepherds/json-schema-manager/v2)
 
 linters:
   enable:

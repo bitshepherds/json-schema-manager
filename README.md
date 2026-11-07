@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/bitshepherds/json-schema-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/bitshepherds/json-schema-manager/actions/workflows/ci.yml)
 ![Coverage Status](https://github.com/bitshepherds/json-schema-manager/wiki/coverage.svg#badge)
-[![Go Report Card](https://goreportcard.com/badge/github.com/bitshepherds/json-schema-manager)](https://goreportcard.com/report/github.com/bitshepherds/json-schema-manager)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bitshepherds/json-schema-manager/v2)](https://goreportcard.com/report/github.com/bitshepherds/json-schema-manager/v2)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 JSON Schemas can be used as powerful contracts to validate data within an organisation - whether it be objects in memory, data at rest in databases or object storage, or data moving between between components across a network via API calls or event streams.
@@ -18,7 +18,7 @@ This repo contains the implementation of the `jsm` CLI tool.
 ## Usage
 
 ```bash
-go install github.com/bitshepherds/json-schema-manager/cmd/jsm@latest
+go install github.com/bitshepherds/json-schema-manager/v2/cmd/jsm@latest
 
 jsm create-registry ./my-registry                  # a registry, ideally the root of a git repo
 export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"

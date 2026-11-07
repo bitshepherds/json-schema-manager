@@ -8,8 +8,8 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
-	"github.com/bitshepherds/json-schema-manager/internal/validator"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/validator"
 )
 
 // Inliner collapses external $ref references to JSM-managed schemas into internal

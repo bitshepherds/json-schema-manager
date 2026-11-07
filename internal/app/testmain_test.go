@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/bitshepherds/json-schema-manager/internal/testenv"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/testenv"
 )
 
 func TestMain(m *testing.M) {

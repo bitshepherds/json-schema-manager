@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
-	"github.com/bitshepherds/json-schema-manager/internal/coverage"
-	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
-	"github.com/bitshepherds/json-schema-manager/internal/validator"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/coverage"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/structdiff"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/validator"
 )
 
 // ErrStopTesting is a sentinel error used to signal that further tests should be stopped and the report shown.

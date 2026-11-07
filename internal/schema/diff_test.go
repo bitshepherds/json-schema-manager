@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
-	"github.com/bitshepherds/json-schema-manager/internal/coverage"
-	"github.com/bitshepherds/json-schema-manager/internal/fsh"
-	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
-	"github.com/bitshepherds/json-schema-manager/internal/validator"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/coverage"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/fsh"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/structdiff"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/validator"
 )
 
 // writePassDoc writes a pass document for the schema with key k.

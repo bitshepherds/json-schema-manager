@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitshepherds/json-schema-manager/internal/schema"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/schema"
 )
 
 // TestReferenceIsUpToDate fails when the committed command reference no longer matches the CLI.

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
 )
 
 func TestNewTagDeploymentCmd(t *testing.T) {

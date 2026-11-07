@@ -3,7 +3,7 @@ package schema
 import (
 	"slices"
 
-	"github.com/bitshepherds/json-schema-manager/internal/structdiff"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/structdiff"
 )
 
 // Change is a structural change from one schema to another, with the documents which show it, and

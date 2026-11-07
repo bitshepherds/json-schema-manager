@@ -3,7 +3,7 @@ package app
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bitshepherds/json-schema-manager/internal/config"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/config"
 )
 
 // deploymentHistoryHelp explains the git history that check-changes and build-dist need.

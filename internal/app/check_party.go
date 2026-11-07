@@ -3,7 +3,7 @@ package app
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/bitshepherds/json-schema-manager/internal/party"
+	"github.com/bitshepherds/json-schema-manager/v2/internal/party"
 )
 
 // NewCheckPartyCmd returns a new cobra command for checking a party's schema versions.
