@@ -328,6 +328,9 @@ func (t *Tester) comparePair(earlier, later *Schema, ahead Ahead) error {
 	if err != nil {
 		return err
 	}
+	if eErr := evidence.addEarlierDocuments(earlier); eErr != nil {
+		return eErr
+	}
 	exceptions, err := t.exceptions(later)
 	if err != nil {
 		return err
@@ -405,9 +408,12 @@ func protectedDirections(ahead Ahead, effect structdiff.Effect) []structdiff.Eff
 
 // changeEvidence is what can show a change between a pair: the documents of each version after the
 // earlier one, up to the later one, since all of them run on the earlier version where the rule asks.
+// Validate also counts the earlier version's own documents, by the later version's verdict on them.
 type changeEvidence struct {
 	pass, fail   []TestInfo
 	older, newer structdiff.Validates
+	// earlierPass and earlierFail are the earlier version's own documents, which run on the later one.
+	earlierPass, earlierFail []TestInfo
 }
 
 func newChangeEvidence(earlier, later *Schema, between []*Schema) (*changeEvidence, error) {
@@ -427,6 +433,25 @@ func newChangeEvidence(earlier, later *Schema, between []*Schema) (*changeEviden
 	return ev, nil
 }
 
+// addEarlierDocuments counts the earlier version's own documents as evidence too. One shows a change
+// when the later version gives it the other verdict because of it: a pass document the later version
+// rejects shows a narrowing, and a fail document it accepts shows a widening. It is decided from the
+// documents, not from the runs, which may not happen when validate stops at a failure, so the warning
+// is the same either way. Whether an exception clears the run doesn't matter: the document shows the
+// change all the same. Diff leaves these out, as it runs no documents across versions.
+func (ev *changeEvidence) addEarlierDocuments(earlier *Schema) error {
+	pass, err := earlier.TestDocuments(TestDocTypePass)
+	if err != nil {
+		return err
+	}
+	fail, err := earlier.TestDocuments(TestDocTypeFail)
+	if err != nil {
+		return err
+	}
+	ev.earlierPass, ev.earlierFail = pass, fail
+	return nil
+}
+
 // missing returns the directions the family protects in which no document shows the change.
 func (ev *changeEvidence) missing(change *structdiff.Change, ahead Ahead) []structdiff.Effect {
 	var out []structdiff.Effect
@@ -440,21 +465,32 @@ func (ev *changeEvidence) missing(change *structdiff.Change, ahead Ahead) []stru
 
 // showing returns the paths of the documents which show the change going in the direction.
 func (ev *changeEvidence) showing(change *structdiff.Change, direction structdiff.Effect) []string {
-	var paths []string
 	if direction == structdiff.Narrows {
-		for _, doc := range ev.fail {
-			if change.NarrowedBy(doc.Unmarshalled, ev.older, ev.newer) {
-				paths = append(paths, doc.Path)
-			}
-		}
-		return paths
+		narrowed := func(doc TestInfo) bool { return change.NarrowedBy(doc.Unmarshalled, ev.older, ev.newer) }
+		return append(pathsOf(ev.fail, narrowed),
+			pathsOf(ev.earlierPass, func(doc TestInfo) bool { return narrowed(doc) && ev.newerGives(doc, false) })...)
 	}
-	for _, doc := range ev.pass {
-		if change.UsedBy(doc.Unmarshalled, ev.older) {
+	used := func(doc TestInfo) bool { return change.UsedBy(doc.Unmarshalled, ev.older) }
+	return append(pathsOf(ev.pass, used),
+		pathsOf(ev.earlierFail, func(doc TestInfo) bool { return used(doc) && ev.newerGives(doc, true) })...)
+}
+
+// pathsOf returns the paths of the documents which shows reports true of.
+func pathsOf(docs []TestInfo, shows func(TestInfo) bool) []string {
+	var paths []string
+	for _, doc := range docs {
+		if shows(doc) {
 			paths = append(paths, doc.Path)
 		}
 	}
 	return paths
+}
+
+// newerGives reports whether the later version, as a whole, gives the document the verdict: accepts it
+// if accepted, else rejects it. It says no if it can't tell.
+func (ev *changeEvidence) newerGives(doc TestInfo, accepted bool) bool {
+	got, ok := ev.newer("", doc.Unmarshalled)
+	return ok && got == accepted
 }
 
 // versionsAfter returns the versions in later's major after earlier, up to and including later, in

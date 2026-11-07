@@ -251,6 +251,8 @@ A document shows a change if it has a value at the change's location that:
 
 Documents of any version after the earlier one, up to the later one, count. A change which a version carries over unchanged from the version before it warns only under the version that made it.
 
+The earlier version's own documents count too, by the later version's verdict on them. A `pass` document of the earlier version which the later one rejects shows a narrowing, and a `fail` document of the earlier version which the later one accepts shows a widening, by the same test of the value at the change's location. That holds whether the run fails or is listed as a [deliberate break](./scenarios.md#deliberate-exceptions) in `compat-exceptions.yml`: the break already shows the change, so `validate` asks for no other document, and `--strict` passes once the break is excepted. For example, in a reader-ahead family whose `1.0.1` makes `currency` required, a `1.0.0` `pass` document with no `currency` shows that narrowing.
+
 Add the document. If the rule then fails, the failure says what to do. If no document can show the change, such as a `maxLength` moved into an `allOf`, [acknowledge it](./scenarios.md#acknowledging-a-warning-no-document-can-clear) in `compat-exceptions.yml`.
 
 **It's good practice to add a `fail` document for a new constraint in a writer-ahead family too**, though nothing warns if you don't. Making `customerId` required is safe there, so it needs no document. But a `fail` document with no `customerId` runs on every later version, so a later version dropping the requirement then fails outright, rather than only warning. The same goes for a `pass` document for a new option in a reader-ahead family.

@@ -68,6 +68,23 @@ stdout 'widens   /status: enum adds "refunded"$'
 stdout 'narrows  /note: maxLength tightens the limit from 100 to 50$'
 ! stdout 'no (pass|fail) document'
 
+# A deliberate break shows its change: 1.0.1 makes currency required, and rejects the 1.0.0 pass
+# document without it. Excepted, the run passes, and validate asks for no fail document to show
+# what the break already shows, so --strict passes too (#157)
+exec jsm validate shop_invoice_1_0_1 -c --strict
+stdout 'Test summary: 3 runs passed, 0 failed, 1 excepted$'
+! stdout 'needs a fail document'
+! stdout 'Unexercised changes'
+
+# The same without -C, and with the break not excepted, when the run fails
+exec jsm validate shop_invoice_1_0_1 --strict
+! stdout 'needs a fail document'
+rm reg/shop/invoice/1/0/1/compat-exceptions.yml
+! exec jsm validate shop_invoice_1_0_1 -c --strict
+stdout 'no-tightening'
+! stdout 'needs a fail document'
+! stdout 'Unexercised changes'
+
 -- owner-reads.yml --
 scenario: owner-reads
 -- lock-step.yml --
@@ -115,3 +132,40 @@ environments:
 {"status": "lost", "total": 3}
 -- reg/shop/order/family.yml --
 scenario: owner-writes
+-- reg/shop/invoice/family.yml --
+scenario: owner-reads
+-- reg/shop/invoice/1/0/0/shop_invoice_1_0_0.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": {
+    "total": { "type": "number" },
+    "currency": { "type": "string" }
+  }
+}
+-- reg/shop/invoice/1/0/0/pass/no-currency.json --
+{"total": 3}
+-- reg/shop/invoice/1/0/0/fail/text-total.json --
+{"total": "3"}
+-- reg/shop/invoice/1/0/1/shop_invoice_1_0_1.schema.json --
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "{{ ID }}",
+  "type": "object",
+  "properties": {
+    "total": { "type": "number" },
+    "currency": { "type": "string" }
+  },
+  "required": ["currency"]
+}
+-- reg/shop/invoice/1/0/1/pass/euros.json --
+{"total": 3, "currency": "EUR"}
+-- reg/shop/invoice/1/0/1/fail/text-total.json --
+{"total": "3", "currency": "EUR"}
+-- reg/shop/invoice/1/0/1/compat-exceptions.yml --
+exceptions:
+  - version: 1.0.0
+    document: pass/no-currency.json
+    rule: no-tightening
+    reason: every writer sends a currency now

@@ -48,6 +48,7 @@ func TestHelpSaysWhatTheCommandDoes(t *testing.T) {
 			"alters JSM cannot tell", "used by pass/x.json", "shown by fail/y.json",
 			"no pass document uses it", "no fail document shows it", "neither side ahead flags nothing",
 			"Every change is listed", "doesn't read compat-exceptions.yml",
+			"the older version's own documents shows, by the newer version's verdict",
 		}},
 		"check-party warns of a version below oldestLive": {
 			NewCheckPartyCmd(&MockManager{}), []string{"below its family's oldestLive"},
