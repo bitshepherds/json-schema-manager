@@ -1,0 +1,24 @@
+# Deliberately broken: the response body refers to a version of the customer schema which doesn't
+# exist. make check-apis expects the validator to reject this, so an upgrade which stops it
+# resolving references is caught.
+openapi: 3.1.0
+info:
+  title: Customer API
+  version: 1.0.0
+paths:
+  /customers/{customerNumber}:
+    get:
+      operationId: getCustomer
+      parameters:
+        - name: customerNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The customer
+          content:
+            application/json:
+              schema:
+                $ref: '../../../dist/prod/private/domain-c_domain-c-a_customer_9_9_9.schema.json'

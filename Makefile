@@ -60,7 +60,7 @@ docs:
 check-models:
 	@go run scripts/models/main.go
 
-# Check that the AsyncAPI and OpenAPI examples in examples/apis, which refer to JSM schemas, are valid (needs Node.js)
+# Check that the AsyncAPI and OpenAPI examples in examples/apis, which refer to JSM schemas, are valid, and that the validators reject the broken examples in scripts/apis/testdata (needs Node.js)
 check-apis:
 	@go run scripts/apis/main.go
 

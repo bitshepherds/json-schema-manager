@@ -1,0 +1,22 @@
+# Deliberately broken: the 200 response has no description, which OpenAPI requires. make check-apis
+# expects the validator to reject this, so an upgrade which stops it validating is caught.
+openapi: 3.1.0
+info:
+  title: Customer API
+  version: 1.0.0
+paths:
+  /customers/{customerNumber}:
+    get:
+      operationId: getCustomer
+      parameters:
+        - name: customerNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '../../../dist/prod/private/domain-c_domain-c-a_customer_1_0_0.schema.json'
