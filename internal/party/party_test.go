@@ -24,8 +24,8 @@ environments:
 `
 
 const (
-	writerAhead = "scenario: provider-first\n"
-	readerAhead = "scenario: consumer-first\n"
+	writerAhead = "scenario: owner-writes\n"
+	readerAhead = "scenario: owner-reads\n"
 	eitherAhead = "scenario: uncoordinated\ndocumentsLive: moment\n"
 	lockStep    = "scenario: lock-step\n"
 	selfNaming  = "scenario: stored-self-naming\n"

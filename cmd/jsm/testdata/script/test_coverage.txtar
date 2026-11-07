@@ -91,7 +91,7 @@ environments:
 -- reg/shop/order/1/0/0/fail/lost.json --
 {"status": "lost"}
 -- reg/shop/note/family.yml --
-scenario: provider-first
+scenario: owner-writes
 
 -- reg/shop/order/family.yml --
-scenario: provider-first
+scenario: owner-writes

@@ -231,7 +231,7 @@ A new version records a change that has already happened. A failed check means "
 A family names its scenario in a required file, `family.yml`, in the family's directory, beside its version directories. `jsm create-schema` asks for the scenario, or takes it as `--scenario`, and writes the file:
 
 ```yaml
-scenario: provider-first
+scenario: owner-writes
 ```
 
 The scenario implies four facts, and the file may override any of them:
@@ -254,8 +254,8 @@ Each scenario implies these facts:
 
 | Scenario | `ahead` | `documentsLive` | `readerPicksSchema` | `schema` |
 | --- | --- | --- | --- | --- |
-| `provider-first` | writer | moment | no | prescribes |
-| `consumer-first` | reader | moment | no | prescribes |
+| `owner-writes` | writer | moment | no | prescribes |
+| `owner-reads` | reader | moment | no | prescribes |
 | `config-file` | reader | indefinitely | no | prescribes |
 | `stored-one-schema` | reader | indefinitely | no | prescribes |
 | `stored-self-naming` | neither | indefinitely | yes | prescribes |
@@ -345,7 +345,7 @@ Without one, `validate` fails on the versions of that major, under its first ver
 
 ## Deliberate exceptions
 
-Sometimes a change that breaks the rule is right. Take a provider-first family whose `1.0.0` wrongly rejected names over 50 characters, and a `1.1.0` that fixes it: `1.0.0`'s `fail` document with a long name is now accepted, and that is the point. Say so in `compat-exceptions.yml`, in the later version's directory, beside its schema:
+Sometimes a change that breaks the rule is right. Take an owner-writes family whose `1.0.0` wrongly rejected names over 50 characters, and a `1.1.0` that fixes it: `1.0.0`'s `fail` document with a long name is now accepted, and that is the point. Say so in `compat-exceptions.yml`, in the later version's directory, beside its schema:
 
 ```yaml
 exceptions:

@@ -265,7 +265,7 @@ func TestCheckPartyNewerMajorAdviceFollowsTheRole(t *testing.T) {
 
 	f := newPartyFixture(t, `{}`)
 	f.addVersion(t, "shop_order_2_0_0", `{}`)
-	f.declare(t, "scenario: consumer-first\n")
+	f.declare(t, "scenario: owner-reads\n")
 	require.NoError(t, os.WriteFile(f.manifest, []byte("role: writer\nschemas: [shop_order_1_0_0]\n"), 0o600))
 
 	out, err := f.check("text", false)

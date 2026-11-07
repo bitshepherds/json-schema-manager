@@ -42,7 +42,7 @@ jsm create-registry ./my-registry
 export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
 
 # Create the first version, 1.0.0, of a schema family
-jsm create-schema "customer/b2c-customer" --scenario provider-first
+jsm create-schema "customer/b2c-customer" --scenario owner-writes
 ```
 
 The scenario says how the family is used: see [Schema Family Scenarios](./scenarios.md#how-to-choose-a-scenario). Leave out `--scenario` and the command asks for it.
@@ -53,7 +53,7 @@ Edit `my-registry/customer/b2c-customer/1/0/0/customer_b2c-customer_1_0_0.schema
 jsm validate customer_b2c-customer_1_0_0
 ```
 
-To change the schema once it is deployed, create a new version and test the whole registry, which also runs the documents across versions that the family's scenario calls for. For `provider-first`, that looks for a new version which would break consumers still on the old one:
+To change the schema once it is deployed, create a new version and test the whole registry, which also runs the documents across versions that the family's scenario calls for. For `owner-writes`, that looks for a new version which would break consumers still on the old one:
 
 ```bash
 jsm create-schema-version customer_b2c-customer_1_0_0 minor
@@ -267,7 +267,7 @@ Every schema `jsm validate` tests is listed in its report, and one with no `pass
 
 Documents count if they are in the version's own directory, or inherited from an earlier version in its major. The first version of a major, including `1.0.0`, has nothing to inherit, so it needs its own, and the copies a major bump makes are its own. Nothing is inherited from a version [below `oldestLive`](./scenarios.md#how-long-a-version-lasts). A family with neither side ahead, or whose reader picks its schema from the document, inherits nothing, so each of its versions needs its own.
 
-Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions. So a `provider-first` `1.1.0` with no `pass` document of its own passes `--strict`, with nothing showing what it accepts. In a reader-ahead family, the same goes for earlier `fail` documents, so a `consumer-first` `1.1.0` with no `fail` document of its own passes `--strict`, with nothing showing what it rejects. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
+Inheriting a document is not the same as running it on that version. Which documents run is for [the rule](./scenarios.md#the-rule) to say. In a writer-ahead family, for example, earlier `pass` documents count here but don't run on later versions. So an `owner-writes` `1.1.0` with no `pass` document of its own passes `--strict`, with nothing showing what it accepts. In a reader-ahead family, the same goes for earlier `fail` documents, so an `owner-reads` `1.1.0` with no `fail` document of its own passes `--strict`, with nothing showing what it rejects. Add one when that matters: [unexercised-change warnings](#unexercised-changes) ask for one when a change needs it.
 
 With `--verbose`, the report also shows how many documents a schema inherits, how much of the schema its own `pass` documents reach, and which keywords reject each of its own `fail` documents:
 
@@ -325,7 +325,7 @@ The family's [scenario](./scenarios.md) decides what can harm the party. The che
 | Writer | Reader-ahead or either | The listed version's `pass` documents on later versions, and later `fail` documents on the listed version | A reader on the later version rejects a document this writer sends |
 | Any other combination | | Nothing | No later version can harm this party, so it gets a notice saying why, and the check exits `0` |
 
-For example, a team running a service which takes requests from old clients declares `consumer-first`. The client team is a writer, and lags behind the service, so its check is the one that can fail: if `1.1.0` rejects a document `1.0.0` accepted, the client on `1.0.0` is broken. The service team's own check, as a reader, gives a notice, since it always moves first.
+For example, a team running a service which takes requests from old clients declares `owner-reads`. The client team is a writer, and lags behind the service, so its check is the one that can fail: if `1.1.0` rejects a document `1.0.0` accepted, the client on `1.0.0` is broken. The service team's own check, as a reader, gives a notice, since it always moves first.
 
 A failure is reported as `validate` reports it, under the later version, naming the rule, both versions and the document. A [deliberate exception](./scenarios.md#deliberate-exceptions) applies here too, and the report shows it with its reason. A stale exception entry fails `validate`, not this check, since it doesn't harm the party.
 

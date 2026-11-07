@@ -103,7 +103,7 @@ func createSchemaFiles(t *testing.T, r *Registry, schemas schemaMap) {
 		// Every family declares its scenario. A test can write its own afterwards.
 		declaration := filepath.Join(s.Path(FamilyDir), FamilyDeclarationFile)
 		if _, err := os.Stat(declaration); os.IsNotExist(err) {
-			if err = os.WriteFile(declaration, []byte("scenario: provider-first\n"), 0o600); err != nil {
+			if err = os.WriteFile(declaration, []byte("scenario: owner-writes\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -114,7 +114,7 @@ func createSchemaFiles(t *testing.T, r *Registry, schemas schemaMap) {
 func declareFamily(t *testing.T, s *Schema) {
 	t.Helper()
 	declaration := filepath.Join(s.Path(FamilyDir), FamilyDeclarationFile)
-	if err := os.WriteFile(declaration, []byte("scenario: provider-first\n"), 0o600); err != nil {
+	if err := os.WriteFile(declaration, []byte("scenario: owner-writes\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

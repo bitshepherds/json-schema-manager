@@ -439,7 +439,7 @@ type MissingFamilyDeclarationError struct {
 func (e *MissingFamilyDeclarationError) Error() string {
 	return fmt.Sprintf("this family does not declare how it is used: create %s naming its scenario, such as "+
 		"\"scenario: %s\". The scenarios are: %s. See %s to choose one",
-		e.Path, ScenarioProviderFirst, ScenarioNames(), ScenariosDoc)
+		e.Path, ScenarioOwnerWrites, ScenarioNames(), ScenariosDoc)
 }
 
 // InvalidFamilyDeclarationError is returned when a family's family.yml can't be used.

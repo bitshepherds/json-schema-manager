@@ -130,7 +130,7 @@ environments:
   }
 }
 -- shop/shop/order/family.yml --
-scenario: provider-first
+scenario: owner-writes
 
 -- family-decl.yml --
-scenario: provider-first
+scenario: owner-writes

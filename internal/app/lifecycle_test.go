@@ -390,7 +390,7 @@ func TestNewMajorWithSelfNamingDocumentsNeedsNoMigrationStatement(t *testing.T) 
 	t.Run("documents which don't outlive their writer", func(t *testing.T) {
 		t.Parallel()
 		r := newBehaviourRegistry(t, noMigrationFamily)
-		r.write(noMigrationFamily+"/family.yml", "scenario: consumer-first\n")
+		r.write(noMigrationFamily+"/family.yml", "scenario: owner-reads\n")
 		out, err := r.jsm("validate", noMigration200)
 		require.NoError(t, err, out)
 

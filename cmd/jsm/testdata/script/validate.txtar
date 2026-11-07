@@ -26,7 +26,7 @@ stdout '<testsuites name="jsm validate" tests="2" failures="1"'
 stdout '<failure message="passed, when expected fail">'
 ! stderr 'Error:'
 
-# In a provider-first family, a newer version's pass/ document breaks an earlier version: non-zero exit
+# In an owner-writes family, a newer version's pass/ document breaks an earlier version: non-zero exit
 env JSM_REGISTRY_ROOT_DIR=breaking
 ! exec jsm validate shop_order_1_1_0 -c
 stdout 'no-loosening broken'
@@ -107,10 +107,10 @@ environments:
 -- breaking/shop/order/1/1/0/fail/lost.json --
 {"status": "lost"}
 -- ok/shop/order/family.yml --
-scenario: provider-first
+scenario: owner-writes
 
 -- localfail/shop/order/family.yml --
-scenario: provider-first
+scenario: owner-writes
 
 -- breaking/shop/order/family.yml --
-scenario: provider-first
+scenario: owner-writes
