@@ -51,7 +51,7 @@ Take an API. The Payments service owns its refunds API, and partners use it. Pay
 - **Its responses.** Payments writes them, and a partner reads them with code built against an older version. A new version mustn't send anything that older code rejects, so it must accept nothing the old version rejected: **no loosening**.
 - **Its requests.** A partner writes them, with code built against an older version, and Payments reads them. A new version must still take what that older code sends, so it must reject nothing the old version accepted: **no tightening**.
 
-One owner, one API, and opposite checks. That's why the response and the request are two separate families, and why choosing a scenario starts by asking who owns the contract. [How to choose a scenario](#how-to-choose-a-scenario) first asks how long documents are kept and whether they name their version, and for documents that are read and gone, whether the owner writes or reads them. See [What JSM covers in an API](#what-jsm-covers-in-an-api).
+One owner, one API, and opposite checks. That's why the response and the request are two separate families, and why choosing a scenario starts by asking who owns the contract. [How to choose a scenario](#how-to-choose-a-scenario) asks first whether another organisation owns the format, then whether each document names its version, whether one team owns both sides, and how long documents are kept. Only for documents that are read and gone does it ask, last, whether the owner writes or reads them. See [What JSM covers in an API](#what-jsm-covers-in-an-api).
 
 ## Words used on this page
 
