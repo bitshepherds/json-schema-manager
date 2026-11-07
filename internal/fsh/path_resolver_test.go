@@ -93,31 +93,6 @@ func TestStandardPathResolver(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	//nolint:paralleltest // os.Chdir mutates global state
-	t.Run("CanonicalPath fails with deleted CWD", func(t *testing.T) {
-		tmp, err := os.MkdirTemp("", "vanishing-dir")
-		require.NoError(t, err)
-
-		oldWd, _ := os.Getwd()
-		t.Cleanup(func() { _ = os.Chdir(oldWd) })
-
-		err = os.Chdir(tmp)
-		require.NoError(t, err)
-
-		err = os.RemoveAll(tmp)
-		require.NoError(t, err)
-
-		resolver := NewPathResolver()
-		_, err = resolver.CanonicalPath(".")
-		if runtime.GOOS == "darwin" {
-			// Darwin caches the working directory path, so Getwd may
-			// succeed even after the directory is removed.
-			t.Logf("darwin: CanonicalPath error (may be nil): %v", err)
-		} else {
-			require.Error(t, err)
-		}
-	})
-
 	t.Run("GetUintSubdirectories delegation", func(t *testing.T) {
 		t.Parallel()
 		resolver := NewPathResolver()
@@ -131,6 +106,28 @@ func TestStandardPathResolver(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []uint64{1, 10}, got)
 	})
+}
+
+// TestCanonicalPathFailsWithDeletedWorkingDirectory isn't parallel: it
+// changes the process's working directory and then deletes it, which
+// would break any test running alongside it that resolves a relative path
+// (issue #33). As a top-level sequential test, it runs before Go releases
+// the paused parallel tests, and t.Chdir restores the old directory when
+// it ends.
+func TestCanonicalPathFailsWithDeletedWorkingDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+	require.NoError(t, os.RemoveAll(tmp))
+
+	resolver := NewPathResolver()
+	_, err := resolver.CanonicalPath(".")
+	if runtime.GOOS == "darwin" {
+		// Darwin caches the working directory path, so Getwd may
+		// succeed even after the directory is removed.
+		t.Logf("darwin: CanonicalPath error (may be nil): %v", err)
+	} else {
+		require.Error(t, err)
+	}
 }
 
 func TestMockPathResolver(t *testing.T) {
