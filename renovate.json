@@ -1,8 +1,19 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ],
+  "extends": ["config:best-practices"],
+  "dependencyDashboard": true,
+  "schedule": ["* 0-5 * * 1"],
+  "minimumReleaseAge": "3 days",
+  "separateMajorMinor": true,
+  "platformAutomerge": false,
+  "postUpdateOptions": ["gomodTidy"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": [],
+    "minimumReleaseAge": null,
+    "dependencyDashboardApproval": false
+  },
   "customManagers": [
     {
       "description": "npm tools which the models and API example checks run with bunx",
@@ -12,6 +23,62 @@
         "= \"(?<depName>@?[a-z0-9][a-z0-9./-]*)@(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
       ],
       "datasourceTemplate": "npm"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Go modules ship in the jsm binary, so a person merges every update to them",
+      "matchManagers": ["gomod"],
+      "groupName": "shipped Go modules",
+      "automerge": false
+    },
+    {
+      "description": "Development tools: the mise tools and the npm tool pins",
+      "matchManagers": ["mise", "custom.regex"],
+      "groupName": "dev tools"
+    },
+    {
+      "description": "Go modules only the tests import never ship in the jsm binary, so they are dev tools",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/stretchr/testify", "github.com/rogpeppe/go-internal"],
+      "groupName": "dev tools"
+    },
+    {
+      "description": "GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Low-risk dev tool and Action updates merge themselves once the checks pass",
+      "matchManagers": ["mise", "custom.regex", "github-actions"],
+      "matchUpdateTypes": ["patch", "minor", "pin", "digest", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "description": "Low-risk updates to the Go modules only the tests import merge themselves once the checks pass",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/stretchr/testify", "github.com/rogpeppe/go-internal"],
+      "matchUpdateTypes": ["patch", "minor", "pin", "digest", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "description": "The go and toolchain directives get a PR of their own, which a person merges",
+      "matchManagers": ["gomod"],
+      "matchDatasources": ["golang-version"],
+      "groupName": "Go version",
+      "automerge": false
+    },
+    {
+      "description": "Digests carry no release timestamp, so the release age must not hold them forever",
+      "matchUpdateTypes": ["digest", "pinDigest"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
+      "description": "Every major gets its own PR, held for approval on the Dependency Dashboard, and a person merges it",
+      "matchUpdateTypes": ["major"],
+      "groupName": null,
+      "dependencyDashboardApproval": true,
+      "automerge": false
     }
   ]
 }
