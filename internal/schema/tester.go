@@ -609,8 +609,9 @@ func (t *Tester) checkMigrationStatement(s *Schema, decl *FamilyDeclaration) err
 	}
 	t.report.AddMissingMigration(first, MissingMigration{
 		Major: major,
-		Why: fmt.Sprintf("major %d needs a migration statement: in a %s family old documents stay around, "+
-			"and a major bump doesn't make them vanish. %s.", major, decl.Scenario, MigrationStatementHelp(major)),
+		Why: fmt.Sprintf("major %d needs a migration statement: in %s %s family old documents stay around, "+
+			"and a major bump doesn't make them vanish. %s.",
+			major, decl.Scenario.Article(), decl.Scenario, MigrationStatementHelp(major)),
 	})
 	return nil
 }

@@ -127,9 +127,9 @@ func (e *RuleBrokenError) meaning() string {
 		if loosened {
 			change = fmt.Sprintf("%s accepts documents %s rejects", e.Later, e.Earlier)
 		}
-		return fmt.Sprintf("In a %s family, this says the real format has changed: %s. Its owner decides that, "+
+		return fmt.Sprintf("In %s %s family, this says the real format has changed: %s. Its owner decides that, "+
 			"so check your readers cope with it. If the format hasn't really changed this way, correct %s.",
-			scenario, change, e.Later)
+			scenario.Article(), scenario, change, e.Later)
 	}
 
 	var harm string
@@ -142,5 +142,6 @@ func (e *RuleBrokenError) meaning() string {
 		harm = fmt.Sprintf("a reader on %s rejects a document written under %s, which may still be around",
 			e.Later, e.Earlier)
 	}
-	return fmt.Sprintf("In a %s family, %s. Undo the change, or make it in a new major version.", scenario, harm)
+	return fmt.Sprintf("In %s %s family, %s. Undo the change, or make it in a new major version.",
+		scenario.Article(), scenario, harm)
 }

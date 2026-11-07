@@ -13,6 +13,10 @@ stdout 'Test summary: 2 passed, 1 failed'
 ! exec jsm validate shop_order_1_0_0 -c -C
 stdout '\[FAIL\] shop_order_1_1_0.schema.json'
 stdout 'no-loosening broken between shop_order_1_0_0 and shop_order_1_1_0'
+
+# The article follows the scenario's name: "an owner-writes family", never "a owner-writes" (#153)
+stdout 'In an owner-writes family'
+! stdout 'a owner-'
 stdout 'Test summary: 3 passed, 1 failed'
 
 # So does every multi-schema target, including the bare command CI runs, each run once
