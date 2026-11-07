@@ -62,6 +62,15 @@ jobs:
             - name: Set up tools
               uses: jdx/mise-action@v5
 
+            # bunx installs the pinned npm tools into Bun's cache; @asyncapi/cli alone is about
+            # 2,700 packages, so keep the cache between runs. The pins are in the scripts.
+            - name: Cache the npm tools
+              uses: actions/cache@v6
+              with:
+                  path: ~/.bun/install/cache
+                  key: bun-tools-${{ runner.os }}-${{ hashFiles('mise.toml', 'scripts/models/main.go', 'scripts/apis/main.go') }}
+                  restore-keys: bun-tools-${{ runner.os }}-
+
             - name: Check that the guide's generated models compile
               run: make check-models
 

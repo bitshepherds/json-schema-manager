@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -600,33 +601,31 @@ func TestDistBuilder_BuildChanged(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		var changes []repo.Change
-		for i := 0; i < 500; i++ {
-			schemaPath := fmt.Sprintf("schema%d.json", i)
-			changes = append(changes, repo.Change{
-				Path:  filepath.Join(reg.rootDirectory, schemaPath),
-				IsNew: true,
-			})
-		}
+		defer cancel()
 
-		returned := make(chan struct{})
+		// The same schema changes twice. The build is cancelled while the first is being rendered, at a
+		// known point rather than on a timer, so the loop must stop before it renders the second.
+		schemaPath := filepath.Join(reg.rootDirectory, "domain", "test", "1", "0", "0", "domain_test_1_0_0.schema.json")
 		gitter := &mockGitter{
 			getSchemaChangesFunc: func(_ context.Context, _ repo.Revision, _, _ string) ([]repo.Change, error) {
-				close(returned)
-				return changes, nil
+				return []repo.Change{{Path: schemaPath}, {Path: schemaPath}}, nil
 			},
 		}
 		builder := NewFSDistBuilder(reg, cfg, gitter, "dist")
-		builder.SetNumWorkers(1)
 
-		go func() {
-			<-returned
+		compiler, ok := reg.compiler.(*mockCompiler)
+		require.True(t, ok)
+		var compiles atomic.Int32
+		compiler.CompileFunc = func(_ string) (validator.Validator, error) {
+			compiles.Add(1)
 			cancel()
-		}()
+			return &mockValidator{}, nil
+		}
 
-		_, err = builder.BuildChanged(ctx, "production", repo.Revision("HEAD"), false)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, context.Canceled)
+		count, err := builder.BuildChanged(ctx, "production", repo.Revision("HEAD"), false)
+		require.ErrorIs(t, err, context.Canceled)
+		assert.Equal(t, 1, count, "the schema rendered before the cancellation is counted")
+		assert.Equal(t, int32(1), compiles.Load(), "no schema is rendered after the cancellation")
 	})
 
 	t.Run("worker result error in BuildChanged", func(t *testing.T) {

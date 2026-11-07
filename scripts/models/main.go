@@ -1,5 +1,6 @@
 // Package main provides a script which runs the commands in user-docs/generating-models.md against
-// the demo registry, and checks that the generated TypeScript and Go compile. It needs Node.js.
+// the demo registry, and checks that the generated TypeScript and Go compile. It needs Bun, and runs
+// the tools with bunx --bun, so they run on Bun's runtime even where Node.js is installed.
 package main
 
 import (
@@ -22,8 +23,11 @@ const (
 const customer = "domain-c_domain-c-a_customer_1_0_0"
 
 func main() {
-	if _, err := exec.LookPath("npx"); err != nil {
-		fail("npx not found: install Node.js to check the generated models")
+	if _, err := exec.LookPath("bunx"); err != nil {
+		fail(
+			"bunx not found: install Bun with 'make setup' (macOS/Linux) or '.\\win-make.ps1 setup' (Windows) " +
+				"to check the generated models",
+		)
 	}
 	repoRoot, err := os.Getwd()
 	check(err)
@@ -40,12 +44,12 @@ func main() {
 	collapsed := runOutput(work, jsm, "-r", registry, "render-schema", customer, "--collapse")
 	check(os.WriteFile(filepath.Join(work, "customer.schema.json"), collapsed, 0o600))
 
-	run(work, "npx", "--yes", json2ts, "-i", "customer.schema.json", "-o", "customer.ts")
-	run(work, "npx", "--yes", "-p", typescript, "tsc", "--noEmit", "--strict", "customer.ts")
+	run(work, "bunx", "--bun", json2ts, "-i", "customer.schema.json", "-o", "customer.ts")
+	run(work, "bunx", "--bun", "-p", typescript, "tsc", "--noEmit", "--strict", "customer.ts")
 
 	goDir := filepath.Join(work, "customer")
 	check(os.MkdirAll(goDir, 0o755))
-	run(work, "npx", "--yes", quicktype, "--src-lang", "schema", "--lang", "go", "--package", "customer",
+	run(work, "bunx", "--bun", quicktype, "--src-lang", "schema", "--lang", "go", "--package", "customer",
 		"--top-level", "Customer", "-o", "customer/customer.go", "customer.schema.json")
 	check(os.WriteFile(filepath.Join(goDir, "go.mod"), []byte("module example.com/customer\n\ngo 1.21\n"), 0o600))
 	run(goDir, "go", "vet", "./...")
@@ -53,13 +57,13 @@ func main() {
 	// A whole environment, to TypeScript. build-dist writes to dist/ at the root of the git repository.
 	run(work, jsm, "-r", registry, "build-dist", "prod", "--all", "--collapse")
 	built := filepath.Join(repoRoot, "dist", "prod", "private", "*.schema.json")
-	run(work, "npx", "--yes", json2ts, "-i", built, "-o", "models/")
+	run(work, "bunx", "--bun", json2ts, "-i", built, "-o", "models/")
 	tsFiles, err := filepath.Glob(filepath.Join(work, "models", "*.ts"))
 	check(err)
 	if len(tsFiles) == 0 {
 		fail("no TypeScript was generated for the environment")
 	}
-	run(work, "npx", append([]string{"--yes", "-p", typescript, "tsc", "--noEmit", "--strict"}, tsFiles...)...)
+	run(work, "bunx", append([]string{"--bun", "-p", typescript, "tsc", "--noEmit", "--strict"}, tsFiles...)...)
 
 	_ = os.RemoveAll(work)
 	fmt.Println("✅ The generated models compile")

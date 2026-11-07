@@ -5,7 +5,7 @@
   ],
   "customManagers": [
     {
-      "description": "npm tools which the models and API example checks run with npx",
+      "description": "npm tools which the models and API example checks run with bunx",
       "customType": "regex",
       "managerFilePatterns": ["/^scripts/(models|apis)/main\\.go$/"],
       "matchStrings": [
