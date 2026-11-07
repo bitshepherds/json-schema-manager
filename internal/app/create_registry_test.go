@@ -1,11 +1,15 @@
 package app
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -161,48 +165,108 @@ func TestPersistentPreRunE_CreateRegistry_SkipsInitialisation(t *testing.T) {
 	assert.False(t, lazy.HasInner())
 }
 
-func TestAddEnvironmentVariableInstructionsForOS(t *testing.T) {
+func TestCreateRegistry_NoGlobalExportAdvice(t *testing.T) {
+	t.Parallel()
+	// The advice no longer depends on the OS: there is no shell profile or setx to name. So one
+	// run covers darwin, linux and windows alike.
+	registryDir := filepath.Join(t.TempDir(), "my-registry")
+	var out bytes.Buffer
+	cmd := NewCreateRegistryCmd(fsh.NewPathResolver())
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{registryDir})
+	require.NoError(t, cmd.Execute())
+
+	got := out.String()
+	for _, global := range []string{".zshrc", ".bashrc", ".profile", "setx", "export "} {
+		assert.NotContains(t, got, global)
+	}
+	// The path as this OS's shell takes it: a Windows short temp path such as C:\Users\RUNNER~1 is quoted
+	advised := shellQuote(registryDir, runtime.GOOS)
+	assert.Contains(t, got, "cd "+advised, "advises running jsm from the registry's folder")
+	assert.Contains(t, got, "-r "+advised, "advises giving the registry with -r")
+	assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
+	assert.Contains(t, got, "mise")
+	assert.Contains(t, got, "direnv")
+}
+
+func TestCreateRegistry_AdvisedPathWithSpaceIsQuoted(t *testing.T) {
+	t.Parallel()
+	registryDir := filepath.Join(t.TempDir(), "team's registry")
+	var out bytes.Buffer
+	cmd := NewCreateRegistryCmd(fsh.NewPathResolver())
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{registryDir})
+	require.NoError(t, cmd.Execute())
+
+	quoted := shellQuote(registryDir, runtime.GOOS)
+	assert.NotEqual(t, registryDir, quoted)
+	assert.Contains(t, out.String(), "cd "+quoted)
+	assert.Contains(t, out.String(), "-r "+quoted)
+}
+
+// TestShellQuote_PastesIntoShell pastes the advised cd into sh, for folder names a shell would
+// otherwise split or expand, and checks it reaches the folder.
+func TestShellQuote_PastesIntoShell(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("sh is the POSIX shell; TestShellQuote covers the PowerShell quoting")
+	}
+	for _, name := range []string{"team's registry", "a,b", "$HOME", "a`id`b", "~tilde", "100%", `back\slash`, "x;y&z"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join(t.TempDir(), name)
+			require.NoError(t, os.Mkdir(dir, 0o750))
+			want, err := filepath.EvalSymlinks(dir)
+			require.NoError(t, err)
+
+			got, err := exec.CommandContext(t.Context(), "sh", "-c",
+				"cd "+shellQuote(want, runtime.GOOS)+" && pwd -P").Output()
+			require.NoError(t, err)
+			assert.Equal(t, want, strings.TrimSpace(string(got)))
+		})
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ name, path, goos, want string }{
+		{"plain path is left bare", "/work/shop-schemas", "linux", "/work/shop-schemas"},
+		{"space on posix", "/work/shop schemas", "darwin", "'/work/shop schemas'"},
+		{"apostrophe on posix", "/work/team's", "linux", `'/work/team'\''s'`},
+		{"backslash on posix", `/work/a\b`, "linux", `'/work/a\b'`},
+		{"dollar on posix", "/work/$HOME", "linux", "'/work/$HOME'"},
+		{"backtick on posix", "/work/a`id`", "linux", "'/work/a`id`'"},
+		{"tilde on posix", "/work/~x", "linux", "'/work/~x'"},
+		{"plain path on windows", `C:\work\shop`, "windows", `C:\work\shop`},
+		{"space on windows", `C:\work\shop schemas`, "windows", `'C:\work\shop schemas'`},
+		{"comma on windows", `C:\work\a,b`, "windows", `'C:\work\a,b'`},
+		{"dollar on windows", `C:\work\$env`, "windows", `'C:\work\$env'`},
+		{"backtick on windows", "C:\\work\\a`b", "windows", "'C:\\work\\a`b'"},
+		{"percent on windows", `C:\work\%TEMP%`, "windows", `'C:\work\%TEMP%'`},
+		{"apostrophe on windows", `C:\work\team's`, "windows", `'C:\work\team''s'`},
+		{"short temp path on windows", `C:\Users\RUNNER~1\x`, "windows", `'C:\Users\RUNNER~1\x'`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shellQuote(tt.path, tt.goos))
+		})
+	}
+}
+
+func TestRegistryUsageAdvice_AbsError(t *testing.T) {
 	t.Parallel()
 	dir := "/tmp/bg-registry"
-	pathResolver := fsh.NewPathResolver()
+	mockResolver := &mockPathResolver{
+		absFn: func(_ string) (string, error) {
+			return "", errors.New("mock-error")
+		},
+	}
 
-	t.Run("windows", func(t *testing.T) {
-		t.Parallel()
-		got := addEnvironmentVariableInstructionsForOS(pathResolver, dir, "windows")
-		assert.Contains(t, got, "setx")
-		assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
-	})
-
-	t.Run("darwin", func(t *testing.T) {
-		t.Parallel()
-		got := addEnvironmentVariableInstructionsForOS(pathResolver, dir, "darwin")
-		assert.Contains(t, got, "echo")
-		assert.Contains(t, got, "&& source")
-		assert.Contains(t, got, ".zshrc")
-		assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
-	})
-
-	t.Run("linux", func(t *testing.T) {
-		t.Parallel()
-		got := addEnvironmentVariableInstructionsForOS(pathResolver, dir, "linux")
-		assert.Contains(t, got, "echo")
-		assert.Contains(t, got, "&& source")
-		assert.Contains(t, got, ".bashrc")
-		assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
-	})
-
-	t.Run("abs-error", func(t *testing.T) {
-		t.Parallel()
-
-		mockResolver := &mockPathResolver{
-			absFn: func(_ string) (string, error) {
-				return "", errors.New("mock-error")
-			},
-		}
-
-		got := addEnvironmentVariableInstructionsForOS(mockResolver, dir, "linux")
-		assert.Contains(t, got, dir)
-	})
+	got := registryUsageAdvice(mockResolver, dir)
+	assert.Contains(t, got, "cd "+shellQuote(dir, runtime.GOOS), "falls back to the path as given")
 }
 
 // mockPathResolver is a test implementation of fsh.PathResolver.

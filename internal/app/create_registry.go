@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -44,7 +46,7 @@ jsm create-registry ./my-registry
 			}
 
 			cmd.Printf("Successfully created new registry at: %s\n", dirpath)
-			cmd.Printf("%s", addEnvironmentVariableInstructions(pathResolver, dirpath))
+			cmd.Printf("%s", registryUsageAdvice(pathResolver, dirpath))
 			cmd.Println("\nTo create your first schema, use: the create-schema command. For details:")
 			cmd.Printf("  jsm create-schema -h\n")
 
@@ -55,27 +57,52 @@ jsm create-registry ./my-registry
 	return cmd
 }
 
-func addEnvironmentVariableInstructions(pathResolver fsh.PathResolver, dirpath string) string {
-	return addEnvironmentVariableInstructionsForOS(pathResolver, dirpath, runtime.GOOS)
-}
-
-func addEnvironmentVariableInstructionsForOS(pathResolver fsh.PathResolver, dirpath, goos string) string {
+// registryUsageAdvice says how to point jsm at the new registry: run it from the registry's
+// folder, or give the folder with -r. It doesn't advise setting JSM_REGISTRY_ROOT_DIR for good,
+// as a variable which follows a person everywhere sends jsm to that registry from any folder
+// without a registry of its own.
+func registryUsageAdvice(pathResolver fsh.PathResolver, dirpath string) string {
 	abs, err := pathResolver.Abs(dirpath)
 	if err != nil {
 		abs = dirpath
 	}
+	abs = shellQuote(abs, runtime.GOOS)
 
-	envVar := schema.RootDirEnvVar
-	instructions := "To use this registry by default, we recommend you set an environment variable. Run:\n"
+	return fmt.Sprintf(`
+jsm uses the registry in the folder it runs from. To use this one, run jsm from its folder:
 
-	switch goos {
-	case "windows":
-		instructions += fmt.Sprintf("\n  setx %s %q && set %q\n", envVar, abs, envVar+"="+abs)
-	case "darwin":
-		instructions += fmt.Sprintf("\n  echo 'export %s=%q' >> ~/.zshrc && source ~/.zshrc\n", envVar, abs)
-	default:
-		instructions += fmt.Sprintf("\n  echo 'export %s=%q' >> ~/.bashrc && source ~/.bashrc\n", envVar, abs)
+  cd %[1]s
+
+or give its path with -r from anywhere:
+
+  jsm validate all -r %[1]s
+
+$%[2]s names a registry for jsm to use when the current folder holds none. It suits a
+pipeline, or one project through a per-project tool such as mise or direnv.
+`, abs, schema.RootDirEnvVar)
+}
+
+// safeInShell matches a path a POSIX shell reads as one word, unquoted; safeInPowerShell, one
+// that PowerShell does.
+var (
+	safeInShell      = regexp.MustCompile(`^[A-Za-z0-9_@+=:,./-]+$`)
+	safeInPowerShell = regexp.MustCompile(`^[A-Za-z0-9_+=:./\\-]+$`)
+)
+
+// shellQuote quotes path so that a command advising it can be pasted, as one word with nothing
+// expanded, into the default shell on goos: PowerShell on windows, and a POSIX shell such as sh,
+// bash or zsh elsewhere. Both take single quotes literally; inside them, PowerShell writes a
+// quote as two, and a POSIX shell closes the quotes around an escaped one. A path the shell
+// reads as one word is left bare. On windows, the advice is for PowerShell, not cmd.
+func shellQuote(path, goos string) string {
+	if goos == "windows" {
+		if safeInPowerShell.MatchString(path) {
+			return path
+		}
+		return "'" + strings.ReplaceAll(path, "'", "''") + "'"
 	}
-
-	return instructions
+	if safeInShell.MatchString(path) {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }

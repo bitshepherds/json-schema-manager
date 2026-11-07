@@ -893,10 +893,10 @@ func TestRegistryDiscovery(t *testing.T) {
 		}
 		pathResolver := fsh.NewPathResolver()
 
-		rd, err := initRootDirectory("", pathResolver, mockEnv)
+		choice, err := initRootDirectory("", t.TempDir(), pathResolver, mockEnv)
 		require.NoError(t, err)
 		expected, _ := pathResolver.CanonicalPath(tmpDir)
-		assert.Equal(t, expected, rd)
+		assert.Equal(t, expected, choice.Dir)
 	})
 }
 

@@ -21,7 +21,7 @@ This repo contains the implementation of the `jsm` CLI tool.
 go install github.com/bitshepherds/json-schema-manager/v2/cmd/jsm@latest
 
 jsm create-registry ./my-registry                  # a registry, ideally the root of a git repo
-export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
+cd my-registry                                     # jsm uses the registry in the folder it runs from
 jsm create-schema "orders/order-placed" --scenario owner-writes       # version 1.0.0, with pass/ and fail/ test directories
                                                   # and family.yml, which says how the family is used
 jsm validate all                                   # test every schema, and across versions as each family's scenario says

@@ -37,9 +37,9 @@ go install github.com/bitshepherds/json-schema-manager/v2/cmd/jsm@latest
 ## Quickstart
 
 ```bash
-# Create a registry, and use it by default
+# Create a registry, and work in its folder: jsm uses the registry it runs in
 jsm create-registry ./my-registry
-export JSM_REGISTRY_ROOT_DIR="$PWD/my-registry"
+cd my-registry
 
 # Create the first version, 1.0.0, of a schema family
 jsm create-schema "orders/order-placed" --scenario owner-writes
@@ -47,7 +47,7 @@ jsm create-schema "orders/order-placed" --scenario owner-writes
 
 The scenario says how the family is used. Here it is an event that the Orders service owns and publishes, so the owner writes the documents: see [Schema Family Scenarios](./scenarios.md#how-to-choose-a-scenario). Leave out `--scenario` and the command asks for it.
 
-Edit `my-registry/orders/order-placed/1/0/0/orders_order-placed_1_0_0.schema.json`, add JSON documents the schema should accept to the `pass` directory next to it, and documents it should reject to the `fail` directory. Then test it:
+Edit `orders/order-placed/1/0/0/orders_order-placed_1_0_0.schema.json`, add JSON documents the schema should accept to the `pass` directory next to it, and documents it should reject to the `fail` directory. Then test it:
 
 ```bash
 jsm validate orders_order-placed_1_0_0
@@ -67,8 +67,12 @@ The Registry Root is the root directory of the JSON Schema registry. It is the d
 `jsm` finds the Registry Root from, in order:
 
 1. the `--registry` (`-r`) flag;
-2. the environment variable `JSM_REGISTRY_ROOT_DIR`;
-3. the current directory.
+2. the current directory, when it holds a `json-schema-manager-config.yml`;
+3. the environment variable `JSM_REGISTRY_ROOT_DIR`.
+
+When `JSM_REGISTRY_ROOT_DIR` names another registry, or a folder with none, and the current directory holds a registry, `jsm` uses the current directory's. Every command then warns, on every run, that it ignored the variable, and names the registry it used. `create-schema`, `create-schema-version`, `build-dist` and `tag-deployment` also name the registry they use, and where it came from, on every run, for example `Registry: /work/shop-schemas (from the current directory)`. The other commands print that line only under `--debug`.
+
+Run `jsm` from the registry's folder, or give it with `-r`. `JSM_REGISTRY_ROOT_DIR` suits a pipeline, or one project through a per-project tool such as [mise](https://mise.jdx.dev) or [direnv](https://direnv.net). Don't export it from your shell profile: it would then follow you into every folder that holds no registry.
 
 ## Commands
 

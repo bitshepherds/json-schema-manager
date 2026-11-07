@@ -20,6 +20,8 @@ const RootDirEnvVar = "JSM_REGISTRY_ROOT_DIR"
 // Registry is the object which represents a JSM Registry, and also stores the schemas in memory.
 type Registry struct {
 	rootDirectory string
+	source        RootSource
+	ignoredEnv    string
 	config        *config.Config
 	cache         Cache
 	compiler      validator.Compiler
@@ -30,22 +32,58 @@ type Registry struct {
 	renderGroup   singleflight.Group // Prevents duplicate renders/compilations
 }
 
+// RootSource says where the registry jsm uses was named.
+type RootSource int
+
+const (
+	// SourceCurrentDir is the current directory.
+	SourceCurrentDir RootSource = iota
+	// SourceFlag is the --registry flag.
+	SourceFlag
+	// SourceEnv is the JSM_REGISTRY_ROOT_DIR environment variable.
+	SourceEnv
+)
+
+// String names the source as a person reads it, such as "the current directory".
+func (s RootSource) String() string {
+	switch s {
+	case SourceFlag:
+		return "--registry"
+	case SourceEnv:
+		return "$" + RootDirEnvVar
+	default:
+		return "the current directory"
+	}
+}
+
+// RootChoice is the registry root jsm chose, and why.
+type RootChoice struct {
+	Dir    string     // the registry's canonical root directory
+	Source RootSource // where it was named
+	// IgnoredEnv is JSM_REGISTRY_ROOT_DIR's value, as given, when it was set and jsm used the
+	// current directory's registry instead of the one it names, or of a folder with none.
+	IgnoredEnv string
+}
+
 // NewRegistry creates a new JSM registry.
-// If rootDirectory is empty, it will use the environment variable JSM_REGISTRY_ROOT_DIR.
+// Its root is rootDirectory when given; else the current directory, when it holds a registry's
+// config file; else the environment variable JSM_REGISTRY_ROOT_DIR; else the current directory,
+// which then fails with a NoRegistryError.
 func NewRegistry(
 	rootDirectory string,
 	compiler validator.Compiler,
 	pathResolver fsh.PathResolver,
 	envProvider fsh.EnvProvider,
 ) (*Registry, error) {
-	rd, err := initRootDirectory(rootDirectory, pathResolver, envProvider)
+	choice, err := initRootDirectory(rootDirectory, ".", pathResolver, envProvider)
 	if err != nil {
 		return nil, err
 	}
+	rd := choice.Dir
 
 	cfg, err := config.New(rd, compiler)
 	var missing *config.MissingConfigError
-	if errors.As(err, &missing) && rootDirectory == "" && envProvider.Get(RootDirEnvVar) == "" {
+	if errors.As(err, &missing) && choice.Source == SourceCurrentDir {
 		return nil, &NoRegistryError{Dir: rd}
 	}
 	if err != nil {
@@ -59,26 +97,74 @@ func NewRegistry(
 		cache:         make(Cache),
 		compiler:      compiler,
 		rootDirectory: rd,
+		source:        choice.Source,
+		ignoredEnv:    choice.IgnoredEnv,
 		config:        cfg,
 		pathResolver:  pathResolver,
 		envProvider:   envProvider,
 	}, nil
 }
 
-// initRootDirectory attempts to initialise the registry root directory.
-// If rootDirectory is empty, it will attempt to find the root directory from
-// the environment variable JSM_REGISTRY_ROOT_DIR.
-func initRootDirectory(rd string, pathResolver fsh.PathResolver, envProvider fsh.EnvProvider) (string, error) {
-	source := "--registry"
-	if rd == "" {
-		rd = envProvider.Get(RootDirEnvVar)
-		source = "$" + RootDirEnvVar
+// initRootDirectory chooses the registry root directory: rd, the --registry flag, when given;
+// else wd, the current directory, when it holds a registry's config file; else the environment
+// variable JSM_REGISTRY_ROOT_DIR, when set; else wd.
+func initRootDirectory(
+	rd, wd string,
+	pathResolver fsh.PathResolver,
+	envProvider fsh.EnvProvider,
+) (RootChoice, error) {
+	if rd != "" {
+		dir, err := checkRootDirectory(rd, SourceFlag, pathResolver)
+		return RootChoice{Dir: dir, Source: SourceFlag}, err
 	}
 
-	// If we get here, we have at least a string which *may* be a candidate.
+	env := envProvider.Get(RootDirEnvVar)
+	if hasRegistryConfig(wd) {
+		dir, err := checkRootDirectory(wd, SourceCurrentDir, pathResolver)
+		if err != nil {
+			return RootChoice{}, err
+		}
+		choice := RootChoice{Dir: dir, Source: SourceCurrentDir}
+		if env != "" {
+			if envDir, envErr := pathResolver.CanonicalPath(env); envErr != nil || envDir != dir {
+				choice.IgnoredEnv = env
+			}
+		}
+		return choice, nil
+	}
+
+	if env != "" {
+		dir, err := checkRootDirectory(env, SourceEnv, pathResolver)
+		return RootChoice{Dir: dir, Source: SourceEnv}, err
+	}
+
+	dir, err := checkRootDirectory(wd, SourceCurrentDir, pathResolver)
+	return RootChoice{Dir: dir, Source: SourceCurrentDir}, err
+}
+
+// hasRegistryConfig reports whether dir holds a registry's config file.
+func hasRegistryConfig(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, config.JsmRegistryConfigFile))
+	return err == nil && !info.IsDir()
+}
+
+// Source says where the registry was named: --registry, the current directory, or JSM_REGISTRY_ROOT_DIR.
+func (r *Registry) Source() RootSource {
+	return r.source
+}
+
+// IgnoredEnv is JSM_REGISTRY_ROOT_DIR's value when jsm ignored it for the current directory's
+// registry, and empty otherwise.
+func (r *Registry) IgnoredEnv() string {
+	return r.ignoredEnv
+}
+
+// checkRootDirectory returns the canonical path of rd, a candidate registry root named by
+// source, once it is known to be a directory.
+func checkRootDirectory(rd string, source RootSource, pathResolver fsh.PathResolver) (string, error) {
 	rdc, err := pathResolver.CanonicalPath(rd)
 	if err != nil {
-		return "", &RegistryInitError{Path: rd, Source: source, Err: err}
+		return "", &RegistryInitError{Path: rd, Source: source.String(), Err: err}
 	}
 	rd = rdc
 
