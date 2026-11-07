@@ -27,7 +27,7 @@
   ],
   "packageRules": [
     {
-      "description": "Go modules ship in the jsm binary, so a person merges every update to them",
+      "description": "A person merges every Go module update. Even a test-only module can raise a shipped one, as Go keeps one version list for the module",
       "matchManagers": ["gomod"],
       "groupName": "shipped Go modules",
       "automerge": false
@@ -38,12 +38,6 @@
       "groupName": "dev tools"
     },
     {
-      "description": "Go modules only the tests import never ship in the jsm binary, so they are dev tools",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["github.com/stretchr/testify", "github.com/rogpeppe/go-internal"],
-      "groupName": "dev tools"
-    },
-    {
       "description": "GitHub Actions",
       "matchManagers": ["github-actions"],
       "groupName": "GitHub Actions"
@@ -51,13 +45,6 @@
     {
       "description": "Low-risk dev tool and Action updates merge themselves once the checks pass",
       "matchManagers": ["mise", "custom.regex", "github-actions"],
-      "matchUpdateTypes": ["patch", "minor", "pin", "digest", "pinDigest"],
-      "automerge": true
-    },
-    {
-      "description": "Low-risk updates to the Go modules only the tests import merge themselves once the checks pass",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["github.com/stretchr/testify", "github.com/rogpeppe/go-internal"],
       "matchUpdateTypes": ["patch", "minor", "pin", "digest", "pinDigest"],
       "automerge": true
     },

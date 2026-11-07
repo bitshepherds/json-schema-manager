@@ -27,8 +27,8 @@ type kind struct {
 
 var kinds = []kind{
 	{"shipped Go module", "gomod", "go", "github.com/spf13/pflag", shippedGroup, false},
-	{"test-only Go module testify", "gomod", "go", "github.com/stretchr/testify", devToolsGroup, true},
-	{"test-only Go module go-internal", "gomod", "go", "github.com/rogpeppe/go-internal", devToolsGroup, true},
+	{"test-only Go module testify", "gomod", "go", "github.com/stretchr/testify", shippedGroup, false},
+	{"test-only Go module go-internal", "gomod", "go", "github.com/rogpeppe/go-internal", shippedGroup, false},
 	{"go directive", "gomod", "golang-version", "go", "Go version", false},
 	{"mise tool", "mise", "github-releases", "aqua:goreleaser/goreleaser", devToolsGroup, true},
 	{"mise node", "mise", "node-version", "node", devToolsGroup, true},
@@ -100,15 +100,21 @@ func TestRenovateHoldsEveryMajorForDashboardApproval(t *testing.T) {
 	}
 }
 
-func TestRenovateTreatsTestOnlyGoModulesAsDevTools(t *testing.T) {
+// Go keeps one version list for the whole module, and gomodTidy runs on every update, so an update to a module
+// only the tests import can raise a shipped one, such as gopkg.in/yaml.v3 or golang.org/x/sys. A person merges it.
+func TestRenovateNeverAutomergesTestOnlyGoModules(t *testing.T) {
 	t.Parallel()
 	cfg := loadRenovate(t)
 	for _, pkg := range []string{"github.com/stretchr/testify", "github.com/rogpeppe/go-internal"} {
-		testOnly := kind{pkg, "gomod", "go", pkg, devToolsGroup, true}
-		for _, updateType := range lowRiskUpdateTypes {
-			eff := cfg.resolve(testOnly.update(updateType, false))
-			assert.Equal(t, devToolsGroup, eff.group(), "%s %s update", pkg, updateType)
-			assert.True(t, eff.automerge(), "%s %s update", pkg, updateType)
+		testOnly := kind{pkg, "gomod", "go", pkg, shippedGroup, false}
+		for _, updateType := range allUpdateTypes {
+			for _, security := range []bool{false, true} {
+				eff := cfg.resolve(testOnly.update(updateType, security))
+				assert.False(t, eff.automerge(), "%s %s update (security %v)", pkg, updateType, security)
+				if updateType != "major" && !security {
+					assert.Equal(t, shippedGroup, eff.group(), "%s %s update", pkg, updateType)
+				}
+			}
 		}
 	}
 }
