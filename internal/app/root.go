@@ -164,8 +164,8 @@ var writingCommands = map[string]bool{
 // was used in place of the one $JSM_REGISTRY_ROOT_DIR names.
 func reportRegistry(logger *slog.Logger, registry *schema.Registry, cmdName string) {
 	if ignored := registry.IgnoredEnv(); ignored != "" {
-		logger.Warn(fmt.Sprintf("ignored $%s (%s): the current directory holds a registry, so jsm uses that",
-			schema.RootDirEnvVar, ignored))
+		logger.Warn(fmt.Sprintf("ignored $%s (%s): jsm uses the registry in the current directory, %s",
+			schema.RootDirEnvVar, ignored, registry.RootDirectory()))
 	}
 	msg := fmt.Sprintf("Registry: %s (from %s)", registry.RootDirectory(), registry.Source())
 	if writingCommands[cmdName] {

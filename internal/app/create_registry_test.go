@@ -6,7 +6,10 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -183,6 +186,49 @@ func TestCreateRegistry_NoGlobalExportAdvice(t *testing.T) {
 	assert.Contains(t, got, "JSM_REGISTRY_ROOT_DIR")
 	assert.Contains(t, got, "mise")
 	assert.Contains(t, got, "direnv")
+}
+
+func TestCreateRegistry_AdvisedPathWithSpaceIsQuoted(t *testing.T) {
+	t.Parallel()
+	registryDir := filepath.Join(t.TempDir(), "team's registry")
+	var out bytes.Buffer
+	cmd := NewCreateRegistryCmd(fsh.NewPathResolver())
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{registryDir})
+	require.NoError(t, cmd.Execute())
+
+	quoted := shellQuote(registryDir, runtime.GOOS)
+	assert.NotEqual(t, registryDir, quoted)
+	assert.Contains(t, out.String(), "cd "+quoted)
+	assert.Contains(t, out.String(), "-r "+quoted)
+
+	if runtime.GOOS != "windows" {
+		// The advised cd, pasted into a shell, reaches the registry.
+		got, err := exec.CommandContext(t.Context(), "sh", "-c", "cd "+quoted+" && pwd -P").Output()
+		require.NoError(t, err)
+		want, err := filepath.EvalSymlinks(registryDir)
+		require.NoError(t, err)
+		assert.Equal(t, want, strings.TrimSpace(string(got)))
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ name, path, goos, want string }{
+		{"plain path is left bare", "/work/shop-schemas", "linux", "/work/shop-schemas"},
+		{"space on posix", "/work/shop schemas", "darwin", "'/work/shop schemas'"},
+		{"apostrophe on posix", "/work/team's", "linux", `'/work/team'\''s'`},
+		{"backslash on posix", `/work/a\b`, "linux", `'/work/a\b'`},
+		{"plain path on windows", `C:\work\shop`, "windows", `C:\work\shop`},
+		{"space on windows", `C:\work\shop schemas`, "windows", `"C:\work\shop schemas"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shellQuote(tt.path, tt.goos))
+		})
+	}
 }
 
 func TestRegistryUsageAdvice_AbsError(t *testing.T) {

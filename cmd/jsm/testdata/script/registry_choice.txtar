@@ -38,7 +38,13 @@ env JSM_REGISTRY_ROOT_DIR=
 exec jsm render-schema shop_order_1_0_0
 ! stderr 'Registry:'
 exec jsm --debug render-schema shop_order_1_0_0
-stderr 'registry.*[/\\]b'
+stderr 'Registry: .*[/\\]b \(from the current directory\)'
+
+# A command that writes nothing still warns of an ignored variable, naming the registry it used
+env JSM_REGISTRY_ROOT_DIR=$WORK/a
+exec jsm validate shop_order_1_0_0
+! stderr 'Registry:'
+stderr 'ignored \$JSM_REGISTRY_ROOT_DIR \(.*[/\\]a\).* uses the registry in the current directory, .*[/\\]b$'
 
 -- config.yml --
 environments:

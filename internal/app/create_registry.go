@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -63,6 +66,7 @@ func registryUsageAdvice(pathResolver fsh.PathResolver, dirpath string) string {
 	if err != nil {
 		abs = dirpath
 	}
+	abs = shellQuote(abs, runtime.GOOS)
 
 	return fmt.Sprintf(`
 jsm uses the registry in the folder it runs from. To use this one, run jsm from its folder:
@@ -76,4 +80,27 @@ or give its path with -r from anywhere:
 $%[2]s names a registry for jsm to use when the current folder holds none. It suits a
 pipeline, or one project through a per-project tool such as mise or direnv.
 `, abs, schema.RootDirEnvVar)
+}
+
+// safeInShell matches a path a POSIX shell reads as one word, unquoted; safeInWindowsShell, one
+// that cmd and PowerShell do.
+var (
+	safeInShell        = regexp.MustCompile(`^[A-Za-z0-9_@+=:,./-]+$`)
+	safeInWindowsShell = regexp.MustCompile(`^[A-Za-z0-9_+=:,./\\-]+$`)
+)
+
+// shellQuote quotes path so that a command advising it can be pasted into a shell on goos: in
+// double quotes on windows, where a path can't hold one, and in single quotes elsewhere. A path
+// the shell reads as one word is left bare.
+func shellQuote(path, goos string) string {
+	if goos == "windows" {
+		if safeInWindowsShell.MatchString(path) {
+			return path
+		}
+		return `"` + path + `"`
+	}
+	if safeInShell.MatchString(path) {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
