@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -45,10 +46,64 @@ func recordFakeCall(logPath string) int {
 func TestGoVersionHasTheDarwinRaceForkFix(t *testing.T) {
 	t.Parallel()
 
-	const firstFixed = "go1.26.5"
-	assert.GreaterOrEqual(t, version.Compare(runtime.Version(), firstFixed), 0,
+	fixed, known := hasDarwinRaceForkFix(runtime.Version())
+	if !known {
+		t.Skipf("cannot tell whether %s has the fix for golang/go#79804, which came in %s",
+			runtime.Version(), firstRaceForkFix)
+	}
+	assert.True(t, fixed,
 		"tests are built with %s, which is below %s, the first release with the fix for golang/go#79804",
-		runtime.Version(), firstFixed)
+		runtime.Version(), firstRaceForkFix)
+}
+
+func TestHasDarwinRaceForkFix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		goVersion string
+		fixed     bool
+		known     bool
+	}{
+		{goVersion: "go1.26.0", fixed: false, known: true},
+		{goVersion: "go1.26.4", fixed: false, known: true},
+		{goVersion: "go1.26.5", fixed: true, known: true},
+		{goVersion: "go1.27.3", fixed: true, known: true},
+		{goVersion: "go1.27.3 X:nocoverageredesign", fixed: true, known: true},
+		{goVersion: "devel go1.28-abc123 Thu Nov 5 10:00:00 2026 +0000", fixed: true, known: true},
+		{goVersion: "devel go1.26-abc123 Thu Nov 5 10:00:00 2026 +0000", fixed: false, known: true},
+		{goVersion: "devel +abc123 Thu Nov 5 10:00:00 2026 +0000", known: false},
+		{goVersion: "", known: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goVersion, func(t *testing.T) {
+			t.Parallel()
+
+			fixed, known := hasDarwinRaceForkFix(tt.goVersion)
+
+			assert.Equal(t, tt.known, known, "known")
+			assert.Equal(t, tt.fixed, fixed, "fixed")
+		})
+	}
+}
+
+// firstRaceForkFix is the first Go release with the fix for golang/go#79804.
+const firstRaceForkFix = "go1.26.5"
+
+// develVersion finds the language version in a development build's version, such as "devel go1.28-abc123 ...".
+var develVersion = regexp.MustCompile(`^devel (go1\.\d+)-`)
+
+// hasDarwinRaceForkFix says whether goVersion, as runtime.Version gives it, has the fix for golang/go#79804, and
+// whether that can be told at all. A development build counts as the release it leads to: devel go1.28 is fixed, and
+// devel go1.26 is not, as it comes before go1.26.0.
+func hasDarwinRaceForkFix(goVersion string) (fixed, known bool) {
+	v, _, _ := strings.Cut(goVersion, " ")
+	if m := develVersion.FindStringSubmatch(goVersion); m != nil {
+		v = m[1]
+	}
+	if !version.IsValid(v) {
+		return false, false
+	}
+	return version.Compare(v, firstRaceForkFix) >= 0, true
 }
 
 // A route is one of the two ways the tester starts the tests.
