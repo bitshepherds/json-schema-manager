@@ -151,6 +151,73 @@ func TestRuleFailureIsReportedUnderTheLaterVersion(t *testing.T) {
 	assert.ErrorAs(t, spec.Err, &rejected)
 }
 
+// A failure names each document once, by its path from the registry's root, so that the report reads the
+// same on every machine and doesn't bury its message in long paths (#156).
+func TestFailuresNameEachPathOnceRelativeToTheRegistry(t *testing.T) {
+	t.Parallel()
+	r := ruleRegistry(t, "scenario: owner-writes\n")
+	behaves(t, r, ruleEarlier)
+
+	tr := NewTester(r)
+	tr.SetStopOnFirstError(false)
+	report, err := tr.TestSingleSchema(context.Background(), ruleEarlier)
+	require.NoError(t, err)
+
+	laterPass := filepath.Join("domain", "family", "1", "1", "0", "pass", "p.json")
+	laterFail := filepath.Join("domain", "family", "1", "0", "0", "fail", "f.json")
+	earlierPass := filepath.Join("domain", "family", "1", "0", "0", "pass", "p.json")
+	earlierSchema := filepath.Join("domain", "family", "1", "0", "0", string(ruleEarlier)+SchemaSuffix)
+
+	paths := map[string]string{}
+	for _, specs := range report.FailedTests {
+		for i := range specs {
+			paths[specs[i].TestInfo.Path] = specs[i].Err.Error()
+		}
+	}
+	require.Len(t, paths, 3)
+
+	for _, doc := range []string{laterPass, laterFail, earlierPass} {
+		msg, ok := paths[doc]
+		require.True(t, ok, "no failure for %s in %v", doc, paths)
+		assert.Equal(t, 1, strings.Count(msg, doc), msg)
+		assert.NotContains(t, msg, r.RootDirectory(), msg)
+	}
+
+	// A version's own failure names the schema that rejected the document by its path from the root too
+	assert.Contains(t, paths[earlierPass], earlierSchema)
+	// A failure across versions names the schema by its key, so its detail repeats neither path
+	assert.NotContains(t, paths[laterPass], SchemaSuffix)
+	assert.Contains(t, paths[laterPass], "Detail: rejected")
+	assert.NotContains(t, paths[laterFail], "Detail:")
+}
+
+// The detail of a broken rule is what the validator said, and no more: the run's own error would name
+// the document and the schema again.
+func TestRuleBrokenErrorDetail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		wrapped error
+		want    string
+	}{
+		{"no error from the run", nil, ""},
+		{"a fail document accepted", &FailTestPassedError{SchemaPath: "s.json", TestDocPath: "f.json"}, ""},
+		{"a pass document rejected, with no reason", &PassTestFailedError{SchemaPath: "s.json", TestDocPath: "p.json"}, ""},
+		{
+			"a pass document rejected",
+			&PassTestFailedError{SchemaPath: "s.json", TestDocPath: "p.json", Wrapped: errors.New("not one of")},
+			" Detail: not one of",
+		},
+		{"any other error", errors.New("other"), " Detail: other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := &RuleBrokenError{Wrapped: tc.wrapped}
+			assert.Equal(t, tc.want, err.detail())
+		})
+	}
+}
+
 func TestOwnFailureDoesNotSkipTheVersionsPairs(t *testing.T) {
 	t.Parallel()
 	r := ruleRegistry(t, "scenario: owner-writes\n")

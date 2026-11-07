@@ -46,6 +46,16 @@ const (
 	ScenarioThirdPartyFormat Scenario = "third-party-format"
 )
 
+// Article is the indefinite article to put before the scenario's name, so a message reads "an
+// owner-reads family" or "a lock-step family". Each scenario's name starts with a letter that sounds
+// as written, so a vowel takes "an".
+func (s Scenario) Article() string {
+	if s != "" && strings.ContainsRune("aeiou", rune(s[0])) {
+		return "an"
+	}
+	return "a"
+}
+
 // The values of a family's facts.
 const (
 	AheadWriter  Ahead = "writer"

@@ -20,6 +20,10 @@ import (
 // as failing test cases, so the
 // report fails when jsm validate --strict does. A run an exception names is a skipped test case, whose
 // message gives the reason, and a stale exception is a failing one.
+//
+// A schema the run didn't test, as it stopped at the first failure, has a suite only if a schema it did
+// test found something under it. That suite has a skipped "not tested" case, beside any failing case for
+// what was found, so it never shows as a suite which passed.
 type JUnitReporter struct {
 	Strict bool
 }
@@ -137,6 +141,9 @@ func (jr *JUnitReporter) suite(r *schema.TestReport, k schema.Key) junitTestSuit
 	slices.SortStableFunc(suite.Cases, func(a, b junitTestCase) int { return cmp.Compare(a.Name, b.Name) })
 
 	warnings := schemaWarnings(r, k)
+	if !r.Tested(k) {
+		suite.Cases = append(suite.Cases, notTestedCase(suite.Name, warnings))
+	}
 	if jr.Strict {
 		for _, warning := range warnings {
 			suite.Cases = append(suite.Cases, junitTestCase{
@@ -159,6 +166,17 @@ func (jr *JUnitReporter) suite(r *schema.TestReport, k schema.Key) junitTestSuit
 		}
 	}
 	return suite
+}
+
+// notTestedCase is the skipped test case for a schema the run didn't test, as it stopped at the first
+// failure, though a schema it did test found something under it. So CI shows the schema as skipped, not
+// as a suite which passed. Its message gives the warnings found under it, if any.
+func notTestedCase(className string, warnings []string) junitTestCase {
+	msg := "not tested: the run stopped at the first failure. Run with -C to test it"
+	if len(warnings) > 0 {
+		msg += ". Found under it: " + strings.Join(warnings, "; ")
+	}
+	return junitTestCase{Name: "not tested", ClassName: className, Skipped: &junitSkipped{Message: msg}}
 }
 
 // junitCaseName names a test case by its document, and for a run across versions, by the version it

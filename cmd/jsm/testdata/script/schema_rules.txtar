@@ -9,7 +9,7 @@ env JSM_REGISTRY_ROOT_DIR=ids
 ! exec jsm validate misc_hard-id_1_0_0 -c
 stderr 'misc_hard-id_1_0_0.schema.json sets \$id to https://elsewhere.example.com/x.json: set "\$id": "\{\{ ID \}\}"'
 exec jsm validate misc_good-id_1_0_0 -c
-stdout 'Test summary: 2 passed, 0 failed'
+stdout 'Test summary: 2 runs passed, 0 failed'
 
 # A schema in a directory other than the one its name says it belongs in stops validate all,
 # naming both, rather than being tested under the wrong key (#22)
@@ -25,12 +25,12 @@ stderr '\$ref https://geojson.org/schema/Point.json is external, and external \$
 # Under 2020-12, format is an annotation by default, so the invalid email is accepted
 env JSM_REGISTRY_ROOT_DIR=format
 ! exec jsm validate people_contact_1_0_0 -c
-stdout 'bad-email.json \(passed, when expected fail\)'
+stdout '✗ passed, when expected fail:\n    Fail Test document people/contact/1/0/0/fail/bad-email.json was accepted'
 
 # With assertFormat, it is rejected
 cp assert-format.yml format/json-schema-manager-config.yml
 exec jsm validate people_contact_1_0_0 -c
-stdout 'Test summary: 2 passed, 0 failed'
+stdout 'Test summary: 2 runs passed, 0 failed'
 
 -- assert-format.yml --
 assertFormat: true

@@ -344,19 +344,29 @@ func TestNewTestInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			info, err := NewTestInfo(tt.path)
+			info, err := NewTestInfo(tt.path, tmpDir)
 
 			if tt.wantErrMsgContains != "" {
 				require.ErrorContains(t, err, tt.wantErrMsgContains)
+				// The error names the document by its path from the registry's root
+				require.ErrorContains(t, err, "document "+filepath.Base(tt.path)+" ")
 				return
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.path, info.Path)
+			assert.Equal(t, filepath.Base(tt.path), info.Path)
 			assert.Equal(t, validData, info.SrcDoc)
 			m, ok := info.Unmarshalled.(map[string]interface{})
 			require.True(t, ok)
 			assert.Equal(t, "value", m["key"])
+
+			// Outside the registry, or with no registry root, the path stays as it was given
+			outside, err := NewTestInfo(tt.path, filepath.Join(tmpDir, "elsewhere"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.path, outside.Path)
+			noRoot, err := NewTestInfo(tt.path, "")
+			require.NoError(t, err)
+			assert.Equal(t, tt.path, noRoot.Path)
 		})
 	}
 }

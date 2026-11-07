@@ -6,6 +6,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +39,11 @@ func TestTextReporter(t *testing.T) {
 	specFail := schema.Spec{
 		TestInfo:    schema.TestInfo{Path: "fail.json"},
 		TestDocType: schema.TestDocTypePass,
-		Err:         assert.AnError,
+		Err: &schema.PassTestFailedError{
+			SchemaPath:  "s.json",
+			TestDocPath: "fail.json",
+			Wrapped:     assert.AnError,
+		},
 	}
 
 	r.AddPassedTest(k1, &specPass)
@@ -53,9 +60,9 @@ func TestTextReporter(t *testing.T) {
 		output := buf.String()
 		assert.Contains(t, output, "[FAIL] d1_f1_1_0_0.schema.json")
 		assert.Contains(t, output, "d2_f1_1_0_0.schema.json")
-		assert.Contains(t, output, "✗ fail.json")
+		assert.Contains(t, output, "✗ failed:\n    Pass Test document fail.json did not pass")
 		assert.NotContains(t, output, "✓ pass.json")
-		assert.Contains(t, output, "Test summary: 2 passed, 1 failed")
+		assert.Contains(t, output, "Test summary: 2 runs passed, 1 failed")
 	})
 
 	t.Run("Verbose Mode", func(t *testing.T) {
@@ -68,7 +75,7 @@ func TestTextReporter(t *testing.T) {
 		output := buf.String()
 		assert.Contains(t, output, "[FAIL] d1_f1_1_0_0.schema.json")
 		assert.Contains(t, output, "[PASS] d2_f1_1_0_0.schema.json")
-		assert.Contains(t, output, "✗ fail.json")
+		assert.Contains(t, output, "✗ failed:\n    Pass Test document fail.json did not pass")
 		assert.Contains(t, output, "✓ pass.json")
 	})
 
@@ -97,7 +104,7 @@ func TestTextReporter(t *testing.T) {
 		assert.Contains(t, output, "\033[31m✗\033[0m")
 		assert.Contains(t, output, "\033[90mpass.json\033[0m")
 		assert.Contains(t, output, "\033[1;37mTest summary: \033[0m")
-		assert.Contains(t, output, "\033[1;31m2 passed, 1 failed\033[0m")
+		assert.Contains(t, output, "\033[1;31m2 runs passed, 1 failed\033[0m")
 	})
 
 	t.Run("Fail as Expected", func(t *testing.T) {
@@ -126,7 +133,7 @@ func TestTextReporter(t *testing.T) {
 
 		output := buf.String()
 		assert.Contains(t, output, "\033[1;37mTest summary: \033[0m")
-		assert.Contains(t, output, "\033[1;32m1 passed, 0 failed\033[0m")
+		assert.Contains(t, output, "\033[1;32m1 run passed, 0 failed\033[0m")
 	})
 }
 
@@ -246,7 +253,7 @@ func TestReporters_UnexercisedChanges(t *testing.T) {
 		"  ! /s: enum adds \"x\" (widens): needs a pass document\n"+
 		"[WARN] d_f_1_2_0.schema.json since d_f_1_1_0:\n"+
 		"  ! /a: removes every constraint (widens): needs a pass document\n")
-	assert.Contains(t, out, "Test summary: 0 passed, 0 failed, 2 unexercised changes")
+	assert.Contains(t, out, "Test summary: 0 runs passed, 0 failed, 2 unexercised changes")
 
 	var js bytes.Buffer
 	require.NoError(t, (&JSONReporter{}).Write(&js, r))
@@ -277,11 +284,11 @@ func TestReporters_Summaries(t *testing.T) {
 	var text bytes.Buffer
 	require.NoError(t, (&TextReporter{}).Write(&text, r))
 	out := text.String()
-	assert.Contains(t, out, "[WARN] d_a_1_0_0.schema.json (pass: 0, fail: 0)\n  ! no pass documents\n")
-	assert.Contains(t, out, "[WARN] d_b_1_0_0.schema.json (pass: 0, fail: 0)\n  ! no fail documents\n")
-	assert.Contains(t, out, "[PASS] d_c_1_0_0.schema.json (pass: 0, fail: 0)\n")
+	assert.Contains(t, out, "[WARN] d_a_1_0_0.schema.json (runs: 0 passed, 0 failed)\n  ! no pass documents\n")
+	assert.Contains(t, out, "[WARN] d_b_1_0_0.schema.json (runs: 0 passed, 0 failed)\n  ! no fail documents\n")
+	assert.Contains(t, out, "[PASS] d_c_1_0_0.schema.json (runs: 0 passed, 0 failed)\n")
 	assert.NotContains(t, out, "coverage:", "coverage is only shown when verbose")
-	assert.Contains(t, out, "Test summary: 0 passed, 0 failed, 2 schemas without pass or fail documents")
+	assert.Contains(t, out, "Test summary: 0 runs passed, 0 failed, 2 schemas without pass or fail documents")
 
 	text.Reset()
 	require.NoError(t, (&TextReporter{Verbose: true}).Write(&text, r))
@@ -384,10 +391,10 @@ func TestSummaryCountsInheritedDocumentsInReports(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, (&TextReporter{Verbose: true}).Write(&buf, r))
 	out := buf.String()
-	assert.Contains(t, out, "[PASS] d_inherits_1_1_0.schema.json (pass: 0, fail: 0)\n"+
+	assert.Contains(t, out, "[PASS] d_inherits_1_1_0.schema.json (runs: 0 passed, 0 failed)\n"+
 		"  inherited: 2 pass and 1 fail documents from earlier versions in its major\n")
-	assert.Contains(t, out, "[WARN] d_half_1_1_0.schema.json (pass: 0, fail: 0)\n  ! no fail documents\n")
-	assert.NotContains(t, out, "[PASS] d_owns_1_0_0.schema.json (pass: 0, fail: 0)\n  inherited")
+	assert.Contains(t, out, "[WARN] d_half_1_1_0.schema.json (runs: 0 passed, 0 failed)\n  ! no fail documents\n")
+	assert.NotContains(t, out, "[PASS] d_owns_1_0_0.schema.json (runs: 0 passed, 0 failed)\n  inherited")
 
 	buf.Reset()
 	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
@@ -478,4 +485,207 @@ func TestReportersShowNarrowingNeedsFailDocument(t *testing.T) {
 	require.NoError(t, (&JSONReporter{}).Write(&js, r))
 	assert.Contains(t, js.String(), `"later": "d_f_1_2_0"`)
 	assert.Contains(t, js.String(), `"direction": "narrows"`)
+}
+
+func TestJSONReporter_StoppedEarly(t *testing.T) {
+	t.Parallel()
+
+	write := func(r *schema.TestReport) map[string]any {
+		t.Helper()
+		var buf bytes.Buffer
+		require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+		return out
+	}
+
+	r := schema.NewTestReport()
+	r.AddFailedTest("d_b_1_0_0", &schema.Spec{
+		TestInfo:    schema.TestInfo{Path: "bad.json"},
+		TestDocType: schema.TestDocTypePass,
+		Err:         assert.AnError,
+	})
+	r.NotTested = 2
+	out := write(r)
+	assert.Equal(t, true, out["stoppedEarly"])
+	stats, ok := out["stats"].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 2, stats["totalNotTested"], 0)
+	results, ok := out["results"].(map[string]any)
+	require.True(t, ok)
+	assert.Len(t, results, 1, "only the schema which ran is listed")
+	assert.Contains(t, results, "d_b_1_0_0")
+
+	out = write(schema.NewTestReport())
+	assert.Equal(t, false, out["stoppedEarly"])
+}
+
+// TestJSONAndJUnitReporters_StoppedEarlyShowFindingsForUntestedSchemas checks that the JSON and JUnit
+// reports agree with the text report about what a tested schema found under one not tested: each lists
+// the finding, and neither lists a run for that schema.
+func TestJSONAndJUnitReporters_StoppedEarlyShowFindingsForUntestedSchemas(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&buf, untestedFindingsReport()))
+	var out struct {
+		Results         map[string]any `json:"results"`
+		StaleExceptions []struct {
+			Schema string `json:"schema"`
+		} `json:"staleExceptions"`
+		MissingMigrations []struct {
+			Schema string `json:"schema"`
+		} `json:"missingMigrations"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+	assert.Equal(t, []string{"d_b_1_0_0"}, slices.Collect(maps.Keys(out.Results)), "only the schema which ran")
+	require.Len(t, out.StaleExceptions, 1)
+	assert.Equal(t, "d_f_1_1_0", out.StaleExceptions[0].Schema)
+	require.Len(t, out.MissingMigrations, 1)
+	assert.Equal(t, "d_m_2_0_0", out.MissingMigrations[0].Schema)
+
+	buf.Reset()
+	require.NoError(t, (&JUnitReporter{}).Write(&buf, untestedFindingsReport()))
+	junit := buf.String()
+	assert.Contains(t, junit, `<testcase name="stale exception: version 1.0.0, change /: gone" `+
+		`classname="d_f_1_1_0.schema.json">`)
+	assert.Contains(t, junit, `<testcase name="migration statement for major 2" classname="d_m_2_0_0.schema.json">`)
+	assert.Contains(t, junit, `<testsuite name="d_f_1_1_0.schema.json" tests="2" failures="1" skipped="1"`)
+	assert.Contains(t, junit, `<testsuite name="d_m_2_0_0.schema.json" tests="2" failures="1" skipped="1"`)
+	assert.Contains(t, junit, `<testsuite name="d_b_1_0_0.schema.json" tests="1" failures="1">`,
+		"a tested schema has no not-tested case")
+}
+
+// untestedWarningReport is a report which stopped at the first failure, and whose only finding under a
+// schema it didn't test is an unexercised change, which a tested schema found.
+func untestedWarningReport() *schema.TestReport {
+	r := schema.NewTestReport()
+	r.AddFailedTest("d_b_1_0_0", &schema.Spec{
+		TestInfo:    schema.TestInfo{Path: "bad.json"},
+		TestDocType: schema.TestDocTypePass,
+		Err:         assert.AnError,
+	})
+	r.AddUnexercisedChange("d_f_1_1_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_0_0", Later: "d_f_1_1_0", Direction: structdiff.Widens,
+		Change: structdiff.Change{Location: "/w", Effect: structdiff.Widens, Detail: "w"},
+	})
+	r.MarkNotTested("d_f_1_1_0")
+	r.NotTested = 1
+	return r
+}
+
+// TestJUnitReporter_StoppedEarlyShowsUntestedSchemaAsSkipped checks that a schema a stopped run didn't
+// test, whose only finding is a warning, shows in JUnit as a skipped "not tested" case carrying the
+// warning, never as a passing suite with no tests.
+func TestJUnitReporter_StoppedEarlyShowsUntestedSchemaAsSkipped(t *testing.T) {
+	t.Parallel()
+
+	suiteOf := func(t *testing.T, strict bool) junitTestSuite {
+		t.Helper()
+		var buf bytes.Buffer
+		require.NoError(t, (&JUnitReporter{Strict: strict}).Write(&buf, untestedWarningReport()))
+		var out junitTestSuites
+		require.NoError(t, xml.Unmarshal(buf.Bytes(), &out))
+		for _, s := range out.Suites {
+			if s.Name == "d_f_1_1_0.schema.json" {
+				return s
+			}
+		}
+		require.Fail(t, "no suite for d_f_1_1_0", buf.String())
+		return junitTestSuite{}
+	}
+	notTestedCase := func(t *testing.T, s junitTestSuite) junitTestCase {
+		t.Helper()
+		for _, c := range s.Cases {
+			if c.Name == "not tested" {
+				return c
+			}
+		}
+		require.Fail(t, "no not-tested case", "%+v", s)
+		return junitTestCase{}
+	}
+
+	t.Run("without strict", func(t *testing.T) {
+		t.Parallel()
+		s := suiteOf(t, false)
+		assert.Equal(t, 1, s.Tests)
+		assert.Equal(t, 1, s.Skipped)
+		assert.Zero(t, s.Failures)
+		c := notTestedCase(t, s)
+		require.NotNil(t, c.Skipped)
+		assert.Nil(t, c.Failure)
+		assert.Contains(t, c.Skipped.Message, "stopped at the first failure")
+		assert.Contains(t, c.Skipped.Message, "-C")
+		assert.Contains(t, c.Skipped.Message, "unexercised change since d_f_1_0_0: /w")
+		assert.Contains(t, s.SystemOut, "WARN unexercised change since d_f_1_0_0: /w")
+	})
+
+	t.Run("with strict", func(t *testing.T) {
+		t.Parallel()
+		s := suiteOf(t, true)
+		assert.Equal(t, 2, s.Tests)
+		assert.Equal(t, 1, s.Skipped)
+		assert.Equal(t, 1, s.Failures, "the warning still fails, as --strict does")
+		require.NotNil(t, notTestedCase(t, s).Skipped)
+	})
+}
+
+// TestJSONReporter_StoppedEarlySaysFindingsAreForUntestedSchemas checks that the JSON report, like the
+// text report, says a finding is filed under a schema the run didn't test.
+func TestJSONReporter_StoppedEarlySaysFindingsAreForUntestedSchemas(t *testing.T) {
+	t.Parallel()
+
+	type finding struct {
+		Schema    string `json:"schema"`
+		NotTested bool   `json:"notTested"`
+	}
+	var out struct {
+		StaleExceptions    []finding `json:"staleExceptions"`
+		MissingMigrations  []finding `json:"missingMigrations"`
+		UnexercisedChanges []finding `json:"unexercisedChanges"`
+	}
+	r := untestedFindingsReport()
+	r.AddUnexercisedChange("d_f_1_1_0", &schema.UnexercisedChange{
+		Earlier: "d_f_1_0_0", Later: "d_f_1_1_0", Direction: structdiff.Widens,
+		Change: structdiff.Change{Location: "/w", Effect: structdiff.Widens, Detail: "w"},
+	})
+	r.AddUnexercisedChange("d_b_1_0_0", &schema.UnexercisedChange{
+		Earlier: "d_b_0_9_0", Later: "d_b_1_0_0", Direction: structdiff.Widens,
+		Change: structdiff.Change{Location: "/x", Effect: structdiff.Widens, Detail: "x"},
+	})
+	var buf bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+
+	assert.Equal(t, []finding{{"d_f_1_1_0", true}}, out.StaleExceptions)
+	assert.Equal(t, []finding{{"d_m_2_0_0", true}}, out.MissingMigrations)
+	assert.Equal(t, []finding{{"d_b_1_0_0", false}, {"d_f_1_1_0", true}}, out.UnexercisedChanges)
+	assert.NotContains(t, buf.String(), `"notTested": false`, "a tested schema's finding leaves the field out")
+}
+
+// The JSON report gives the path of a document failing across versions, and its error names it, by its
+// path from the registry's root (#156).
+func TestJSONReporter_RelativePath(t *testing.T) {
+	t.Parallel()
+	r, root := relativePathReport(t)
+
+	var buf bytes.Buffer
+	require.NoError(t, (&JSONReporter{}).Write(&buf, r))
+	assert.NotContains(t, buf.String(), root)
+
+	var out struct {
+		Results map[schema.Key]struct {
+			Failed []map[string]any `json:"failed"`
+		} `json:"results"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+	failed := out.Results["shop_order_1_1_0"].Failed
+	require.Len(t, failed, 1)
+
+	doc := filepath.Join("shop", "order", "1", "1", "0", "pass", "refunded.json")
+	assert.Equal(t, doc, failed[0]["path"])
+	msg, ok := failed[0]["error"].(string)
+	require.True(t, ok)
+	assert.Contains(t, msg, "pass document "+doc+" of shop_order_1_1_0")
+	assert.Equal(t, 1, strings.Count(msg, doc), msg)
 }

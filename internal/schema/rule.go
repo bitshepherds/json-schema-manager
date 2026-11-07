@@ -1,6 +1,9 @@
 package schema
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Rule names what a document run proves. Each is a promise in ScenariosDoc.
 type Rule string
@@ -107,9 +110,28 @@ func (e *RuleBrokenError) Error() string {
 		verb = verdictRejected
 	}
 	return fmt.Sprintf("%s broken between %s and %s: %s document %s of %s was %s by %s. %s "+
-		"If this is deliberate, or %s is already deployed, list it in %s in %s's directory. Detail: %s",
+		"If this is deliberate, or %s is already deployed, list it in %s in %s's directory.%s",
 		e.Rule, e.Earlier, e.Later, e.DocType, e.DocPath, e.DocumentFrom, verb, e.ValidatedBy, e.meaning(),
-		e.Later, ExceptionsFile, e.Later, e.Wrapped)
+		e.Later, ExceptionsFile, e.Later, e.detail())
+}
+
+// detail returns what the validator said about the document, if it said anything. The run's own error
+// names the document and the schema again, by their paths, which the message has already named, so
+// it leaves that out: a fail document accepted has nothing more to say.
+func (e *RuleBrokenError) detail() string {
+	var rejected *PassTestFailedError
+	var accepted *FailTestPassedError
+	switch {
+	case e.Wrapped == nil, errors.As(e.Wrapped, &accepted):
+		return ""
+	case errors.As(e.Wrapped, &rejected):
+		if rejected.Wrapped == nil {
+			return ""
+		}
+		return " Detail: " + rejected.Wrapped.Error()
+	default:
+		return " Detail: " + e.Wrapped.Error()
+	}
 }
 
 // Unwrap returns the error from the document run itself.
@@ -127,9 +149,9 @@ func (e *RuleBrokenError) meaning() string {
 		if loosened {
 			change = fmt.Sprintf("%s accepts documents %s rejects", e.Later, e.Earlier)
 		}
-		return fmt.Sprintf("In a %s family, this says the real format has changed: %s. Its owner decides that, "+
+		return fmt.Sprintf("In %s %s family, this says the real format has changed: %s. Its owner decides that, "+
 			"so check your readers cope with it. If the format hasn't really changed this way, correct %s.",
-			scenario, change, e.Later)
+			scenario.Article(), scenario, change, e.Later)
 	}
 
 	var harm string
@@ -142,5 +164,6 @@ func (e *RuleBrokenError) meaning() string {
 		harm = fmt.Sprintf("a reader on %s rejects a document written under %s, which may still be around",
 			e.Later, e.Earlier)
 	}
-	return fmt.Sprintf("In a %s family, %s. Undo the change, or make it in a new major version.", scenario, harm)
+	return fmt.Sprintf("In %s %s family, %s. Undo the change, or make it in a new major version.",
+		scenario.Article(), scenario, harm)
 }

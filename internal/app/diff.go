@@ -46,6 +46,8 @@ document uses it. Otherwise the older version's subschema at that location decid
 'jsm validate' warns about what these notes flag, under the version which made the change. This
 command doesn't read compat-exceptions.yml, so it still flags a change an entry there acknowledges,
 which validate no longer warns about: what it says stays true, that no document shows the change.
+Nor does it run documents across versions, so it still flags a change one of the older version's own
+documents shows, by the newer version's verdict on it, which validate counts.
 
 The comparison is structural: it follows local $refs, and compares other schemas' $refs by URL.
 `,

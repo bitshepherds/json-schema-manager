@@ -183,6 +183,24 @@ func (r *Registry) RootDirectory() string {
 	return r.rootDirectory
 }
 
+// relative returns a path inside the registry as a path from its root, such as
+// shop/order/1/0/0/pass/placed.json, which reads the same on every machine.
+func (r *Registry) relative(path string) string {
+	return relativeTo(r.rootDirectory, path)
+}
+
+// relativeTo returns path as a path from root if it is inside root, and unchanged otherwise.
+func relativeTo(root, path string) string {
+	if root == "" {
+		return path
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return rel
+}
+
 // Config returns the registry configuration.
 func (r *Registry) Config() (*config.Config, error) {
 	if r.config == nil {

@@ -2,6 +2,7 @@ package schema
 
 import (
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -60,6 +61,41 @@ type TestReport struct {
 
 	// Summaries describe, for each schema tested against its own documents, how well they cover it.
 	Summaries map[Key]*Summary
+
+	// NotTested counts the schemas in the run's scope which it didn't test, because it stopped at the
+	// first failure. The report holds no runs or summary for them, only what a schema whose checks
+	// finished found under one: a stale exception, a missing migration statement or an unexercised change.
+	// notTested names those.
+	NotTested int
+	// notTested are the schemas the run didn't test, of those NotTested counts, which the report holds a
+	// finding for all the same, found by a schema whose checks finished.
+	notTested map[Key]bool
+}
+
+// MarkNotTested notes that the run didn't test the schema with the given key, though the report holds a
+// finding for it which another schema's checks found.
+func (r *TestReport) MarkNotTested(k Key) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.markNotTested(k)
+}
+
+func (r *TestReport) markNotTested(k Key) {
+	if r.notTested == nil {
+		r.notTested = make(map[Key]bool)
+	}
+	r.notTested[k] = true
+}
+
+// Tested reports whether the run tested the schema with the given key. One it stopped before testing
+// can still hold a finding, such as a stale exception, which another schema's checks found.
+func (r *TestReport) Tested(k Key) bool {
+	return !r.notTested[k]
+}
+
+// StoppedEarly reports whether the run stopped at the first failure before testing every schema.
+func (r *TestReport) StoppedEarly() bool {
+	return r.NotTested > 0
 }
 
 // Summary describes how well a schema's test documents cover it.
@@ -116,6 +152,8 @@ type UnexercisedChange struct {
 	Later     Key
 	Direction structdiff.Effect // Widens or Narrows: the direction which needs evidence
 	Change    structdiff.Change
+
+	foundBy Key // the version whose checks found it, if not Later
 }
 
 // NeededDocument returns the kind of document which would show the change.
@@ -140,12 +178,16 @@ type AcknowledgedChange struct {
 type StaleException struct {
 	Exception Exception
 	Why       string
+
+	foundBy Key // the version whose checks found it, if not the one whose file lists it
 }
 
 // MissingMigration is a major which needs a migration statement in its family's declaration, and has none.
 type MissingMigration struct {
 	Major uint64
 	Why   string
+
+	foundBy []Key // the versions whose checks found it, if not the major's first
 }
 
 // NewTestReport creates a new TestReport.
@@ -159,6 +201,51 @@ func NewTestReport() *TestReport {
 		UnexercisedChanges:  make(map[Key][]UnexercisedChange),
 		AcknowledgedChanges: make(map[Key][]AcknowledgedChange),
 		Summaries:           make(map[Key]*Summary),
+	}
+}
+
+// dropUnless takes out of the report everything it holds for each schema for which keep is false, but
+// for a stale exception, missing migration statement or unexercised change which a version for which
+// finished is true found. A schema which keeps one is marked as not tested.
+func (r *TestReport) dropUnless(keep, finished func(Key) bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	drop := func(k Key) bool { return !keep(k) }
+	maps.DeleteFunc(r.PassedTests, func(k Key, _ []Spec) bool { return drop(k) })
+	maps.DeleteFunc(r.FailedTests, func(k Key, _ []Spec) bool { return drop(k) })
+	maps.DeleteFunc(r.ExceptedTests, func(k Key, _ []Spec) bool { return drop(k) })
+	maps.DeleteFunc(r.AcknowledgedChanges, func(k Key, _ []AcknowledgedChange) bool { return drop(k) })
+	maps.DeleteFunc(r.Summaries, func(k Key, _ *Summary) bool { return drop(k) })
+
+	// lost reports whether what goes under the schema was found by none of the versions for which
+	// finished is true, nor by that schema itself if no version is given.
+	lost := func(under Key, by ...Key) bool {
+		if keep(under) {
+			return false
+		}
+		if len(by) == 0 || by[0] == "" {
+			return !finished(under)
+		}
+		return !slices.ContainsFunc(by, finished)
+	}
+	for k, stale := range r.StaleExceptions {
+		r.StaleExceptions[k] = slices.DeleteFunc(stale, func(s StaleException) bool { return lost(k, s.foundBy) })
+	}
+	for k, ucs := range r.UnexercisedChanges {
+		r.UnexercisedChanges[k] = slices.DeleteFunc(ucs, func(uc UnexercisedChange) bool { return lost(k, uc.foundBy) })
+	}
+	maps.DeleteFunc(r.StaleExceptions, func(_ Key, stale []StaleException) bool { return len(stale) == 0 })
+	maps.DeleteFunc(r.UnexercisedChanges, func(_ Key, ucs []UnexercisedChange) bool { return len(ucs) == 0 })
+	maps.DeleteFunc(r.MissingMigrations, func(k Key, m MissingMigration) bool { return lost(k, m.foundBy...) })
+
+	for _, under := range []func(yield func(Key) bool){
+		maps.Keys(r.StaleExceptions), maps.Keys(r.UnexercisedChanges), maps.Keys(r.MissingMigrations),
+	} {
+		for k := range under {
+			if drop(k) {
+				r.markNotTested(k)
+			}
+		}
 	}
 }
 
@@ -201,10 +288,14 @@ func (r *TestReport) HasFailures() bool {
 	return len(r.FailedTests) > 0 || len(r.StaleExceptions) > 0 || len(r.MissingMigrations) > 0
 }
 
-// AddMissingMigration records, under the first version of its major, a major with no migration statement.
+// AddMissingMigration records, under the first version of its major, a major with no migration
+// statement. Each version in the major finds it, so it is kept once, noting each that found it.
 func (r *TestReport) AddMissingMigration(key Key, m MissingMigration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if found, ok := r.MissingMigrations[key]; ok {
+		m.foundBy = append(found.foundBy, m.foundBy...)
+	}
 	r.MissingMigrations[key] = m
 }
 
@@ -217,9 +308,15 @@ func (r *TestReport) AddExceptedTest(key Key, spec *Spec) {
 
 // AddStaleException adds an entry of the exception file of the version with the given key which clears nothing.
 func (r *TestReport) AddStaleException(key Key, e *Exception, why string) {
+	r.addStaleException(key, key, e, why)
+}
+
+// addStaleException adds a stale entry of the exception file of the version with the given key, which
+// the checks of the version with key by found.
+func (r *TestReport) addStaleException(key, by Key, e *Exception, why string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.StaleExceptions[key] = append(r.StaleExceptions[key], StaleException{Exception: *e, Why: why})
+	r.StaleExceptions[key] = append(r.StaleExceptions[key], StaleException{Exception: *e, Why: why, foundBy: by})
 }
 
 // AddUnexercisedChange adds a change in the schema with the given key which no document shows. Workers

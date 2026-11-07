@@ -36,6 +36,11 @@ with later versions. A failure appears under the later version, since that's wha
 which rule broke, the two versions, the document, and what that means for the family's scenario. See
 user-docs/scenarios.md.
 
+The report counts runs, not documents. A run is one document checked against one schema version. A
+version's own documents give one run each. A run across versions is counted under the later version of
+the pair, and happens only in the directions the table above gives for the family's scenario, so the
+count depends on the family: a version can show more runs than it has documents.
+
 A version's compat-exceptions.yml can list a deliberate break of the rule, with its reason. The report
 shows that run as excepted, and it doesn't fail. An entry which clears nothing is stale, and fails.
 
@@ -48,9 +53,11 @@ versions structurally, and warns about each change in a direction the family pro
 document shows. A writer-ahead family needs a pass document for a change which widens what's accepted,
 such as an enum value added. A reader-ahead family needs a fail document for one which narrows it, a
 family with either ahead needs both, and a family with neither ahead needs none. Where structdiff can't
-tell which way a change goes, it needs the documents for the direction the family protects. A change no
-document can show is acknowledged in compat-exceptions.yml. 'jsm diff' lists every structural change
-between two versions.
+tell which way a change goes, it needs the documents for the direction the family protects. The earlier
+version's own documents show a change too, by the later version's verdict on them: a pass document the
+later version rejects shows a narrowing, and a fail document it accepts shows a widening, whether that
+run fails or is excepted as a deliberate break. A change no document can show is acknowledged in
+compat-exceptions.yml. 'jsm diff' lists every structural change between two versions.
 
 It also warns about each schema with no pass document, or no fail document, and each fail document
 rejected for several independent reasons, where its family runs documents across versions. Documents

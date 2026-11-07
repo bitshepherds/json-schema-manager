@@ -53,7 +53,7 @@ func (s *Spec) Run(v validator.Validator) error {
 		err := v.Validate(u)
 		if err != nil {
 			s.setFailure(&PassTestFailedError{
-				SchemaPath:  s.Schema.Path(FilePath),
+				SchemaPath:  s.schemaPath(),
 				TestDocPath: s.TestInfo.Path,
 				Wrapped:     err,
 			})
@@ -64,12 +64,17 @@ func (s *Spec) Run(v validator.Validator) error {
 
 	// We expected it to fail and it passed:
 	if err := v.Validate(u); err == nil {
-		s.setFailure(&FailTestPassedError{SchemaPath: s.Schema.Path(FilePath), TestDocPath: s.TestInfo.Path})
+		s.setFailure(&FailTestPassedError{SchemaPath: s.schemaPath(), TestDocPath: s.TestInfo.Path})
 		return s.Err
 	}
 
 	// We expect it to fail, and it did:
 	return nil
+}
+
+// schemaPath returns the path of the schema the spec runs on, from the registry's root.
+func (s *Spec) schemaPath() string {
+	return s.Schema.registry.relative(s.Schema.Path(FilePath))
 }
 
 // setFailure records why the spec failed, as a broken rule if it ran across versions.

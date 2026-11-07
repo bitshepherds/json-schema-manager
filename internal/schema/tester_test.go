@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -641,4 +643,194 @@ func TestTester_TestFoundSchemas_ContextCancelledDuringExecution(t *testing.T) {
 func TestErrs_Strings(t *testing.T) {
 	t.Parallel()
 	assert.Contains(t, (&NoSchemaTargetsError{}).Error(), "must specify a schema")
+}
+
+// TestTestFoundSchemas_StopOnFirstError_OmitsUnrunSchemas checks that a run which stops at the first
+// failure reports only the schemas whose runs finished, and the failing one, and counts the others as
+// not tested (#155). A schema a worker had started on as the run stopped once showed as passed.
+func TestTestFoundSchemas_StopOnFirstError_OmitsUnrunSchemas(t *testing.T) {
+	t.Parallel()
+
+	// setup creates a schema for each key, each with two pass documents, and d_b_1_0_0 with a pass
+	// document which fails. Validating a document of a schema in wait waits for that failure.
+	setup := func(t *testing.T, keys, wait []Key) *Registry {
+		t.Helper()
+		r := setupTestRegistry(t)
+		schemas := schemaMap{}
+		for _, k := range keys {
+			schemas[k] = `{"type": "object"}`
+		}
+		createSchemaFiles(t, r, schemas)
+		for _, k := range keys {
+			createTestDocs(t, r, k, TestDocTypePass, map[string]string{
+				"one.json": `{"from": "` + string(k) + `"}`,
+				"two.json": `{"from": "` + string(k) + `"}`,
+			})
+		}
+		createTestDocs(t, r, "d_b_1_0_0", TestDocTypePass, map[string]string{"bad.json": `{"bad": true}`})
+
+		failed := make(chan struct{})
+		var once sync.Once
+		mc, ok := r.compiler.(*mockCompiler)
+		require.True(t, ok)
+		mc.CompileFunc = func(_ string) (validator.Validator, error) {
+			return &mockValidator{ValidateFunc: func(doc validator.JSONDocument) error {
+				m, _ := doc.(map[string]any)
+				if m["bad"] == true {
+					once.Do(func() { close(failed) })
+					return errors.New("bad document")
+				}
+				if from, _ := m["from"].(string); slices.Contains(wait, Key(from)) {
+					<-failed
+					time.Sleep(100 * time.Millisecond) // for the run to stop
+				}
+				return nil
+			}}, nil
+		}
+		return r
+	}
+
+	// assertOnly checks the report holds the schemas given, each with runs, and no other.
+	assertOnly := func(t *testing.T, report *TestReport, want ...Key) {
+		t.Helper()
+		reported := reportedKeys(report)
+		assert.ElementsMatch(t, want, reported)
+		for _, k := range reported {
+			ran := len(report.PassedTests[k]) + len(report.FailedTests[k]) + len(report.ExceptedTests[k])
+			assert.Positive(t, ran, "%s is reported with no runs", k)
+		}
+		assert.Len(t, report.FailedTests["d_b_1_0_0"], 1)
+	}
+
+	t.Run("schemas cut short", func(t *testing.T) {
+		t.Parallel()
+		cut := []Key{"d_c_1_0_0", "d_d_1_0_0"}
+		r := setup(t, append([]Key{"d_b_1_0_0"}, cut...), cut)
+		tr := NewTester(r)
+		tr.SetStopOnFirstError(true)
+		tr.SetNumWorkers(3)
+
+		report, err := tr.TestFoundSchemas(context.Background(), "")
+		require.NoError(t, err)
+		assertOnly(t, report, "d_b_1_0_0")
+		assert.Equal(t, 2, report.NotTested)
+		assert.True(t, report.StoppedEarly())
+	})
+
+	t.Run("schemas never started", func(t *testing.T) {
+		t.Parallel()
+		r := setup(t, []Key{"d_a_1_0_0", "d_b_1_0_0", "d_c_1_0_0", "d_d_1_0_0", "d_e_1_0_0"}, nil)
+		tr := NewTester(r)
+		tr.SetStopOnFirstError(true)
+		tr.SetNumWorkers(1)
+
+		report, err := tr.TestFoundSchemas(context.Background(), "")
+		require.NoError(t, err)
+		assertOnly(t, report, "d_a_1_0_0", "d_b_1_0_0")
+		assert.Equal(t, 3, report.NotTested)
+	})
+}
+
+// TestTestFoundSchemas_ContinueOnError_TestsAll checks that a run which goes on past failures counts no
+// schema as not tested.
+func TestTestFoundSchemas_ContinueOnError_TestsAll(t *testing.T) {
+	t.Parallel()
+	r := setupTestRegistry(t)
+	keys := []Key{"d_a_1_0_0", "d_b_1_0_0"}
+	createSchemaFiles(t, r, schemaMap{keys[0]: `{"type": "object"}`, keys[1]: `{"type": "object"}`})
+	for _, k := range keys {
+		createTestDocs(t, r, k, TestDocTypePass, map[string]string{"ok.json": `{}`})
+	}
+	mc, ok := r.compiler.(*mockCompiler)
+	require.True(t, ok)
+	mc.CompileFunc = func(_ string) (validator.Validator, error) {
+		return &mockValidator{Err: errors.New("fail")}, nil
+	}
+
+	tr := NewTester(r)
+	tr.SetStopOnFirstError(false)
+	report, err := tr.TestFoundSchemas(context.Background(), "")
+	require.NoError(t, err)
+	assert.Len(t, report.FailedTests, 2)
+	assert.Zero(t, report.NotTested)
+	assert.False(t, report.StoppedEarly())
+}
+
+// reportedKeys returns every schema the report holds anything for.
+func reportedKeys(r *TestReport) []Key {
+	var keys []Key
+	add := func(k Key) {
+		if !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
+	}
+	for k := range r.PassedTests {
+		add(k)
+	}
+	for k := range r.FailedTests {
+		add(k)
+	}
+	for k := range r.ExceptedTests {
+		add(k)
+	}
+	for k := range r.Summaries {
+		add(k)
+	}
+	for k := range r.StaleExceptions {
+		add(k)
+	}
+	for k := range r.MissingMigrations {
+		add(k)
+	}
+	for k := range r.UnexercisedChanges {
+		add(k)
+	}
+	for k := range r.AcknowledgedChanges {
+		add(k)
+	}
+	return keys
+}
+
+// TestTestFoundSchemas_StopOnFirstError_SearchErrWhileCounting checks that a run which stops at the
+// first failure returns the error the search finds, past where the run stopped, as it counts the
+// schemas it didn't test.
+func TestTestFoundSchemas_StopOnFirstError_SearchErrWhileCounting(t *testing.T) {
+	t.Parallel()
+	r := setupTestRegistry(t)
+	createSchemaFiles(t, r, schemaMap{"d_a_1_0_0": `{"type": "object"}`, "d_b_1_0_0": `{"type": "object"}`})
+	createTestDocs(t, r, "d_a_1_0_0", TestDocTypePass, map[string]string{"bad.json": `{}`})
+	badDir := filepath.Join(r.rootDirectory, "d", "zz")
+	require.NoError(t, os.MkdirAll(badDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(badDir, "invalid-name.schema.json"), []byte("{}"), 0o600))
+
+	mc, ok := r.compiler.(*mockCompiler)
+	require.True(t, ok)
+	mc.CompileFunc = func(_ string) (validator.Validator, error) {
+		return &mockValidator{Err: errors.New("fail")}, nil
+	}
+
+	tr := NewTester(r)
+	tr.SetStopOnFirstError(true)
+	tr.SetNumWorkers(1)
+	_, err := tr.TestFoundSchemas(context.Background(), "")
+	assert.ErrorAs(t, err, new(*InvalidSchemaFilenameError))
+}
+
+func TestTestReport_DropUnless(t *testing.T) {
+	t.Parallel()
+	r := NewTestReport()
+	for _, k := range []Key{"d_keep_1_0_0", "d_drop_1_0_0"} {
+		r.AddPassedTest(k, &Spec{})
+		r.AddFailedTest(k, &Spec{})
+		r.AddExceptedTest(k, &Spec{})
+		r.AddStaleException(k, &Exception{}, "stale")
+		r.AddMissingMigration(k, MissingMigration{Major: 2})
+		r.AddUnexercisedChange(k, &UnexercisedChange{})
+		r.AddAcknowledgedChange(k, &AcknowledgedChange{})
+		r.AddSummary(k, &Summary{})
+	}
+
+	keep := func(k Key) bool { return k == "d_keep_1_0_0" }
+	r.dropUnless(keep, keep)
+	assert.Equal(t, []Key{"d_keep_1_0_0"}, reportedKeys(r))
 }

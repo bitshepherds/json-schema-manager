@@ -8,7 +8,7 @@ exec git config user.name test
 # shop/order refers to shared/money, which refers to its own #/definitions/currencyCode
 env JSM_REGISTRY_ROOT_DIR=ok
 exec jsm validate all -c -C
-stdout 'Test summary: 3 passed, 0 failed'
+stdout 'Test summary: 3 runs passed, 0 failed'
 
 exec jsm render-schema shop_order_1_0_0 --collapse
 stdout '"\$ref": "#/\$defs/shared_money_1_0_0/definitions/currencyCode"'
@@ -22,7 +22,7 @@ exists dist/production/private/shop_order_1_0_0.schema.json
 # $ref: collapsed, the body is read as 2020-12, and rejects the pass/ document
 env JSM_REGISTRY_ROOT_DIR=mixed
 exec jsm validate all -c -C
-stdout 'Test summary: 1 passed, 0 failed'
+stdout 'Test summary: 1 run passed, 0 failed'
 
 ! exec jsm render-schema shop_entry_1_0_0 --collapse
 stderr 'the collapsed form of shop_entry_1_0_0 is not equivalent to the original'

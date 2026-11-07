@@ -1393,10 +1393,12 @@ environments:
 
 			assert.Equal(t, tt.wantFiles, gotFiles)
 
-			// Verify paths are absolute and in the correct directory
+			// Verify paths are from the registry's root, and in the correct directory
+			relHome, err := filepath.Rel(r.RootDirectory(), homeDir)
+			require.NoError(t, err)
 			for _, doc := range docs {
-				assert.True(t, filepath.IsAbs(doc.Path), "Path should be absolute: %s", doc.Path)
-				assert.Contains(t, doc.Path, homeDir, "Path should be within home directory")
+				assert.False(t, filepath.IsAbs(doc.Path), "Path should be from the registry's root: %s", doc.Path)
+				assert.True(t, strings.HasPrefix(doc.Path, relHome), "Path should be within home directory")
 				assert.Contains(t, doc.Path, string(tt.testType), "Path should contain test type directory")
 			}
 		})

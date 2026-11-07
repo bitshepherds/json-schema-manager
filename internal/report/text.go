@@ -38,8 +38,6 @@ func (tr *TextReporter) cs(c, s string) string {
 }
 
 // Write implements the schema.Reporter interface.
-//
-//nolint:gocognit // high complexity report rendering logic
 func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	divider := strings.Repeat("-", 40)
 
@@ -82,12 +80,12 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 		status := tr.cs(statusCol, "["+statusText+"]")
 		keyStr := tr.cs(keyCol, string(k)+schema.SchemaSuffix)
-		suffix := countsSuffix(len(passed), len(failed), len(excepted))
+		suffix := runsSuffix(r, k)
 
 		_, _ = fmt.Fprintf(w, "%s %s %s\n", status, keyStr, tr.cs(statusCol, suffix))
 
 		if tr.Verbose {
-			// Show for each schema, the tests that passed and failed, along with any errors
+			// Show for each schema the tests that passed, as well as those which failed
 			for i := range passed {
 				spec := &passed[i]
 				_, _ = fmt.Fprintf(w, "  %s %s (%s)\n",
@@ -95,26 +93,8 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 					tr.cs(colGrey, spec.TestInfo.Path),
 					tr.cs(colGreen, spec.ResultLabel()))
 			}
-
-			for i := range failed {
-				spec := &failed[i]
-				_, _ = fmt.Fprintf(w, "  %s %s (%s):\n",
-					tr.cs(colRed, "✗"),
-					tr.cs(colGrey, spec.TestInfo.Path),
-					tr.cs(colRed, spec.ResultLabel()))
-				_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
-			}
-		} else {
-			// Just show the failures
-			for i := range failed {
-				spec := &failed[i]
-				_, _ = fmt.Fprintf(w, "  %s %s (%s):\n",
-					tr.cs(colRed, "✗"),
-					tr.cs(colGrey, spec.TestInfo.Path),
-					tr.cs(colRed, spec.ResultLabel()))
-				_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
-			}
 		}
+		tr.writeFailed(w, failed)
 		tr.writeMissingMigration(w, r, k)
 		tr.writeExceptions(w, excepted, stale)
 		tr.writeAcknowledged(w, r.AcknowledgedChanges[k])
@@ -126,7 +106,7 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 
 	_, _ = fmt.Fprintf(w, "%s\n", divider)
 	summaryLabel := tr.cs(colBoldWhite, "Test summary: ")
-	summaryStats := fmt.Sprintf("%d passed, %d failed", totalPassed, totalFailed)
+	summaryStats := fmt.Sprintf("%d %s passed, %d failed", totalPassed, plural(totalPassed, "run"), totalFailed)
 	for _, part := range []struct {
 		n      int
 		format string
@@ -150,16 +130,47 @@ func (tr *TextReporter) Write(w io.Writer, r *schema.TestReport) error {
 	if err != nil {
 		return err
 	}
+	tr.writeStopped(w, r)
 	_, err = fmt.Fprintf(w, "%s\n", divider)
 	return err
+}
+
+// writeFailed writes each failed run: what went wrong in a few words, then its error. The error names
+// the document by its path from the registry's root, so the line above leaves the path out, and the
+// report names each document once.
+func (tr *TextReporter) writeFailed(w io.Writer, failed []schema.Spec) {
+	for i := range failed {
+		spec := &failed[i]
+		_, _ = fmt.Fprintf(w, "  %s %s:\n", tr.cs(colRed, "✗"), tr.cs(colRed, spec.ResultLabel()))
+		_, _ = fmt.Fprintf(w, "    %v\n", spec.Err)
+	}
+}
+
+// writeStopped says how many schemas the run didn't test, if it stopped at the first failure before
+// testing them all.
+func (tr *TextReporter) writeStopped(w io.Writer, r *schema.TestReport) {
+	if r.StoppedEarly() {
+		_, _ = fmt.Fprintln(w, tr.cs(colYellow, fmt.Sprintf(
+			"Stopped at the first failure: %d %s not tested. Run with -C to test them all.",
+			r.NotTested, plural(r.NotTested, "schema"))))
+	}
+}
+
+// runsSuffix says how the schema's runs went, or that the run didn't test it, when a schema it did test
+// found something under it.
+func runsSuffix(r *schema.TestReport, k schema.Key) string {
+	if !r.Tested(k) {
+		return "(not tested)"
+	}
+	return countsSuffix(len(r.PassedTests[k]), len(r.FailedTests[k]), len(r.ExceptedTests[k]))
 }
 
 // countsSuffix says how a schema's runs went, leaving out excepted runs if there are none.
 func countsSuffix(passed, failed, excepted int) string {
 	if excepted > 0 {
-		return fmt.Sprintf("(pass: %d, fail: %d, excepted: %d)", passed, failed, excepted)
+		return fmt.Sprintf("(runs: %d passed, %d failed, %d excepted)", passed, failed, excepted)
 	}
-	return fmt.Sprintf("(pass: %d, fail: %d)", passed, failed)
+	return fmt.Sprintf("(runs: %d passed, %d failed)", passed, failed)
 }
 
 // reportKeys returns the keys of every schema in the report, sorted.
