@@ -1,7 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:best-practices"],
-  "dependencyDashboard": true,
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "schedule": ["* 0-5 * * 1"],
   "minimumReleaseAge": "3 days",
   "separateMajorMinor": true,
