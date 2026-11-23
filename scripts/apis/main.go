@@ -20,8 +20,8 @@ import (
 
 // The validators, pinned so the check is repeatable.
 const (
-	asyncapi = "@asyncapi/cli@6.3.0"
-	redocly  = "@redocly/cli@2.78.0"
+	asyncapi = "@asyncapi/cli@6.3.1"
+	redocly  = "@redocly/cli@2.82.0"
 )
 
 // A broken example, and the rule a validator must report when it rejects it. Matching the rule,
